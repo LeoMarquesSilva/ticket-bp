@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecionando...</title>
+  <script>
+    // Redirecionar para a página principal com hash
+    const pathSegments = window.location.pathname.split('/');
+    const repoName = 'ticket-bp';
+    
+    // Remover o nome do repositório do caminho, se presente
+    let path = pathSegments.slice(pathSegments.indexOf(repoName) + 1).join('/');
+    
+    // Construir a URL de redirecionamento
+    const redirectTo = window.location.origin + 
+                      '/ticket-bp/#/' + 
+                      path;
+    
+    window.location.replace(redirectTo);
+  </script>
+</head>
+<body>
+  <p>Redirecionando para a página principal...</p>
+</body>
+</html>

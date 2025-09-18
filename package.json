@@ -4,12 +4,12 @@
   "packageManager": "pnpm@8.10.0",
   "homepage": "https://leomarquessilva.github.io/ticket-bp",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint --quiet ./src",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
-    "preview": "vite preview"
+  "dev": "vite",
+  "build": "vite build && cp .nojekyll dist/ && cp public/test.html dist/",
+  "lint": "eslint --quiet ./src",
+  "predeploy": "npm run build",
+  "deploy": "gh-pages -d dist",
+  "preview": "vite preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
