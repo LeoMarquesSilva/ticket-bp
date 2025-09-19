@@ -17,6 +17,7 @@ import { Ticket, TicketStatus, TicketPriority } from '@/types';
 import { supabase, TABLES } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import FinishTicketButton from './FinishTicketButton';
 
 interface User {
   id: string;
@@ -31,6 +32,7 @@ interface TicketCardProps {
   onUpdateTicket: (ticketId: string, updates: Partial<Ticket>) => void;
   onAssignTicket: (ticketId: string, supportUserId: string) => void;
   onOpenChat: (ticket: Ticket) => void;
+  onTicketFinished?: () => void;
 }
 
 const TicketCard: React.FC<TicketCardProps> = ({
@@ -39,6 +41,7 @@ const TicketCard: React.FC<TicketCardProps> = ({
   onUpdateTicket,
   onAssignTicket,
   onOpenChat,
+  onTicketFinished = () => {},
 }) => {
   const [supportUsers, setSupportUsers] = useState<User[]>([]);
   const [assignedUserName, setAssignedUserName] = useState<string>('');
@@ -191,6 +194,10 @@ const TicketCard: React.FC<TicketCardProps> = ({
     return currentUser.role === 'support' || currentUser.role === 'admin';
   };
 
+  const isTicketActive = () => {
+    return ticket.status !== 'resolved' && ticket.status !== 'closed';
+  };
+
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
@@ -271,6 +278,16 @@ const TicketCard: React.FC<TicketCardProps> = ({
               Chat
             </Button>
 
+            {/* Finish Ticket Button - mostrado apenas se o ticket estiver ativo */}
+            {isTicketActive() && (
+              <FinishTicketButton
+                ticketId={ticket.id}
+                ticketTitle={ticket.title}
+                isSupport={canModifyTicket()}
+                onTicketFinished={onTicketFinished}
+              />
+            )}
+
             {/* Status Change for Support/Admin */}
             {canModifyTicket() && (
               <Select value={ticket.status} onValueChange={handleStatusChange}>
@@ -287,7 +304,7 @@ const TicketCard: React.FC<TicketCardProps> = ({
             )}
 
             {/* Assignment for Support/Admin */}
-            {canModifyTicket() && (
+            {canModifyTicket() && isTicketActive() && (
               <Select
                 value={ticket.assignedTo || 'unassigned'}
                 onValueChange={handleAssign}

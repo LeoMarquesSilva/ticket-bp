@@ -19,6 +19,11 @@ export interface Ticket {
   npsScore?: number;
   npsFeedback?: string;
   npsSubmittedAt?: string;
+  requestFulfilled?: boolean;
+  notFulfilledReason?: string;
+  serviceScore?: number;
+  comment?: string;
+  feedbackSubmittedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +62,18 @@ export interface UpdateTicketData {
   npsScore?: number;
   npsFeedback?: string;
   npsSubmittedAt?: string;
+  requestFulfilled?: boolean;
+  notFulfilledReason?: string;
+  serviceScore?: number;
+  comment?: string;
+  feedbackSubmittedAt?: string;
+}
+
+export interface TicketFeedbackData {
+  requestFulfilled: boolean;
+  notFulfilledReason?: string;
+  serviceScore: number;
+  comment: string;
 }
 
 // Map frontend field names to database field names
@@ -84,6 +101,13 @@ const mapToDatabase = (data: any) => {
   if (data.npsFeedback !== undefined) mapped.nps_feedback = data.npsFeedback;
   if (data.npsSubmittedAt !== undefined) mapped.nps_submitted_at = data.npsSubmittedAt;
   
+  // Novos campos para feedback
+  if (data.requestFulfilled !== undefined) mapped.request_fulfilled = data.requestFulfilled;
+  if (data.notFulfilledReason !== undefined) mapped.not_fulfilled_reason = data.notFulfilledReason;
+  if (data.serviceScore !== undefined) mapped.service_score = data.serviceScore;
+  if (data.comment !== undefined) mapped.comment = data.comment;
+  if (data.feedbackSubmittedAt !== undefined) mapped.feedback_submitted_at = data.feedbackSubmittedAt;
+  
   return mapped;
 };
 
@@ -108,6 +132,11 @@ const mapFromDatabase = (data: any): Ticket => {
     npsScore: data.nps_score,
     npsFeedback: data.nps_feedback,
     npsSubmittedAt: data.nps_submitted_at,
+    requestFulfilled: data.request_fulfilled,
+    notFulfilledReason: data.not_fulfilled_reason,
+    serviceScore: data.service_score,
+    comment: data.comment,
+    feedbackSubmittedAt: data.feedback_submitted_at,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
@@ -238,6 +267,114 @@ export class TicketService {
       throw error;
     }
   }
+
+  // Finalizar um ticket (marcar como resolvido)
+  static async finishTicket(ticketId: string): Promise<Ticket> {
+    try {
+      console.log('Finalizando ticket:', ticketId);
+      
+      const now = new Date().toISOString();
+      
+      const updates = {
+        status: 'resolved',
+        resolved_at: now,
+        updated_at: now,
+      };
+
+      const { data, error } = await supabase
+        .from(TABLES.TICKETS)
+        .update(updates)
+        .eq('id', ticketId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error finishing ticket:', error);
+        throw error;
+      }
+
+      console.log('Finished ticket data:', data);
+      return mapFromDatabase(data);
+    } catch (error) {
+      console.error('Error in finishTicket:', error);
+      throw error;
+    }
+  }
+
+  // Enviar feedback para um ticket
+  static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedbackData): Promise<Ticket> {
+    try {
+      console.log('Submitting feedback for ticket:', ticketId, feedbackData);
+      
+      const now = new Date().toISOString();
+      
+      const updates = {
+        request_fulfilled: feedbackData.requestFulfilled,
+        not_fulfilled_reason: feedbackData.notFulfilledReason || null,
+        service_score: feedbackData.serviceScore,
+        comment: feedbackData.comment,
+        feedback_submitted_at: now,
+        updated_at: now,
+        // Também definimos o status como fechado após o feedback
+        status: 'closed',
+        closed_at: now,
+      };
+
+      const { data, error } = await supabase
+        .from(TABLES.TICKETS)
+        .update(updates)
+        .eq('id', ticketId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error submitting feedback:', error);
+        throw error;
+      }
+
+      console.log('Ticket with feedback data:', data);
+      return mapFromDatabase(data);
+    } catch (error) {
+      console.error('Error in submitTicketFeedback:', error);
+      throw error;
+    }
+  }
+
+  // Delete a ticket
+static async deleteTicket(ticketId: string): Promise<boolean> {
+  try {
+    console.log('Deleting ticket:', ticketId);
+    
+    // Primeiro, excluir todas as mensagens de chat relacionadas ao ticket
+    const { error: chatError } = await supabase
+      .from(TABLES.CHAT_MESSAGES)
+      .delete()
+      .eq('ticket_id', ticketId);
+    
+    if (chatError) {
+      console.error('Error deleting chat messages:', chatError);
+      throw chatError;
+    }
+    
+    // Depois, excluir o ticket
+    const { error } = await supabase
+      .from(TABLES.TICKETS)
+      .delete()
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error deleting ticket:', error);
+      throw error;
+    }
+    
+    console.log('Ticket deleted successfully');
+    return true;
+  } catch (error) {
+    console.error('Error in deleteTicket:', error);
+    throw error;
+  }
+}
+
 
   // Get chat messages for a ticket
   static async getChatMessages(ticketId: string): Promise<ChatMessage[]> {

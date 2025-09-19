@@ -8,13 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Plus, Search, Filter, MessageSquare, MessageCircle, Clock, CheckCircle, AlertCircle, User, Users, Bell, Send, X, ArrowLeft } from 'lucide-react';
+import { Plus, Search, Filter, MessageSquare, MessageCircle, Clock, CheckCircle, AlertCircle, User, Users, Bell, Send, X, ArrowLeft, Lock } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Trash2 } from "lucide-react";
 import { toast } from 'sonner';
 import TicketForm from '@/components/TicketForm';
 import TicketCard from '@/components/TicketCard';
 import { TicketService } from '@/services/ticketService';
 import { supabase } from '@/lib/supabase';
 import { Ticket, TicketStatus, TicketPriority } from '@/types';
+import FinishTicketButton from '@/components/FinishTicketButton';
 
 const Tickets = () => {
   const { user } = useAuth();
@@ -229,6 +232,12 @@ const Tickets = () => {
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !user || sending || !selectedTicket?.id) return;
+    
+    // Verificar se o ticket está finalizado ou fechado
+    if (selectedTicket.status === 'resolved' || selectedTicket.status === 'closed') {
+      toast.error('Este ticket está finalizado e não pode receber novas mensagens');
+      return;
+    }
 
     try {
       setSending(true);
@@ -317,6 +326,25 @@ const Tickets = () => {
     }
   };
 
+  const handleDeleteTicket = async (ticketId) => {
+  try {
+    const success = await TicketService.deleteTicket(ticketId);
+    if (success) {
+      setTickets(prev => prev.filter(ticket => ticket.id !== ticketId));
+      
+      // Se o ticket excluído for o que está sendo visualizado, feche o chat
+      if (selectedTicket && selectedTicket.id === ticketId) {
+        closeChat();
+      }
+      
+      toast.success('Ticket excluído com sucesso!');
+    }
+  } catch (error) {
+    console.error('Error deleting ticket:', error);
+    toast.error('Erro ao excluir ticket');
+  }
+};
+
   const openChat = (ticket) => {
     if (!ticket || !ticket.id) {
       toast.error('Ticket inválido');
@@ -339,25 +367,47 @@ const Tickets = () => {
     setChatMessages([]);
   };
 
-  // Filter tickets based on search and filters
-  const filteredTickets = Array.isArray(tickets) ? tickets.filter(ticket => {
-    if (!ticket || !ticket.id) return false;
-    
-    const matchesSearch = (ticket.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (ticket.description || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-    const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
-    
-    let matchesAssigned = true;
-    if (assignedFilter === 'assigned') {
-      matchesAssigned = !!ticket.assignedTo;
-    } else if (assignedFilter === 'unassigned') {
-      matchesAssigned = !ticket.assignedTo;
-    }
+  // Verificar se o ticket está finalizado (resolved ou closed)
+  const isTicketFinalized = (ticket) => {
+    return ticket && (ticket.status === 'resolved' || ticket.status === 'closed');
+  };
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesAssigned;
-  }) : [];
+// Ordenar tickets: abertos primeiro, depois fechados
+const sortedTickets = Array.isArray(tickets) 
+  ? [...tickets].sort((a, b) => {
+      // Verificar se algum dos tickets é finalizado
+      const aFinalized = isTicketFinalized(a);
+      const bFinalized = isTicketFinalized(b);
+      
+      // Se um é finalizado e outro não, o não finalizado vem primeiro
+      if (aFinalized && !bFinalized) return 1;
+      if (!aFinalized && bFinalized) return -1;
+      
+      // Se ambos têm o mesmo status (ambos finalizados ou ambos não finalizados)
+      // ordenar por data de criação (mais recentes primeiro)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    })
+  : [];
+
+// Filter tickets based on search and filters
+const filteredTickets = sortedTickets.filter(ticket => {
+  if (!ticket || !ticket.id) return false;
+  
+  const matchesSearch = (ticket.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                       (ticket.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+  
+  const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
+  const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
+  
+  let matchesAssigned = true;
+  if (assignedFilter === 'assigned') {
+    matchesAssigned = !!ticket.assignedTo;
+  } else if (assignedFilter === 'unassigned') {
+    matchesAssigned = !ticket.assignedTo;
+  }
+
+  return matchesSearch && matchesStatus && matchesPriority && matchesAssigned;
+});
 
   const getPriorityColor = (priority) => {
     switch (priority) {
@@ -507,7 +557,9 @@ const Tickets = () => {
                         ? 'border-[#D5B170] bg-[#D5B170]/5' 
                         : unreadMessages[ticket.id] > 0 
                           ? 'border-blue-300 bg-blue-50' 
-                          : 'border-slate-200'
+                          : isTicketFinalized(ticket)
+                            ? 'border-slate-200 bg-slate-100'
+                            : 'border-slate-200'
                     }`}
                     onClick={() => openChat(ticket)}
                   >
@@ -515,6 +567,11 @@ const Tickets = () => {
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="font-semibold text-sm text-[#101F2E] line-clamp-1">
                           {ticket.title}
+                          {isTicketFinalized(ticket) && (
+                            <span className="ml-2 inline-flex">
+                              <Lock className="h-3 w-3 text-slate-400" />
+                            </span>
+                          )}
                         </h3>
                         {unreadMessages[ticket.id] > 0 && (
                           <Badge className="bg-red-500 text-white text-xs ml-2">
@@ -556,7 +613,8 @@ const Tickets = () => {
       {/* Right Side - Chat */}
       {showChat && selectedTicket && (
         <div className="w-2/3 flex flex-col border-l border-slate-200">
-          {/* Chat Header */}
+
+         { /* Chat Header */}
           <div className="p-4 border-b border-slate-200 bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -578,14 +636,64 @@ const Tickets = () => {
                   </p>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={closeChat}
-                className="h-8 w-8 hidden lg:flex"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center gap-2">
+              {/* Botão de excluir ticket (apenas para admin) */}
+              {user?.role === 'admin' && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-500 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Excluir Ticket</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Tem certeza que deseja excluir este ticket? Esta ação não pode ser desfeita e todas as mensagens relacionadas serão perdidas.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => handleDeleteTicket(selectedTicket.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white"
+                      >
+                        Excluir
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                  )}
+  
+                {/* Botão de finalizar ticket */}
+                {selectedTicket.status !== 'resolved' && selectedTicket.status !== 'closed' && user && (
+                  <FinishTicketButton
+                    ticketId={selectedTicket.id}
+                    ticketTitle={selectedTicket.title}
+                    isSupport={user.role === 'support' || user.role === 'admin'}
+                    onTicketFinished={() => {
+                      // Atualizar o ticket na lista
+                      handleUpdateTicket(selectedTicket.id, { status: 'resolved' });
+                      // Opcionalmente, fechar o chat
+                      // closeChat();
+                    }}
+                  />
+                )}
+                
+                {/* Botão de fechar chat */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={closeChat}
+                  className="h-8 w-8 hidden lg:flex"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -600,7 +708,9 @@ const Tickets = () => {
                 <MessageCircle className="h-8 w-8 text-slate-300 mb-2" />
                 <p className="text-slate-500 text-sm">Nenhuma mensagem ainda</p>
                 <p className="text-xs text-slate-400">
-                  Seja o primeiro a enviar uma mensagem!
+                  {isTicketFinalized(selectedTicket) 
+                    ? 'Este ticket está finalizado e não pode receber novas mensagens.'
+                    : 'Seja o primeiro a enviar uma mensagem!'}
                 </p>
               </div>
             ) : (
@@ -651,27 +761,34 @@ const Tickets = () => {
 
           {/* Chat Input */}
           <div className="p-4 border-t border-slate-200 bg-white">
-            <div className="flex gap-2">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Digite sua mensagem..."
-                disabled={sending}
-                className="flex-1"
-              />
-              <Button
-                onClick={sendMessage}
-                disabled={!newMessage.trim() || sending}
-                className="bg-[#D5B170] hover:bg-[#c4a05f] text-white px-4"
-              >
-                {sending ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
+            {isTicketFinalized(selectedTicket) ? (
+              <div className="flex items-center justify-center py-2 bg-slate-50 rounded-md border border-slate-200">
+                <Lock className="h-4 w-4 text-slate-400 mr-2" />
+                <p className="text-sm text-slate-500">Este ticket está finalizado e não pode receber novas mensagens</p>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Input
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Digite sua mensagem..."
+                  disabled={sending}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={sendMessage}
+                  disabled={!newMessage.trim() || sending}
+                  className="bg-[#D5B170] hover:bg-[#c4a05f] text-white px-4"
+                >
+                  {sending ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

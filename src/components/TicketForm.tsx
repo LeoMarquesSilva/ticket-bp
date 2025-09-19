@@ -20,20 +20,15 @@ interface TicketFormProps {
 const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<TicketPriority>('medium');
   const [category, setCategory] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Novas categorias conforme solicitado
   const categories = [
-    'Contratos',
-    'Litígios',
-    'Consultoria',
-    'Compliance',
-    'Trabalhista',
-    'Tributário',
-    'Societário',
-    'Regulatório',
-    'Outros'
+    'Protocolo',
+    'Agendamento',
+    'Cadastro',
+    'Publicações'
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,7 +44,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel }) => {
       await onSubmit({
         title: title.trim(),
         description: description.trim(),
-        priority,
+        priority: 'medium', // Definindo prioridade padrão como média
         category,
       });
     } catch (error) {
@@ -89,37 +84,20 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel }) => {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="priority">Prioridade *</Label>
-            <Select value={priority} onValueChange={(value: TicketPriority) => setPriority(value)} disabled={isSubmitting}>
-              <SelectTrigger className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="low">Baixa</SelectItem>
-                <SelectItem value="medium">Média</SelectItem>
-                <SelectItem value="high">Alta</SelectItem>
-                <SelectItem value="urgent">Urgente</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="category">Categoria *</Label>
-            <Select value={category} onValueChange={setCategory} disabled={isSubmitting}>
-              <SelectTrigger className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170]">
-                <SelectValue placeholder="Selecione uma categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="category">Categoria *</Label>
+          <Select value={category} onValueChange={setCategory} disabled={isSubmitting}>
+            <SelectTrigger className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170]">
+              <SelectValue placeholder="Selecione uma categoria" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
