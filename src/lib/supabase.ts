@@ -5,22 +5,17 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 // Adicione sua chave service_role aqui (você precisará adicionar ao .env)
 const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// Cliente admin com a chave service_role
-// ATENÇÃO: Usar a chave service_role no frontend é um RISCO DE SEGURANÇA
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
 // Verificar se já existe uma instância global
 const globalForSupabase = globalThis as unknown as {
   supabase: ReturnType<typeof createClient> | undefined;
 };
 
-// Database table names
+// Tabelas do banco de dados
 export const TABLES = {
   USERS: 'app_c009c0e4f1_users',
   TICKETS: 'app_c009c0e4f1_tickets',
   CHAT_MESSAGES: 'app_c009c0e4f1_chat_messages',
+  CATEGORIES: 'app_c009c0e4f1_categories',
 };
 
 // Database types
@@ -70,3 +65,23 @@ export interface DatabaseChatMessage {
   created_at: string;
 }
 
+// Inicializar o cliente Supabase apenas uma vez
+export const supabase = globalForSupabase.supabase || 
+  createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+
+// Cliente admin com a chave service_role
+// ATENÇÃO: Usar a chave service_role no frontend é um RISCO DE SEGURANÇA
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+// Armazenar a instância para reutilização
+if (process.env.NODE_ENV !== 'production') {
+  globalForSupabase.supabase = supabase;
+}
+
+export default supabase;

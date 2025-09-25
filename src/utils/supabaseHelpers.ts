@@ -8,6 +8,9 @@ let connectionStatus = {
   checking: false
 };
 
+// Variável para controlar o timeout manual
+let connectionCheckTimeout: NodeJS.Timeout | null = null;
+
 // Função para executar operações com retry automático
 export const executeWithRetry = async (
   operation: () => Promise<any>,
@@ -67,6 +70,23 @@ export const checkSupabaseConnection = async () => {
 
   connectionStatus.checking = true;
   
+  // Limpar qualquer timeout anterior
+  if (connectionCheckTimeout) {
+    clearTimeout(connectionCheckTimeout);
+  }
+  
+  // Configurar um timeout manual para garantir que a verificação não fique presa
+  connectionCheckTimeout = setTimeout(() => {
+    if (connectionStatus.checking) {
+      console.log('Verificação de conexão atingiu timeout');
+      connectionStatus = {
+        connected: false,
+        lastChecked: Date.now(),
+        checking: false
+      };
+    }
+  }, 5000); // 5 segundos de timeout
+  
   try {
     const start = Date.now();
     
@@ -84,6 +104,12 @@ export const checkSupabaseConnection = async () => {
         lastChecked: Date.now(),
         checking: false
       };
+      
+      if (connectionCheckTimeout) {
+        clearTimeout(connectionCheckTimeout);
+        connectionCheckTimeout = null;
+      }
+      
       return { connected: false, latency: null, error: e };
     }
     
@@ -91,7 +117,7 @@ export const checkSupabaseConnection = async () => {
     const { data, error } = await supabase
       .from('health_check')
       .select('count')
-      .maybeSingle()
+      .maybeSingle();
       
     const elapsed = Date.now() - start;
     
@@ -102,6 +128,12 @@ export const checkSupabaseConnection = async () => {
         lastChecked: Date.now(),
         checking: false
       };
+      
+      if (connectionCheckTimeout) {
+        clearTimeout(connectionCheckTimeout);
+        connectionCheckTimeout = null;
+      }
+      
       return { connected: false, latency: null, error };
     }
     
@@ -131,6 +163,11 @@ export const checkSupabaseConnection = async () => {
       }
     });
     
+    if (connectionCheckTimeout) {
+      clearTimeout(connectionCheckTimeout);
+      connectionCheckTimeout = null;
+    }
+    
     return { connected: true, latency: elapsed, error: null };
   } catch (error) {
     console.error('Exceção ao verificar conexão com Supabase:', error);
@@ -139,9 +176,20 @@ export const checkSupabaseConnection = async () => {
       lastChecked: Date.now(),
       checking: false
     };
+    
+    if (connectionCheckTimeout) {
+      clearTimeout(connectionCheckTimeout);
+      connectionCheckTimeout = null;
+    }
+    
     return { connected: false, latency: null, error };
   } finally {
     connectionStatus.checking = false;
+    
+    if (connectionCheckTimeout) {
+      clearTimeout(connectionCheckTimeout);
+      connectionCheckTimeout = null;
+    }
   }
 };
 

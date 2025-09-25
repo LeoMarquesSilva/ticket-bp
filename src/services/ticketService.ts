@@ -844,11 +844,10 @@ static subscribeToChatMessages(ticketId: string, callback: (payload: any) => voi
     console.log('Canal ID:', channelId);
     
     // Verificar se já existe um canal ativo para este ticket e removê-lo
-    // Não podemos usar .name diretamente, então vamos usar o método toString()
-    // que geralmente inclui o nome do canal na representação em string
+    // Usamos um método mais seguro para identificar canais
     const existingChannels = supabase.getChannels().filter(ch => {
-      const channelInfo = ch.toString();
-      return channelInfo.includes(`chat-${ticketId}`);
+      const channelStr = ch.toString();
+      return channelStr.includes(`chat-${ticketId}`);
     });
     
     if (existingChannels.length > 0) {
@@ -869,7 +868,7 @@ static subscribeToChatMessages(ticketId: string, callback: (payload: any) => voi
         {
           event: 'INSERT',
           schema: 'public',
-          table: TABLES.CHAT_MESSAGES,
+          table: 'app_c009c0e4f1_chat_messages',
           filter: `ticket_id=eq.${ticketId}`
         },
         (payload) => {
