@@ -291,98 +291,98 @@ const Tickets = () => {
   };
 
   // Função para configurar a assinatura do Supabase para novas mensagens
-  const setupMessageSubscription = () => {
-    if (!selectedTicket?.id || !user?.id) return;
-    
-    // Cancelar assinatura anterior se existir
-    if (messageSubscription.current) {
-      messageSubscription.current.unsubscribe();
-    }
-    
-    console.log('Setting up message subscription for ticket:', selectedTicket.id);
-    
-    // Assinar a novas mensagens para este ticket
-    messageSubscription.current = supabase
-      .channel(`ticket-messages-${selectedTicket.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `ticket_id=eq.${selectedTicket.id}`
-      }, (payload) => {
-        console.log('Received new message from Supabase:', payload);
-        const newMessage = {
-          id: payload.new.id,
-          ticketId: payload.new.ticket_id,
-          userId: payload.new.user_id,
-          userName: payload.new.user_name,
-          message: payload.new.message,
-          attachments: payload.new.attachments || [],
-          createdAt: payload.new.created_at,
-          read: payload.new.read
-        };
-        
-        // Verificar se a mensagem já existe no estado (para evitar duplicação)
-        setChatMessages(prevMessages => {
-          // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
-          const messageExists = prevMessages.some(
-            msg => msg.id === newMessage.id || 
-                  (msg.isTemp && 
-                   msg.userId === newMessage.userId && 
-                   msg.message === newMessage.message)
-          );
-          
-          if (messageExists) {
-            // Se a mensagem já existe, apenas substituir a temporária se houver
-            return prevMessages.map(msg => 
-              (msg.isTemp && 
-               msg.userId === newMessage.userId && 
-               msg.message === newMessage.message) 
-                ? { ...newMessage, isTemp: false } 
-                : msg
-            );
-          } else {
-            // Se a mensagem não existe, adicionar ao estado
-            return [...prevMessages, newMessage];
-          }
-        });
-        
-        // Marcar como lida se for de outro usuário e o chat estiver aberto
-        if (newMessage.userId !== user.id) {
-          markMessagesAsRead(selectedTicket.id);
-        }
-        
-        // Rolar para o final da conversa
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-          }
-        }, 100);
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'messages',
-        filter: `ticket_id=eq.${selectedTicket.id}`
-      }, (payload) => {
-        console.log('Message updated:', payload);
-        // Atualizar o estado das mensagens quando uma mensagem for atualizada
-        // (por exemplo, quando for marcada como lida)
-        setChatMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg.id === payload.new.id 
-            ? {
-                ...msg,
-                read: payload.new.read
-              }
-            : msg
-          )
+const setupMessageSubscription = () => {
+  if (!selectedTicket?.id || !user?.id) return;
+  
+  // Cancelar assinatura anterior se existir
+  if (messageSubscription.current) {
+    messageSubscription.current.unsubscribe();
+  }
+  
+  console.log('Setting up message subscription for ticket:', selectedTicket.id);
+  
+  // Assinar a novas mensagens para este ticket
+  messageSubscription.current = supabase
+    .channel(`ticket-messages-${selectedTicket.id}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
+      filter: `ticket_id=eq.${selectedTicket.id}`
+    }, (payload) => {
+      console.log('Received new message from Supabase:', payload);
+      const newMessage = {
+        id: payload.new.id,
+        ticketId: payload.new.ticket_id,
+        userId: payload.new.user_id,
+        userName: payload.new.user_name,
+        message: payload.new.message,
+        attachments: payload.new.attachments || [],
+        createdAt: payload.new.created_at,
+        read: payload.new.read
+      };
+      
+      // Verificar se a mensagem já existe no estado (para evitar duplicação)
+      setChatMessages(prevMessages => {
+        // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
+        const messageExists = prevMessages.some(
+          msg => msg.id === newMessage.id || 
+                (msg.isTemp && 
+                 msg.userId === newMessage.userId && 
+                 msg.message === newMessage.message)
         );
-      })
-      .subscribe((status) => {
-        console.log('Supabase subscription status:', status);
+        
+        if (messageExists) {
+          // Se a mensagem já existe, apenas substituir a temporária se houver
+          return prevMessages.map(msg => 
+            (msg.isTemp && 
+             msg.userId === newMessage.userId && 
+             msg.message === newMessage.message) 
+              ? { ...newMessage, isTemp: false } 
+              : msg
+          );
+        } else {
+          // Se a mensagem não existe, adicionar ao estado
+          return [...prevMessages, newMessage];
+        }
       });
-  };
+      
+      // Marcar como lida se for de outro usuário e o chat estiver aberto
+      if (newMessage.userId !== user.id) {
+        markMessagesAsRead(selectedTicket.id);
+      }
+      
+      // Rolar para o final da conversa
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
+      filter: `ticket_id=eq.${selectedTicket.id}`
+    }, (payload) => {
+      console.log('Message updated:', payload);
+      // Atualizar o estado das mensagens quando uma mensagem for atualizada
+      // (por exemplo, quando for marcada como lida)
+      setChatMessages(prevMessages => 
+        prevMessages.map(msg => 
+          msg.id === payload.new.id 
+          ? {
+              ...msg,
+              read: payload.new.read
+            }
+          : msg
+        )
+      );
+    })
+    .subscribe((status) => {
+      console.log('Supabase subscription status:', status);
+    });
+};
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

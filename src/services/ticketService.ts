@@ -753,6 +753,77 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
     }
   }
 
+  // Marcar mensagens como lidas
+static async markMessagesAsRead(ticketId: string, userId: string): Promise<boolean> {
+  try {
+    console.log('Marcando mensagens como lidas para ticket:', ticketId, 'e usuário:', userId);
+    
+    // Atualizar todas as mensagens não lidas que não foram enviadas pelo usuário atual
+    const { data, error } = await supabase
+      .from(TABLES.CHAT_MESSAGES)
+      .update({ read: true })
+      .eq('ticket_id', ticketId)
+      .neq('user_id', userId)
+      .eq('read', false);
+
+    if (error) {
+      console.error('Erro ao marcar mensagens como lidas:', error);
+      throw error;
+    }
+
+    console.log('Mensagens marcadas como lidas:', data);
+    return true;
+  } catch (error) {
+    console.error('Erro em markMessagesAsRead:', error);
+    return false;
+  }
+}
+
+// Marcar uma mensagem específica como lida
+static async markMessageAsRead(messageId: string): Promise<boolean> {
+  try {
+    console.log('Marcando mensagem como lida:', messageId);
+    
+    const { error } = await supabase
+      .from(TABLES.CHAT_MESSAGES)
+      .update({ read: true })
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('Erro ao marcar mensagem como lida:', error);
+      throw error;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Erro em markMessageAsRead:', error);
+    return false;
+  }
+}
+
+// Marcar todas as mensagens de um ticket como lidas
+static async markAllMessagesAsRead(ticketId: string): Promise<boolean> {
+  try {
+    console.log('Marcando todas as mensagens como lidas para ticket:', ticketId);
+    
+    const { error } = await supabase
+      .from(TABLES.CHAT_MESSAGES)
+      .update({ read: true })
+      .eq('ticket_id', ticketId)
+      .eq('read', false);
+
+    if (error) {
+      console.error('Erro ao marcar todas as mensagens como lidas:', error);
+      throw error;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Erro em markAllMessagesAsRead:', error);
+    return false;
+  }
+}
+
   // Adicionar método para transferir ticket para outro suporte
   static async transferTicket(ticketId: string, newSupportId: string, newSupportName: string): Promise<Ticket> {
     try {
