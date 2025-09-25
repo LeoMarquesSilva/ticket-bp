@@ -11,6 +11,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // ATENÇÃO: Usar a chave service_role no frontend é um RISCO DE SEGURANÇA
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
+// Verificar se já existe uma instância global
+const globalForSupabase = globalThis as unknown as {
+  supabase: ReturnType<typeof createClient> | undefined;
+};
+
 // Database table names
 export const TABLES = {
   USERS: 'app_c009c0e4f1_users',

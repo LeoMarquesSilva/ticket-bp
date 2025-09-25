@@ -1,5 +1,6 @@
 import { supabase, TABLES } from '@/lib/supabase';
 import { UserService } from './userService';
+import { executeWithRetry } from '../utils/supabaseHelpers';
 
 export interface Ticket {
   id: string;
@@ -172,7 +173,8 @@ const mapMessageFromDatabase = (data: any): ChatMessage => {
 
 export class TicketService {
   // Get tickets based on user role
-  static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
+static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
+  return executeWithRetry(async () => {
     try {
       console.log('Getting tickets for user:', userId, 'role:', userRole);
       
@@ -205,7 +207,8 @@ export class TicketService {
       console.error('Error in getTickets:', error);
       throw error;
     }
-  }
+  });
+}
 
   // Get all tickets (para a página de tickets)
   static async getAllTickets(): Promise<Ticket[]> {

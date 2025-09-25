@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
 import DatabaseManagement from '@/pages/DatabaseManagement';
+import { setupKeepAlive } from './utils/supabaseHelpers';
 
 // Componente para rotas protegidas
 const ProtectedRoute = ({ 
@@ -156,6 +157,14 @@ const AppRoutes = () => {
 };
 
 const App = () => {
+  useEffect(() => {
+    // Configurar o keep-alive para manter a conexão com o Supabase
+    const keepAliveInterval = setupKeepAlive();
+    
+    // Limpar o intervalo quando o componente for desmontado
+    return () => clearInterval(keepAliveInterval);
+  }, []);
+
   return (
     <AuthProvider>
       <Router>

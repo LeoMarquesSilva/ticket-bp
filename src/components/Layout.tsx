@@ -7,6 +7,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { ConnectionStatus } from './ConnectionStatus';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -111,6 +112,9 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
           </div>
         </main>
+        
+        {/* Adicionar o indicador de status de conexão */}
+        <ConnectionStatus />
       </div>
     </div>
   );
