@@ -801,30 +801,32 @@ const handleCreateTicket = async (ticketData: any) => {
           </div>
 
           {/* Painel de chat */}
-          {showChat && selectedTicket && (
-            <TicketChatPanel
-              selectedTicket={selectedTicket}
-              chatMessages={chatMessages}
-              user={user}
-              sending={sending}
-              newMessage={newMessage}
-              setNewMessage={setNewMessage}
-              uploadingFiles={uploadingFiles}
-              handleFileUpload={handleFileUpload}
-              removeUploadingFile={removeUploadingFile}
-              sendMessage={sendMessage}
-              handleKeyPress={handleKeyPress}
-              closeChat={closeChat}
-              handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
-              handleUpdateTicket={handleUpdateTicket}
-              isTicketFinalized={isTicketFinalized}
-              messagesEndRef={messagesEndRef}
-              markMessagesAsRead={markMessagesAsRead}
-              setShowImagePreview={setShowImagePreview}
-              typingUsers={typingUsers}
-              handleTyping={handleTyping}
-            />
-          )}
+              {showChat && selectedTicket && (
+                <TicketChatPanel
+                  selectedTicket={selectedTicket}
+                  chatMessages={chatMessages}
+                  user={user}
+                  sending={sending}
+                  newMessage={newMessage}
+                  setNewMessage={setNewMessage}
+                  uploadingFiles={uploadingFiles}
+                  handleFileUpload={handleFileUpload}
+                  removeUploadingFile={removeUploadingFile}
+                  sendMessage={sendMessage}
+                  handleKeyPress={handleKeyPress}
+                  closeChat={closeChat}
+                  handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
+                  handleUpdateTicket={handleUpdateTicket}
+                  isTicketFinalized={isTicketFinalized}
+                  messagesEndRef={messagesEndRef}
+                  markMessagesAsRead={markMessagesAsRead}
+                  setShowImagePreview={setShowImagePreview}
+                  typingUsers={typingUsers}
+                  handleTyping={handleTyping}
+                  supportUsers={supportUsers} // Adicionando a lista de usuários de suporte
+                  handleAssignTicket={handleAssignTicket} // Adicionando a função de atribuição
+                />
+              )}
         </div>
       )}
 

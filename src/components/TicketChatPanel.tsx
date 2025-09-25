@@ -5,10 +5,18 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus } from 'lucide-react';
 import FinishTicketButton from './FinishTicketButton';
 import { Ticket } from '@/types';
 import { ChatMessage } from '@/services/ticketService'; // Corrigir esta importação
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface TicketChatPanelProps {
   selectedTicket: Ticket;
@@ -31,6 +39,8 @@ interface TicketChatPanelProps {
   setShowImagePreview: (url: string | null) => void;
   typingUsers: Record<string, string>;
   handleTyping: () => void;
+  supportUsers?: any[]; // Adicionamos esta prop para listar usuários de suporte
+  handleAssignTicket?: (ticketId: string, supportUserId: string) => void; // Adicionamos esta prop para transferir o ticket
 }
 
 const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
@@ -53,7 +63,9 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   markMessagesAsRead,
   setShowImagePreview,
   typingUsers,
-  handleTyping
+  handleTyping,
+  supportUsers = [],
+  handleAssignTicket
 }) => {
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('pt-BR', {
@@ -109,6 +121,9 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     );
   };
 
+  // Filtrar apenas usuários de suporte (não advogados)
+  const supportOnlyUsers = supportUsers.filter(u => u.role === 'support');
+
   return (
   <div className="w-full lg:w-2/3 xl:w-3/5 flex flex-col border-l border-slate-200">
       {/* Chat Header */}
@@ -134,6 +149,44 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Botão de transferência (apenas para advogados) */}
+            {user?.role === 'lawyer' && !isTicketFinalized(selectedTicket) && handleAssignTicket && supportOnlyUsers.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1 text-xs"
+                  >
+                    <UserPlus className="h-3 w-3" />
+                    Transferir
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Transferir para suporte</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {supportOnlyUsers.map(supportUser => (
+                    <DropdownMenuItem 
+                      key={supportUser.id}
+                      onClick={() => handleAssignTicket(selectedTicket.id, supportUser.id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-xs bg-blue-500 text-white">
+                            {supportUser.name?.charAt(0).toUpperCase() || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{supportUser.name}</span>
+                        {supportUser.isOnline && (
+                          <span className="h-2 w-2 rounded-full bg-green-500 ml-1"></span>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            
             {/* Botão de excluir ticket (apenas para admin) */}
             {user?.role === 'admin' && handleDeleteTicket && (
               <AlertDialog>
