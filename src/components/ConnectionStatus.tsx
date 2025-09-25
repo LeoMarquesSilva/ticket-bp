@@ -1,27 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { checkSupabaseConnection } from '../utils/supabaseHelpers';
-import { Wifi, WifiOff } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
 
 export const ConnectionStatus: React.FC = () => {
   const [status, setStatus] = useState<{
     connected: boolean;
     latency: number | null;
     checking: boolean;
+    lastChecked: number | null;
   }>({
     connected: true, // Assumir conectado inicialmente
     latency: null,
     checking: false,
+    lastChecked: null,
   });
 
-  const checkConnection = async () => {
+  const checkConnection = useCallback(async () => {
+    if (status.checking) return; // Evitar múltiplas verificações simultâneas
+    
     setStatus(prev => ({ ...prev, checking: true }));
     const result = await checkSupabaseConnection();
     setStatus({
       connected: result.connected,
       latency: result.latency,
       checking: false,
+      lastChecked: Date.now(),
     });
-  };
+  }, [status.checking]);
 
   useEffect(() => {
     // Verificar a conexão inicialmente
@@ -30,8 +35,16 @@ export const ConnectionStatus: React.FC = () => {
     // Verificar a cada 30 segundos
     const interval = setInterval(checkConnection, 30000);
     
-    return () => clearInterval(interval);
-  }, []);
+    // Adicionar event listener para verificar quando a conexão voltar
+    window.addEventListener('online', checkConnection);
+    window.addEventListener('focus', checkConnection);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', checkConnection);
+      window.removeEventListener('focus', checkConnection);
+    };
+  }, [checkConnection]);
 
   return (
     <div 
@@ -44,7 +57,9 @@ export const ConnectionStatus: React.FC = () => {
       title="Clique para verificar a conexão"
       style={{ cursor: 'pointer' }}
     >
-      {status.connected ? (
+      {status.checking ? (
+        <RefreshCw size={14} className="animate-spin text-blue-600" />
+      ) : status.connected ? (
         <Wifi size={14} className="text-green-600" />
       ) : (
         <WifiOff size={14} className="text-red-600" />

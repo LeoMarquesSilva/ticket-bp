@@ -1,6 +1,7 @@
 import { supabase, TABLES } from '@/lib/supabase';
 import { UserService } from './userService';
-import { executeWithRetry } from '../utils/supabaseHelpers';
+import { executeWithRetry, isOnline } from '../utils/supabaseHelpers';
+import { saveForLater } from '../utils/offlineStorage';
 
 export interface Ticket {
   id: string;
@@ -523,72 +524,98 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
   }
 
   static async sendChatMessage(
-    ticketId: string, 
-    userId: string, 
-    userName: string, 
-    message: string,
-    attachments: any[] = []
-  ): Promise<ChatMessage> {
-    try {
-      console.log('Sending chat message:', { ticketId, userId, userName, message, attachments });
+  ticketId: string, 
+  userId: string, 
+  userName: string, 
+  message: string,
+  attachments: any[] = []
+): Promise<ChatMessage> {
+  try {
+    console.log('Sending chat message:', { ticketId, userId, userName, message, attachments });
+    
+    // Verificar se estamos online
+    const online = await isOnline();
+    
+    // Criar o objeto de mensagem
+    const messageData = {
+      ticket_id: ticketId,
+      user_id: userId,
+      user_name: userName,
+      message: message,
+      attachments: attachments.length > 0 ? attachments : null,
+      created_at: new Date().toISOString(),
+      read: false
+    };
+    
+    // Se estiver offline, salvar para enviar depois
+    if (!online) {
+      console.log('Offline: Salvando mensagem para envio posterior');
       
-      const messageData = {
-        ticket_id: ticketId,
-        user_id: userId,
-        user_name: userName,
-        message: message,
-        attachments: attachments.length > 0 ? attachments : null,
-        created_at: new Date().toISOString(),
-        read: false
+      // Salvar para enviar depois
+      saveForLater('sendChatMessage', {
+        ticketId,
+        userId,
+        userName,
+        message,
+        attachments: attachments.length > 0 ? attachments : null
+      });
+      
+      // Retornar uma mensagem temporária para mostrar na UI
+      return {
+        id: `temp-${Date.now()}`,
+        ticketId,
+        userId,
+        userName,
+        message,
+        createdAt: new Date().toISOString(),
+        attachments: attachments.length > 0 ? attachments : [],
+        read: false,
+        isTemp: true
       };
+    }
 
-      console.log('Chat message insert data:', messageData);
+    console.log('Chat message insert data:', messageData);
 
-      const { data, error } = await supabase
-        .from(TABLES.CHAT_MESSAGES)
-        .insert([messageData])
-        .select()
-        .single();
+    const { data, error } = await supabase
+      .from(TABLES.CHAT_MESSAGES)
+      .insert([messageData])
+      .select()
+      .single();
 
-      if (error) {
-        console.error('Error sending chat message:', error);
-        throw error;
-      }
-
-      console.log('Sent chat message data:', data);
-
-      return mapMessageFromDatabase(data);
-    } catch (error) {
-      console.error('Error in sendChatMessage:', error);
+    if (error) {
+      console.error('Error sending chat message:', error);
       throw error;
     }
+
+    console.log('Sent chat message data:', data);
+
+    return mapMessageFromDatabase(data);
+  } catch (error) {
+    console.error('Error in sendChatMessage:', error);
+    
+    // Em caso de erro, salvar para enviar depois
+    saveForLater('sendChatMessage', {
+      ticketId,
+      userId,
+      userName,
+      message,
+      attachments: attachments.length > 0 ? attachments : null
+    });
+    
+    // Retornar uma mensagem temporária para mostrar na UI
+    return {
+      id: `temp-${Date.now()}`,
+      ticketId,
+      userId,
+      userName,
+      message,
+      createdAt: new Date().toISOString(),
+      attachments: attachments.length > 0 ? attachments : [],
+      read: false,
+      isTemp: true
+    };
   }
-
-  // Marcar mensagens como lidas
-  static async markMessagesAsRead(ticketId: string, userId: string): Promise<boolean> {
-    try {
-      console.log('Marking messages as read for ticket:', ticketId, 'user:', userId);
-      
-      // Atualizar todas as mensagens não lidas para este ticket que não foram enviadas pelo usuário
-      const { error } = await supabase
-        .from(TABLES.CHAT_MESSAGES)
-        .update({ read: true })
-        .eq('ticket_id', ticketId)
-        .neq('user_id', userId)
-        .eq('read', false);
-
-      if (error) {
-        console.error('Error marking messages as read:', error);
-        throw error;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error in markMessagesAsRead:', error);
-      return false;
-    }
-  }
-
+}
 // Obter contagem de mensagens não lidas
 static async getUnreadMessageCounts(userId: string): Promise<Record<string, number>> {
   try {
@@ -807,48 +834,93 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
     };
   }
 
-  // Subscribe to chat messages (real-time) with status callback
-  static subscribeToChatMessages(ticketId: string, callback: (payload: any) => void, statusCallback?: (status: string) => void) {
-    console.log('Setting up chat subscription for ticket:', ticketId);
+// Subscribe to chat messages (real-time) with status callback
+static subscribeToChatMessages(ticketId: string, callback: (payload: any) => void, statusCallback?: (status: string) => void) {
+  console.log('Setting up chat subscription for ticket:', ticketId);
+  
+  try {
+    // Usar um ID de canal único para evitar conflitos
+    const channelId = `chat-${ticketId}-${Date.now()}`;
+    console.log('Canal ID:', channelId);
     
-    try {
-      // Usar um ID de canal único para evitar conflitos
-      const channelId = `chat-${ticketId}-${Date.now()}`;
-      console.log('Canal ID:', channelId);
-      
-      const channel = supabase
-        .channel(channelId)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: TABLES.CHAT_MESSAGES,
-            filter: `ticket_id=eq.${ticketId}`
-          },
-          (payload) => {
-            console.log('Chat message received:', payload);
-            callback(payload);
-          }
-        )
-        .subscribe((status) => {
-          console.log(`Status da inscrição para ticket ${ticketId}:`, status);
+    // Verificar se já existe um canal ativo para este ticket e removê-lo
+    // Não podemos usar .name diretamente, então vamos usar o método toString()
+    // que geralmente inclui o nome do canal na representação em string
+    const existingChannels = supabase.getChannels().filter(ch => {
+      const channelInfo = ch.toString();
+      return channelInfo.includes(`chat-${ticketId}`);
+    });
+    
+    if (existingChannels.length > 0) {
+      console.log(`Removendo ${existingChannels.length} canais existentes para o ticket ${ticketId}`);
+      existingChannels.forEach(ch => supabase.removeChannel(ch));
+    }
+    
+    // Criar um novo canal com configurações válidas
+    const channel = supabase
+      .channel(channelId, {
+        config: {
+          broadcast: { self: false },
+          presence: { key: '' }
+        }
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: TABLES.CHAT_MESSAGES,
+          filter: `ticket_id=eq.${ticketId}`
+        },
+        (payload) => {
+          console.log('Chat message received:', payload);
+          callback(payload);
+        }
+      )
+      .subscribe((status) => {
+        console.log(`Status da inscrição para ticket ${ticketId}:`, status);
+        if (statusCallback) {
+          statusCallback(status);
+        }
+      });
+
+    // Configurar reconexão automática
+    const reconnect = () => {
+      console.log('Tentando reconectar ao canal de chat...');
+      if (channel.state !== 'joined') {
+        channel.subscribe((status) => {
+          console.log(`Reconexão: Status da inscrição para ticket ${ticketId}:`, status);
           if (statusCallback) {
             statusCallback(status);
           }
         });
+      }
+    };
 
-      // Return unsubscribe function
-      return () => {
-        console.log('Unsubscribing from chat messages');
-        channel.unsubscribe();
-      };
-    } catch (error) {
-      console.error('Error subscribing to chat messages:', error);
-      // Return empty function to avoid errors
-      return () => {};
-    }
+    // Adicionar event listeners para reconectar quando a conexão voltar
+    window.addEventListener('online', reconnect);
+    
+    // Também adicionar um intervalo para verificar e reconectar periodicamente
+    const reconnectInterval = setInterval(() => {
+      if (channel.state !== 'joined') {
+        console.log('Verificação periódica: tentando reconectar ao canal de chat...');
+        reconnect();
+      }
+    }, 30000); // Verificar a cada 30 segundos
+
+    // Return unsubscribe function
+    return () => {
+      console.log('Unsubscribing from chat messages');
+      window.removeEventListener('online', reconnect);
+      clearInterval(reconnectInterval);
+      supabase.removeChannel(channel);
+    };
+  } catch (error) {
+    console.error('Error subscribing to chat messages:', error);
+    // Return empty function to avoid errors
+    return () => {};
   }
+}
 
   // Subscribe to ticket messages - alias for subscribeToChatMessages
   static subscribeToTicketMessages(
