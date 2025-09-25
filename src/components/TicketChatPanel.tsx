@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag } from 'lucide-react';
 import FinishTicketButton from './FinishTicketButton';
 import { Ticket } from '@/types';
 import { ChatMessage } from '@/services/ticketService'; // Corrigir esta importação
@@ -67,10 +67,20 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   supportUsers = [],
   handleAssignTicket
 }) => {
+  const [showTicketDetails, setShowTicketDetails] = useState(false);
+
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
+    });
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
     });
   };
 
@@ -124,6 +134,63 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   // Filtrar apenas usuários de suporte (não advogados)
   const supportOnlyUsers = supportUsers.filter(u => u.role === 'support');
 
+  // Encontrar o nome do usuário atribuído
+  const assignedUserName = selectedTicket.assignedTo ? 
+    supportUsers.find(u => u.id === selectedTicket.assignedTo)?.name || 
+    selectedTicket.assignedToName || 
+    "Usuário não encontrado" : 
+    null;
+
+  const getStatusLabel = (status: string) => {
+    switch(status) {
+      case 'open': return 'Aberto';
+      case 'in_progress': return 'Em Andamento';
+      case 'resolved': return 'Resolvido';
+      case 'closed': return 'Fechado';
+      default: return status;
+    }
+  };
+
+  const getPriorityLabel = (priority: string) => {
+    switch(priority) {
+      case 'urgent': return 'Urgente';
+      case 'high': return 'Alta';
+      case 'medium': return 'Média';
+      case 'low': return 'Baixa';
+      default: return priority || 'Normal';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'open':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'in_progress':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'resolved':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'closed':
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'high':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low':
+        return 'bg-green-100 text-green-800 border-green-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
   return (
   <div className="w-full lg:w-2/3 xl:w-3/5 flex flex-col border-l border-slate-200">
       {/* Chat Header */}
@@ -143,9 +210,15 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <h2 className="font-semibold text-[#101F2E]">
                 {selectedTicket.title}
               </h2>
-              <p className="text-xs text-slate-600">
-                Ticket #{selectedTicket.id.slice(-8)}
-              </p>
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <span>Ticket #{selectedTicket.id.slice(-8)}</span>
+                <button 
+                  onClick={() => setShowTicketDetails(!showTicketDetails)}
+                  className="text-[#D5B170] hover:underline"
+                >
+                  {showTicketDetails ? 'Ocultar detalhes' : 'Ver detalhes'}
+                </button>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -243,6 +316,46 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             </Button>
           </div>
         </div>
+
+        {/* Detalhes do ticket (expandível) */}
+        {showTicketDetails && (
+          <div className="mt-3 pt-3 border-t border-slate-100 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="flex items-center gap-1 text-slate-600">
+                <User className="h-3 w-3" />
+                <span className="font-medium">Solicitante:</span> {selectedTicket.createdByName}
+              </div>
+              <div className="flex items-center gap-1 text-slate-600">
+                <UserCheck className="h-3 w-3" />
+                <span className="font-medium">Atribuído:</span> {assignedUserName || <span className="italic text-slate-400">Não atribuído</span>}
+              </div>
+              <div className="flex items-center gap-1 text-slate-600">
+                <Calendar className="h-3 w-3" />
+                <span className="font-medium">Criado em:</span> {formatDate(selectedTicket.createdAt)}
+              </div>
+              <div className="flex items-center gap-1 text-slate-600">
+                <Tag className="h-3 w-3" />
+                <span className="font-medium">Categoria:</span> {selectedTicket.category || 'Geral'} 
+                {selectedTicket.subcategory && <span> / {selectedTicket.subcategory}</span>}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1 mt-2">
+              <Badge className={`${getStatusColor(selectedTicket.status)} border text-xs`}>
+                {getStatusLabel(selectedTicket.status)}
+              </Badge>
+              {selectedTicket.priority && (
+                <Badge className={`${getPriorityColor(selectedTicket.priority)} border text-xs`}>
+                  {getPriorityLabel(selectedTicket.priority)}
+                </Badge>
+              )}
+            </div>
+            {selectedTicket.description && (
+              <div className="mt-2 p-2 bg-slate-50 rounded text-slate-700 whitespace-pre-wrap">
+                {selectedTicket.description}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Chat Messages */}

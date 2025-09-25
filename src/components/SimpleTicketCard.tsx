@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Lock } from 'lucide-react';
+import { Lock, User, UserCheck } from 'lucide-react';
 import { Ticket } from '@/types';
 
 interface SimpleTicketCardProps {
@@ -71,8 +71,22 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
           </Badge>
         </div>
         
-        <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>{ticket.createdByName}</span>
+        {/* Informações de solicitante e atribuição */}
+        <div className="flex flex-col gap-1 mb-2 text-xs">
+          <div className="flex items-center text-slate-600">
+            <User className="h-3 w-3 mr-1" />
+            <span>Solicitante: <span className="font-medium">{ticket.createdByName}</span></span>
+          </div>
+          <div className="flex items-center text-slate-600">
+            <UserCheck className="h-3 w-3 mr-1" />
+            <span>Atribuído: {ticket.assignedToName ? 
+              <span className="font-medium">{ticket.assignedToName}</span> : 
+              <span className="italic text-slate-400">Não atribuído</span>}
+            </span>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-end text-xs text-slate-500">
           <span>{new Date(ticket.createdAt).toLocaleDateString('pt-BR')}</span>
         </div>
       </CardContent>
