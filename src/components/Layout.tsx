@@ -1,133 +1,129 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { LogOut, Ticket, BarChart3, Users, Zap } from 'lucide-react';
+import AppSidebar from '@/components/AppSidebar';
+import OnlineStatusToggle from '@/components/OnlineStatusToggle';
+import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentPage: 'tickets' | 'dashboard';
-  onPageChange: (page: 'tickets' | 'dashboard') => void;
+  currentPage: 'tickets' | 'dashboard' | 'users' | 'database';
+  onPageChange: (page: 'tickets' | 'dashboard' | 'users' | 'database') => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) => {
-  const { user, logout } = useAuth();
-
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'bg-gradient-to-r from-[#D5B170] to-[#e6c485] text-[#101F2E] border-0 font-semibold';
-      case 'support':
-        return 'bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0 font-semibold';
-      case 'user':
-        return 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white border-0 font-semibold';
-      default:
-        return 'bg-gray-100 text-gray-800';
+// Componente interno que usa o hook useSidebar
+const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const { state } = useSidebar();
+  const navigate = useNavigate();
+  
+  // Efeito para configurar as notificações em tempo real
+  useEffect(() => {
+    if (!user) return;
+    
+    // Função para reproduzir som de notificação
+    const playNotificationSound = () => {
+      const audio = new Audio('/notification.mp3'); // Certifique-se de adicionar este arquivo ao seu projeto
+      audio.play().catch(err => console.error('Erro ao reproduzir som:', err));
+    };
+    
+    // Inscrever para notificações de novos tickets (para suporte e advogados)
+    let ticketSubscription: any;
+    if (user.role === 'support' || user.role === 'lawyer' || user.role === 'admin') {
+      ticketSubscription = supabase
+        .channel('public:app_c009c0e4f1_tickets')
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'app_c009c0e4f1_tickets' 
+        }, (payload) => {
+          console.log('Novo ticket criado:', payload);
+          playNotificationSound();
+          toast.info('Novo ticket criado!', {
+            action: {
+              label: 'Ver',
+              onClick: () => navigate('/tickets')
+            }
+          });
+        })
+        .subscribe();
     }
-  };
+    
+    // Inscrever para notificações de novas mensagens
+    const messageSubscription = supabase
+      .channel('public:app_c009c0e4f1_chat_messages')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'app_c009c0e4f1_chat_messages' 
+      }, (payload) => {
+        // Verificar se a mensagem não é do usuário atual
+        if (payload.new && payload.new.user_id !== user.id) {
+          console.log('Nova mensagem recebida:', payload);
+          playNotificationSound();
+          toast.info('Nova mensagem recebida!', {
+            action: {
+              label: 'Ver',
+              onClick: () => {
+                if (payload.new && payload.new.ticket_id) {
+                  navigate(`/tickets/${payload.new.ticket_id}`);
+                } else {
+                  navigate('/tickets');
+                }
+              }
+            }
+          });
+        }
+      })
+      .subscribe();
+    
+    // Limpeza ao desmontar o componente
+    return () => {
+      if (ticketSubscription) {
+        supabase.removeChannel(ticketSubscription);
+      }
+      supabase.removeChannel(messageSubscription);
+    };
+  }, [user, navigate]);
+  
+  return (
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
+      {/* Sidebar */}
+      <AppSidebar />
+      
+      {/* Main Content */}
+      <div className={`flex-1 flex flex-col transition-all duration-200 ${state === 'collapsed' ? 'md:ml-12' : ''}`}>
+        {/* Status Toggle para advogados e suporte */}
+        {(user?.role === 'support' || user?.role === 'lawyer') && (
+          <div className="bg-white/60 backdrop-blur-sm p-2 border-b border-[#D5B170]/20 flex justify-end">
+            <OnlineStatusToggle />
+          </div>
+        )}
 
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'Gestor Op. Legais';
-      case 'support':
-        return 'Op. Legais';
-      case 'user':
-        return 'Jurídico';
-      default:
-        return role;
-    }
-  };
+        {/* Main Content */}
+        <main className="flex-1 p-4 md:p-6">
+          <div className="max-w-full mx-auto">
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-2xl border border-[#D5B170]/20 p-4 md:p-8">
+              {children}
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+// Componente principal que fornece o SidebarProvider
+const Layout: React.FC<LayoutProps> = ({ children }) => {
+  const isMobile = useIsMobile();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] shadow-2xl border-b border-[#D5B170]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-4">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-[#D5B170] rounded-xl blur-lg opacity-30"></div>
-                  <div className="relative bg-white/10 backdrop-blur-sm p-2 rounded-xl border border-[#D5B170]/30">
-                    <img 
-                      src="/assets/logo.png" 
-                      alt="Bismarchi Pires" 
-                      className="h-10 w-auto"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-white flex items-center">
-                    <Zap className="h-5 w-5 mr-2 text-[#D5B170]" />
-                    Sistema de Tickets
-                  </h1>
-                  <p className="text-sm text-[#D5B170]">Bismarchi | Pires Sociedade de Advogados</p>
-                </div>
-              </div>
-              <Badge className={getRoleBadgeColor(user?.role || '')}>
-                {getRoleLabel(user?.role || '')}
-              </Badge>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-sm font-medium text-white">{user?.name}</p>
-                <p className="text-xs text-[#D5B170]">{user?.email}</p>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={logout}
-                className="bg-white/10 hover:bg-white/20 border-[#D5B170]/30 text-white hover:text-white backdrop-blur-sm"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                Sair
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation */}
-      <nav className="bg-white/60 backdrop-blur-xl border-b border-[#D5B170]/20 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
-            <button
-              onClick={() => onPageChange('tickets')}
-              className={`py-4 px-6 border-b-3 font-medium text-sm transition-all duration-300 flex items-center space-x-2 ${
-                currentPage === 'tickets'
-                  ? 'border-[#D5B170] text-[#101F2E] bg-[#D5B170]/10'
-                  : 'border-transparent text-slate-600 hover:text-[#101F2E] hover:border-[#D5B170]/50 hover:bg-[#D5B170]/5'
-              }`}
-            >
-              <Users className="h-4 w-4" />
-              <span>Tickets</span>
-            </button>
-            {user?.role === 'admin' && (
-              <button
-                onClick={() => onPageChange('dashboard')}
-                className={`py-4 px-6 border-b-3 font-medium text-sm transition-all duration-300 flex items-center space-x-2 ${
-                  currentPage === 'dashboard'
-                    ? 'border-[#D5B170] text-[#101F2E] bg-[#D5B170]/10'
-                    : 'border-transparent text-slate-600 hover:text-[#101F2E] hover:border-[#D5B170]/50 hover:bg-[#D5B170]/5'
-                }`}
-              >
-                <BarChart3 className="h-4 w-4" />
-                <span>Dashboard</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-8 sm:px-6 lg:px-8">
-        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-2xl border border-[#D5B170]/20 p-8">
-          {children}
-        </div>
-      </main>
-    </div>
+    <SidebarProvider defaultOpen={!isMobile}>
+      <LayoutContent>{children}</LayoutContent>
+    </SidebarProvider>
   );
 };
 

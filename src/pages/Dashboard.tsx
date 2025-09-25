@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
+import { ColoredProgress } from '@/components/ui/colored-progress';
 
 interface DashboardStats {
   totalTickets: number;
@@ -100,16 +101,23 @@ const Dashboard: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadDashboardData = async () => {
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       try {
         setLoading(true);
+        setError(null);
         
+        console.log("Carregando tickets para o usuário:", user.id);
         // Get all tickets for the user
         const tickets = await TicketService.getTickets(user.id, user.role);
+        console.log("Tickets carregados:", tickets.length);
         
         // Calculate statistics
         const totalTickets = tickets.length;
@@ -212,6 +220,7 @@ const Dashboard: React.FC = () => {
         });
       } catch (error) {
         console.error('Error loading dashboard data:', error);
+        setError('Erro ao carregar dados. Tente novamente.');
       } finally {
         setLoading(false);
       }
@@ -268,6 +277,23 @@ const Dashboard: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170] mx-auto mb-4"></div>
           <p className="text-lg text-slate-600">Carregando dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <p className="text-lg text-slate-600">{error}</p>
+          <Button 
+            onClick={() => window.location.reload()}
+            className="mt-4"
+          >
+            Tentar novamente
+          </Button>
         </div>
       </div>
     );
@@ -407,7 +433,12 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-slate-600">NPS Score</span>
-                    <Badge variant={stats.npsScores.score >= 50 ? "success" : stats.npsScores.score >= 0 ? "warning" : "destructive"}>
+                    <Badge 
+                      variant="outline"
+                      className={stats.npsScores.score >= 50 ? "bg-green-100 text-green-800 border-green-200" : 
+                              stats.npsScores.score >= 0 ? "bg-yellow-100 text-yellow-800 border-yellow-200" : 
+                              "bg-red-100 text-red-800 border-red-200"}
+                    >
                       {stats.npsScores.total > 0 ? `${stats.npsScores.score}` : 'N/A'}
                     </Badge>
                   </div>
@@ -514,19 +545,31 @@ const Dashboard: React.FC = () => {
                       <span className="text-green-600">Promotores</span>
                       <span>{stats.npsScores.promoters} ({stats.npsScores.total > 0 ? Math.round((stats.npsScores.promoters / stats.npsScores.total) * 100) : 0}%)</span>
                     </div>
-                    <Progress value={stats.npsScores.total > 0 ? (stats.npsScores.promoters / stats.npsScores.total) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName="bg-green-500" />
+                    <ColoredProgress 
+                      value={stats.npsScores.total > 0 ? (stats.npsScores.promoters / stats.npsScores.total) * 100 : 0} 
+                      className="h-2 bg-slate-100" 
+                      color="green"
+                    />
                     
                     <div className="flex justify-between text-sm">
                       <span className="text-yellow-600">Neutros</span>
                       <span>{stats.npsScores.passives} ({stats.npsScores.total > 0 ? Math.round((stats.npsScores.passives / stats.npsScores.total) * 100) : 0}%)</span>
                     </div>
-                    <Progress value={stats.npsScores.total > 0 ? (stats.npsScores.passives / stats.npsScores.total) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName="bg-yellow-500" />
+                    <ColoredProgress 
+                      value={stats.npsScores.total > 0 ? (stats.npsScores.passives / stats.npsScores.total) * 100 : 0} 
+                      className="h-2 bg-slate-100" 
+                      color="yellow"
+                    />
                     
                     <div className="flex justify-between text-sm">
                       <span className="text-red-600">Detratores</span>
                       <span>{stats.npsScores.detractors} ({stats.npsScores.total > 0 ? Math.round((stats.npsScores.detractors / stats.npsScores.total) * 100) : 0}%)</span>
                     </div>
-                    <Progress value={stats.npsScores.total > 0 ? (stats.npsScores.detractors / stats.npsScores.total) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName="bg-red-500" />
+                    <ColoredProgress 
+                      value={stats.npsScores.total > 0 ? (stats.npsScores.detractors / stats.npsScores.total) * 100 : 0} 
+                      className="h-2 bg-slate-100" 
+                      color="red"
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -556,25 +599,41 @@ const Dashboard: React.FC = () => {
                       <span className="text-green-600">Excelente (9-10)</span>
                       <span>{stats.serviceScores.excellent} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.excellent / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <Progress value={stats.serviceScores.total > 0 ? (stats.serviceScores.excellent / stats.serviceScores.total) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName="bg-green-500" />
+                    <ColoredProgress 
+                      value={stats.serviceScores.total > 0 ? (stats.serviceScores.excellent / stats.serviceScores.total) * 100 : 0} 
+                      className="h-2 bg-slate-100" 
+                      color="green"
+                    />
                     
                     <div className="flex justify-between text-sm">
                       <span className="text-blue-600">Bom (7-8)</span>
                       <span>{stats.serviceScores.good} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.good / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <Progress value={stats.serviceScores.total > 0 ? (stats.serviceScores.good / stats.serviceScores.total) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName="bg-blue-500" />
+                    <ColoredProgress 
+                      value={stats.serviceScores.total > 0 ? (stats.serviceScores.good / stats.serviceScores.total) * 100 : 0} 
+                      className="h-2 bg-slate-100" 
+                      color="blue"
+                    />
                     
                     <div className="flex justify-between text-sm">
                       <span className="text-yellow-600">Regular (5-6)</span>
                       <span>{stats.serviceScores.average} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.average / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <Progress value={stats.serviceScores.total > 0 ? (stats.serviceScores.average / stats.serviceScores.total) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName="bg-yellow-500" />
+                    <ColoredProgress 
+                      value={stats.serviceScores.total > 0 ? (stats.serviceScores.average / stats.serviceScores.total) * 100 : 0} 
+                      className="h-2 bg-slate-100" 
+                      color="yellow"
+                    />
                     
                     <div className="flex justify-between text-sm">
                       <span className="text-red-600">Ruim (1-4)</span>
                       <span>{stats.serviceScores.poor} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.poor / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <Progress value={stats.serviceScores.total > 0 ? (stats.serviceScores.poor / stats.serviceScores.total) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName="bg-red-500" />
+                    <ColoredProgress 
+                      value={stats.serviceScores.total > 0 ? (stats.serviceScores.poor / stats.serviceScores.total) * 100 : 0} 
+                      className="h-2 bg-slate-100" 
+                      color="red"
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -735,7 +794,7 @@ const Dashboard: React.FC = () => {
               </Button>
               <Button 
                 variant="outline"
-                onClick={() => window.location.href = '/tickets'}
+                onClick={() => window.location.href = '/tickets/new'}
               >
                 Criar Novo Ticket
               </Button>

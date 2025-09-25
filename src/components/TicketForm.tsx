@@ -1,51 +1,111 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TicketPriority } from '@/types';
+import { AlertCircle } from 'lucide-react';
+
+// Definir tipos para categoria e subcategoria
+type TicketCategory = 'protocolo' | 'cadastro' | 'agendamento' | 'publicacoes' | 'assinatura_digital' | 'outros';
 
 interface TicketFormProps {
-  onSubmit: (ticketData: {
+  onSubmit: (data: {
     title: string;
     description: string;
-    priority: TicketPriority;
     category: string;
-  }) => Promise<void>;
+    subcategory: string;
+  }) => void;
   onCancel: () => void;
+  initialData?: {
+    title?: string;
+    description?: string;
+    category?: string;
+    subcategory?: string;
+  };
 }
 
-const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
+const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData = {} }) => {
+  const [title, setTitle] = useState(initialData.title || '');
+  const [description, setDescription] = useState(initialData.description || '');
+  const [category, setCategory] = useState(initialData.category || '');
+  const [subcategory, setSubcategory] = useState(initialData.subcategory || '');
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Novas categorias conforme solicitado
-  const categories = [
-    'Protocolo',
-    'Agendamento',
-    'Cadastro',
-    'Publicações'
-  ];
+  // Definir as subcategorias disponíveis para cada categoria
+  const subcategories: { [key: string]: { value: string, label: string }[] } = {
+    protocolo: [
+      { value: 'pedido_urgencia', label: 'Pedido de urgência' },
+      { value: 'inconsistencia', label: 'Inconsistência' },
+    ],
+    cadastro: [
+      { value: 'senhas_tribunais', label: 'Senhas Tribunais' },
+      { value: 'inconsistencia', label: 'Inconsistência' },
+      { value: 'abertura_pasta', label: 'Abertura de pasta' },
+    ],
+    agendamento: [
+      { value: 'inconsistencia', label: 'Inconsistência' },
+      { value: 'reagendamento', label: 'Reagendamento' },
+    ],
+    publicacoes: [
+      { value: 'inconsistencia', label: 'Inconsistência' },
+    ],
+    assinatura_digital: [
+      { value: 'pedido_urgencia', label: 'Pedido de urgência' },
+    ],
+    outros: [
+      { value: 'outros', label: 'Outros' },
+    ],
+  };
+
+  // Resetar subcategoria quando a categoria muda
+  useEffect(() => {
+    setSubcategory('');
+  }, [category]);
+
+  const validate = () => {
+    const newErrors: { [key: string]: string } = {};
+    
+    if (!title.trim()) {
+      newErrors.title = 'O título é obrigatório';
+    } else if (title.length < 5) {
+      newErrors.title = 'O título deve ter pelo menos 5 caracteres';
+    }
+    
+    if (!description.trim()) {
+      newErrors.description = 'A descrição é obrigatória';
+    } else if (description.length < 10) {
+      newErrors.description = 'A descrição deve ter pelo menos 10 caracteres';
+    }
+    
+    if (!category) {
+      newErrors.category = 'A categoria é obrigatória';
+    }
+    
+    if (!subcategory && category) {
+      newErrors.subcategory = 'A subcategoria é obrigatória';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!title.trim() || !description.trim() || !category) {
+    if (!validate()) {
       return;
     }
-
+    
     setIsSubmitting(true);
     
     try {
       await onSubmit({
-        title: title.trim(),
-        description: description.trim(),
-        priority: 'medium', // Definindo prioridade padrão como média
+        title,
+        description,
         category,
+        subcategory,
       });
     } catch (error) {
       console.error('Error submitting ticket:', error);
@@ -55,68 +115,115 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="title">Título</Label>
+        <Input
+          id="title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Digite um título breve para o ticket"
+          className={errors.title ? 'border-red-500' : ''}
+        />
+        {errors.title && (
+          <p className="text-red-500 text-xs flex items-center">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            {errors.title}
+          </p>
+        )}
+      </div>
+      
+      <div className="space-y-2">
+        <Label htmlFor="description">Descrição</Label>
+        <Textarea
+          id="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Descreva seu problema ou solicitação em detalhes"
+          rows={5}
+          className={errors.description ? 'border-red-500' : ''}
+        />
+        {errors.description && (
+          <p className="text-red-500 text-xs flex items-center">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            {errors.description}
+          </p>
+        )}
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="title">Título *</Label>
-          <Input
-            id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Descreva brevemente o problema ou solicitação"
-            required
-            disabled={isSubmitting}
-            className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170]"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="description">Descrição *</Label>
-          <Textarea
-            id="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Forneça detalhes sobre sua solicitação, incluindo contexto e informações relevantes"
-            rows={4}
-            required
-            disabled={isSubmitting}
-            className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] resize-none"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="category">Categoria *</Label>
-          <Select value={category} onValueChange={setCategory} disabled={isSubmitting}>
-            <SelectTrigger className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170]">
+          <Label htmlFor="category">Categoria</Label>
+          <Select
+            value={category}
+            onValueChange={setCategory}
+          >
+            <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
               <SelectValue placeholder="Selecione uma categoria" />
             </SelectTrigger>
             <SelectContent>
-              {categories.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat}
+              <SelectItem value="protocolo">Protocolo</SelectItem>
+              <SelectItem value="cadastro">Cadastro</SelectItem>
+              <SelectItem value="agendamento">Agendamento</SelectItem>
+              <SelectItem value="publicacoes">Publicações</SelectItem>
+              <SelectItem value="assinatura_digital">Assinatura Digital</SelectItem>
+              <SelectItem value="outros">Outros</SelectItem>
+            </SelectContent>
+          </Select>
+          {errors.category && (
+            <p className="text-red-500 text-xs flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {errors.category}
+            </p>
+          )}
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="subcategory">Subcategoria</Label>
+          <Select
+            value={subcategory}
+            onValueChange={setSubcategory}
+            disabled={!category}
+          >
+            <SelectTrigger className={errors.subcategory ? 'border-red-500' : ''}>
+              <SelectValue placeholder="Selecione uma subcategoria" />
+            </SelectTrigger>
+            <SelectContent>
+              {category && subcategories[category]?.map((sub) => (
+                <SelectItem key={sub.value} value={sub.value}>
+                  {sub.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {errors.subcategory && (
+            <p className="text-red-500 text-xs flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {errors.subcategory}
+            </p>
+          )}
         </div>
       </div>
-
-      <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+      
+      <div className="flex justify-end space-x-2 pt-4">
         <Button
           type="button"
           variant="outline"
           onClick={onCancel}
           disabled={isSubmitting}
-          className="border-slate-300 text-slate-700 hover:bg-slate-50"
         >
           Cancelar
         </Button>
         <Button
           type="submit"
-          disabled={isSubmitting || !title.trim() || !description.trim() || !category}
-          className="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] hover:from-[#0a1520] hover:to-[#1f3240] text-white shadow-lg"
+          disabled={isSubmitting}
+          className="bg-[#D5B170] hover:bg-[#c4a05f] text-white"
         >
-          {isSubmitting ? 'Criando...' : 'Criar Ticket'}
+          {isSubmitting ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+          ) : (
+            'Enviar'
+          )}
         </Button>
       </div>
     </form>

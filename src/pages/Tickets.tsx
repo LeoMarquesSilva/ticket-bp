@@ -1,226 +1,124 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Plus, Search, Filter, MessageSquare, MessageCircle, Clock, CheckCircle, AlertCircle, User, Users, Bell, Send, X, ArrowLeft, Lock } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trash2 } from "lucide-react";
-import { toast } from 'sonner';
-import TicketForm from '@/components/TicketForm';
-import TicketCard from '@/components/TicketCard';
-import { TicketService } from '@/services/ticketService';
 import { supabase } from '@/lib/supabase';
-import { Ticket, TicketStatus, TicketPriority } from '@/types';
-import FinishTicketButton from '@/components/FinishTicketButton';
+import { toast } from 'sonner';
+import { AlertCircle, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Ticket } from '@/types';
+import { TicketService, ChatMessage } from '@/services/ticketService';
+import TicketForm from '@/components/TicketForm';
+import TicketHeader from '@/components/TicketHeader';
+import TicketKanbanBoard from '@/components/TicketKanbanBoard';
+import TicketUserBoard from '@/components/TicketUserBoard';
+import TicketList from '@/components/TicketList';
+import TicketChatPanel from '@/components/TicketChatPanel';
+import SimpleTicketCard from '@/components/SimpleTicketCard';
 
 const Tickets = () => {
   const { user } = useAuth();
-  const [tickets, setTickets] = useState([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [showChat, setShowChat] = useState(false);
-  const [unreadMessages, setUnreadMessages] = useState({});
-  const [chatMessages, setChatMessages] = useState([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
-  const [loadingMessages, setLoadingMessages] = useState(false);
-  
-  // Filters
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [view, setView] = useState<'list' | 'board' | 'users'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [assignedFilter, setAssignedFilter] = useState('all');
-
-  const realtimeSubscriptionRef = useRef(null);
-  const chatSubscriptionRef = useRef(null);
-  const messagesEndRef = useRef(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const [userFilter, setUserFilter] = useState('all');
+  const [supportUsers, setSupportUsers] = useState<any[]>([]);
+  const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>({});
+  const [showImagePreview, setShowImagePreview] = useState<string | null>(null);
+  const [uploadingFiles, setUploadingFiles] = useState<any[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<string>('connecting');
+  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageSubscription = useRef<any>(null);
+  const typingSubscription = useRef<any>(null);
+  const typingTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages]);
-
-  useEffect(() => {
-    if (user) {
-      loadTickets();
-      setupRealtimeSubscription();
-    }
-
+    loadTickets();
+    loadSupportUsers();
+    
+    // Monitorar status da conexão com Supabase
+        const channel = supabase.channel('system');
+        const connectionData = channel
+          .on('system', { event: 'connection_status' }, (payload) => {
+            setConnectionStatus(payload.status);
+          })
+          .subscribe();
+    
     return () => {
-      if (realtimeSubscriptionRef.current) {
-        realtimeSubscriptionRef.current();
+      // Limpar assinaturas ao desmontar
+      if (messageSubscription.current) {
+        messageSubscription.current.unsubscribe();
       }
-      if (chatSubscriptionRef.current) {
-        chatSubscriptionRef.current();
+      if (typingSubscription.current) {
+        typingSubscription.current.unsubscribe();
+      }
+      if (connectionData) {
+        connectionData.unsubscribe();
       }
     };
-  }, [user]);
+  }, []);
 
   useEffect(() => {
-    if (selectedTicket && selectedTicket.id) {
-      loadChatMessages();
-      setupChatSubscription();
-    } else {
-      setChatMessages([]);
-      if (chatSubscriptionRef.current) {
-        chatSubscriptionRef.current();
-        chatSubscriptionRef.current = null;
-      }
+    if (selectedTicket?.id) {
+      loadMessages(selectedTicket.id);
+      setupMessageSubscription();
     }
-  }, [selectedTicket]);
-
-  const setupRealtimeSubscription = () => {
-    if (!user) return;
-
-    // Clean up existing subscription
-    if (realtimeSubscriptionRef.current) {
-      realtimeSubscriptionRef.current();
-    }
-
-    // Subscribe to ticket changes
-    if (TicketService.subscribeToTickets) {
-      realtimeSubscriptionRef.current = TicketService.subscribeToTickets(
-        user.id,
-        user.role,
-        (payload) => {
-          console.log('Real-time ticket update received:', payload);
-          
-          if (payload.eventType === 'INSERT') {
-            const newTicket = payload.new;
-            if (newTicket && newTicket.id) {
-              setTickets(prev => [newTicket, ...prev]);
-              
-              // Show notification for new tickets (for support/admin)
-              if ((user.role === 'support' || user.role === 'admin') && payload.new.created_by !== user.id) {
-                toast.info('Novo ticket criado!');
-              }
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedTicket = payload.new;
-            if (updatedTicket && updatedTicket.id) {
-              setTickets(prev => prev.map(ticket => 
-                ticket && ticket.id === updatedTicket.id ? updatedTicket : ticket
-              ).filter(ticket => ticket && ticket.id));
-            }
-          }
-        }
-      );
-    }
-
-    // Subscribe to all chat messages for notification
-    const globalChatSubscription = supabase
-      .channel('all-chat-messages')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'app_c009c0e4f1_chat_messages',
-        },
-        (payload) => {
-          console.log('New chat message received globally:', payload);
-          
-          // Only show notification if message is not from current user
-          if (payload.new.user_id !== user.id) {
-            const ticketId = payload.new.ticket_id;
-            
-            // Update unread count only if not currently viewing this ticket
-            if (!selectedTicket || selectedTicket.id !== ticketId) {
-              setUnreadMessages(prev => ({
-                ...prev,
-                [ticketId]: (prev[ticketId] || 0) + 1
-              }));
-              
-              // Show toast notification
-              toast.info(`Nova mensagem no ticket`);
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    // Add global chat subscription to cleanup
-    const originalCleanup = realtimeSubscriptionRef.current;
-    realtimeSubscriptionRef.current = () => {
-      if (originalCleanup) originalCleanup();
-      globalChatSubscription.unsubscribe();
-    };
-  };
-
-  const setupChatSubscription = () => {
-    if (!selectedTicket || !selectedTicket.id) return;
-
-    // Clean up existing chat subscription
-    if (chatSubscriptionRef.current) {
-      chatSubscriptionRef.current();
-    }
-
-    // Subscribe to messages for the selected ticket
-    chatSubscriptionRef.current = TicketService.subscribeToTicketMessages(
-      selectedTicket.id,
-      (payload) => {
-        console.log('New message received for selected ticket:', payload);
-        if (payload.eventType === 'INSERT') {
-          const newMsg = {
-            id: payload.new.id,
-            ticketId: payload.new.ticket_id,
-            userId: payload.new.user_id,
-            userName: payload.new.user_name,
-            message: payload.new.message,
-            createdAt: payload.new.created_at,
-          };
-          setChatMessages(prev => [...prev, newMsg]);
-          
-          // Show notification if message is from another user
-          if (user && payload.new.user_id !== user.id) {
-            toast.info(`Nova mensagem de ${payload.new.user_name}`);
-          }
-        }
-      }
-    );
-  };
+  }, [selectedTicket?.id]);
 
   const loadTickets = async () => {
-    if (!user) return;
-    
     try {
       setLoading(true);
-      console.log('Loading tickets for user:', user.id, 'role:', user.role);
+      setError(null);
       
-      const ticketsData = await TicketService.getTickets(user.id, user.role);
-      console.log('Loaded tickets:', ticketsData);
+      let tickets;
       
-      // Ensure ticketsData is an array and filter out any invalid tickets
-      const validTickets = Array.isArray(ticketsData) 
-        ? ticketsData.filter(ticket => ticket && ticket.id)
-        : [];
+      if (user?.role === 'user') {
+        // Usuários comuns veem apenas seus próprios tickets
+        tickets = await TicketService.getUserTickets(user.id);
+      } else {
+        // Admins e suporte veem todos os tickets
+        tickets = await TicketService.getAllTickets();
+      }
       
-      setTickets(validTickets);
+      setTickets(tickets);
+      
+      // Carregar contagem de mensagens não lidas para cada ticket
+      if (tickets.length > 0) {
+        loadUnreadMessageCounts(tickets);
+      }
     } catch (error) {
       console.error('Error loading tickets:', error);
-      toast.error('Erro ao carregar tickets');
-      setTickets([]);
+      setError('Erro ao carregar tickets. Por favor, tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadChatMessages = async () => {
-    if (!selectedTicket || !selectedTicket.id) return;
-    
+  const loadSupportUsers = async () => {
+    try {
+      const users = await TicketService.getSupportUsers();
+      setSupportUsers(users);
+    } catch (error) {
+      console.error('Error loading support users:', error);
+    }
+  };
+
+  const loadMessages = async (ticketId: string) => {
     try {
       setLoadingMessages(true);
-      const messages = await TicketService.getChatMessages(selectedTicket.id);
+      const messages = await TicketService.getTicketMessages(ticketId);
       setChatMessages(messages);
     } catch (error) {
       console.error('Error loading messages:', error);
@@ -230,67 +128,297 @@ const Tickets = () => {
     }
   };
 
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !user || sending || !selectedTicket?.id) return;
-    
-    // Verificar se o ticket está finalizado ou fechado
-    if (selectedTicket.status === 'resolved' || selectedTicket.status === 'closed') {
-      toast.error('Este ticket está finalizado e não pode receber novas mensagens');
-      return;
+  const loadUnreadMessageCounts = async (ticketsList: Ticket[]) => {
+    try {
+      const counts = await TicketService.getUnreadMessageCounts(user?.id || '');
+      setUnreadMessages(counts);
+    } catch (error) {
+      console.error('Error loading unread message counts:', error);
     }
+  };
 
+  const markMessagesAsRead = async (ticketId: string) => {
+    if (!user?.id) return;
+    
+    try {
+      await TicketService.markMessagesAsRead(ticketId, user.id);
+      
+      // Atualizar o contador local
+      setUnreadMessages(prev => ({
+        ...prev,
+        [ticketId]: 0
+      }));
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  };
+
+  // Função para notificar que o usuário está digitando
+  const handleTyping = () => {
+    if (!selectedTicket?.id || !user?.id) return;
+    
+    // Enviar evento de digitação
+    try {
+      supabase.channel(`typing-${selectedTicket.id}`).send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { userId: user.id, userName: user.name }
+      });
+    } catch (error) {
+      console.error('Error sending typing event:', error);
+    }
+    
+    // Limpar timeout anterior se existir
+    if (typingTimeout.current) {
+      clearTimeout(typingTimeout.current);
+    }
+    
+    // Definir novo timeout para parar de mostrar "digitando" após 2 segundos
+    typingTimeout.current = setTimeout(() => {
+      try {
+        supabase.channel(`typing-${selectedTicket.id}`).send({
+          type: 'broadcast',
+          event: 'stop-typing',
+          payload: { userId: user.id }
+        });
+      } catch (error) {
+        console.error('Error sending stop-typing event:', error);
+      }
+    }, 2000);
+  };
+
+  // Configurar assinatura para eventos de digitação
+  const setupTypingSubscription = () => {
+    if (!selectedTicket?.id || !user?.id) return;
+    
+    // Cancelar assinatura anterior se existir
+    if (typingSubscription.current) {
+      typingSubscription.current.unsubscribe();
+    }
+    
+    // Assinar a eventos de digitação
+    typingSubscription.current = supabase
+      .channel(`typing-${selectedTicket.id}`)
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        // Ignorar eventos do próprio usuário
+        if (payload.payload.userId === user.id) return;
+        
+        // Adicionar usuário à lista de digitando
+        setTypingUsers(prev => ({
+          ...prev,
+          [payload.payload.userId]: payload.payload.userName
+        }));
+      })
+      .on('broadcast', { event: 'stop-typing' }, (payload) => {
+        // Remover usuário da lista de digitando
+        setTypingUsers(prev => {
+          const newTyping = { ...prev };
+          delete newTyping[payload.payload.userId];
+          return newTyping;
+        });
+      })
+      .subscribe();
+  };
+
+  // Enviar mensagem
+  const sendMessage = async () => {
+    if (!selectedTicket?.id || !user?.id || (!newMessage.trim() && uploadingFiles.length === 0)) return;
+    
+    const tempMessageId = `temp-${Date.now()}`;
+    const attachments = uploadingFiles
+      .filter(file => file.progress === 100 && file.url)
+      .map(file => ({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        url: file.url
+      }));
+    
+    // Adicionar mensagem temporária ao estado
+    const tempMessage = {
+      id: tempMessageId,
+      ticketId: selectedTicket.id,
+      userId: user.id,
+      userName: user.name,
+      message: newMessage.trim(),
+      attachments,
+      createdAt: new Date().toISOString(),
+      read: false,
+      isTemp: true
+    };
+    
+    setChatMessages(prev => [...prev, tempMessage]);
+    
     try {
       setSending(true);
-      await TicketService.sendChatMessage(
-        selectedTicket.id,
-        user.id,
-        user.name,
-        newMessage.trim()
-      );
+      
+      // Enviar mensagem para o servidor
+      const newMessageData = await TicketService.sendMessage({
+        ticketId: selectedTicket.id,
+        userId: user.id,
+        userName: user.name,
+        message: newMessage.trim(),
+        attachments
+      });
+      
+      // Atualizar o ticket para "em andamento" se estiver aberto
+      if (selectedTicket.status === 'open' && user.role !== 'user') {
+        await handleUpdateTicket(selectedTicket.id, { status: 'in_progress' });
+      }
+      
+      // Substituir a mensagem temporária pela real
+      if (newMessageData && newMessageData.id) {
+        setChatMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === tempMessageId ? { ...newMessageData, isTemp: false } : msg
+          )
+        );
+      }
+      
       setNewMessage('');
+      setUploadingFiles([]);
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Erro ao enviar mensagem');
+      
+      // Remover a mensagem temporária em caso de erro
+      setChatMessages(prevMessages => 
+        prevMessages.filter(msg => !msg.isTemp)
+      );
     } finally {
       setSending(false);
     }
   };
 
-  const handleKeyPress = (e) => {
+  // Função para configurar a assinatura do Supabase para novas mensagens
+  const setupMessageSubscription = () => {
+    if (!selectedTicket?.id || !user?.id) return;
+    
+    // Cancelar assinatura anterior se existir
+    if (messageSubscription.current) {
+      messageSubscription.current.unsubscribe();
+    }
+    
+    console.log('Setting up message subscription for ticket:', selectedTicket.id);
+    
+    // Assinar a novas mensagens para este ticket
+    messageSubscription.current = supabase
+      .channel(`ticket-messages-${selectedTicket.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `ticket_id=eq.${selectedTicket.id}`
+      }, (payload) => {
+        console.log('Received new message from Supabase:', payload);
+        const newMessage = {
+          id: payload.new.id,
+          ticketId: payload.new.ticket_id,
+          userId: payload.new.user_id,
+          userName: payload.new.user_name,
+          message: payload.new.message,
+          attachments: payload.new.attachments || [],
+          createdAt: payload.new.created_at,
+          read: payload.new.read
+        };
+        
+        // Verificar se a mensagem já existe no estado (para evitar duplicação)
+        setChatMessages(prevMessages => {
+          // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
+          const messageExists = prevMessages.some(
+            msg => msg.id === newMessage.id || 
+                  (msg.isTemp && 
+                   msg.userId === newMessage.userId && 
+                   msg.message === newMessage.message)
+          );
+          
+          if (messageExists) {
+            // Se a mensagem já existe, apenas substituir a temporária se houver
+            return prevMessages.map(msg => 
+              (msg.isTemp && 
+               msg.userId === newMessage.userId && 
+               msg.message === newMessage.message) 
+                ? { ...newMessage, isTemp: false } 
+                : msg
+            );
+          } else {
+            // Se a mensagem não existe, adicionar ao estado
+            return [...prevMessages, newMessage];
+          }
+        });
+        
+        // Marcar como lida se for de outro usuário e o chat estiver aberto
+        if (newMessage.userId !== user.id) {
+          markMessagesAsRead(selectedTicket.id);
+        }
+        
+        // Rolar para o final da conversa
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 100);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `ticket_id=eq.${selectedTicket.id}`
+      }, (payload) => {
+        console.log('Message updated:', payload);
+        // Atualizar o estado das mensagens quando uma mensagem for atualizada
+        // (por exemplo, quando for marcada como lida)
+        setChatMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === payload.new.id 
+            ? {
+                ...msg,
+                read: payload.new.read
+              }
+            : msg
+          )
+        );
+      })
+      .subscribe((status) => {
+        console.log('Supabase subscription status:', status);
+      });
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
 
-  const handleCreateTicket = async (ticketData) => {
-    if (!user) return;
+const handleCreateTicket = async (ticketData: any) => {
+  if (!user) return;
 
-    try {
-      console.log('Creating ticket:', ticketData);
-      const newTicket = await TicketService.createTicket({
-        title: ticketData.title,
-        description: ticketData.description,
-        priority: ticketData.priority,
-        category: ticketData.category,
-        createdBy: user.id,
-        createdByName: user.name,
-      });
-      
-      console.log('Ticket created:', newTicket);
-      
-      if (newTicket && newTicket.id) {
-        setTickets(prev => [newTicket, ...prev]);
-        setShowCreateForm(false);
-        toast.success('Ticket criado com sucesso!');
-      }
-    } catch (error) {
-      console.error('Error creating ticket:', error);
-      toast.error('Erro ao criar ticket');
+  try {
+    console.log('Creating ticket:', ticketData);
+    const newTicket = await TicketService.createTicket({
+      title: ticketData.title,
+      description: ticketData.description,
+      category: ticketData.category,
+      subcategory: ticketData.subcategory,
+      createdBy: user.id,
+      createdByName: user.name,
+    });
+    
+    console.log('Ticket created:', newTicket);
+    
+    if (newTicket && newTicket.id) {
+      setTickets(prev => [newTicket, ...prev]);
+      setShowCreateForm(false);
+      toast.success('Ticket criado com sucesso!');
     }
-  };
+  } catch (error) {
+    console.error('Error creating ticket:', error);
+    toast.error('Erro ao criar ticket');
+  }
+};
 
-  const handleUpdateTicket = async (ticketId, updates) => {
+  const handleUpdateTicket = async (ticketId: string, updates: any) => {
     try {
       console.log('Updating ticket:', ticketId, updates);
       
@@ -314,7 +442,7 @@ const Tickets = () => {
     }
   };
 
-  const handleAssignTicket = async (ticketId, supportUserId) => {
+  const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
     try {
       await handleUpdateTicket(ticketId, { 
         assignedTo: supportUserId,
@@ -326,496 +454,400 @@ const Tickets = () => {
     }
   };
 
-  const handleDeleteTicket = async (ticketId) => {
-  try {
-    const success = await TicketService.deleteTicket(ticketId);
-    if (success) {
-      setTickets(prev => prev.filter(ticket => ticket.id !== ticketId));
-      
-      // Se o ticket excluído for o que está sendo visualizado, feche o chat
-      if (selectedTicket && selectedTicket.id === ticketId) {
-        closeChat();
+  const handleDeleteTicket = async (ticketId: string) => {
+    try {
+      const success = await TicketService.deleteTicket(ticketId);
+      if (success) {
+        setTickets(prev => prev.filter(ticket => ticket.id !== ticketId));
+        
+        // Se o ticket excluído for o que está sendo visualizado, feche o chat
+        if (selectedTicket && selectedTicket.id === ticketId) {
+          closeChat();
+        }
+        
+        toast.success('Ticket excluído com sucesso!');
       }
-      
-      toast.success('Ticket excluído com sucesso!');
+    } catch (error) {
+      console.error('Error deleting ticket:', error);
+      toast.error('Erro ao excluir ticket');
     }
-  } catch (error) {
-    console.error('Error deleting ticket:', error);
-    toast.error('Erro ao excluir ticket');
-  }
-};
+  };
 
-  const openChat = (ticket) => {
-    if (!ticket || !ticket.id) {
-      toast.error('Ticket inválido');
+  // Função para upload de arquivos
+  const handleFileUpload = async (files: FileList) => {
+    if (!files || files.length === 0 || !selectedTicket?.id) return;
+    
+    // Verificar se o ticket está finalizado
+    if (isTicketFinalized(selectedTicket)) {
+      toast.error('Este ticket está finalizado e não pode receber novos anexos');
       return;
     }
     
+    // Verificar tamanho total (limite de 10MB por arquivo)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`O arquivo ${file.name} excede o limite de 10MB`);
+        continue;
+      }
+      
+      // Adicionar arquivo à lista de uploads com progresso 0
+      const fileId = `${Date.now()}-${i}`;
+      const newFile = {
+        id: fileId,
+        file: file,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        progress: 0,
+        url: null,
+        error: null
+      };
+      
+      setUploadingFiles(prev => [...prev, newFile]);
+      
+      try {
+        // Atualizar progresso para simular início do upload
+        setUploadingFiles(prev => 
+          prev.map(f => f.id === fileId ? { ...f, progress: 10 } : f)
+        );
+        
+        // Criar nome único para o arquivo
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+        const filePath = `tickets/${selectedTicket.id}/${fileName}`;
+        
+        // Simular progresso antes do upload
+        setUploadingFiles(prev => 
+          prev.map(f => f.id === fileId ? { ...f, progress: 30 } : f)
+        );
+        
+        // Upload para o Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        // Simular progresso após upload
+        setUploadingFiles(prev => 
+          prev.map(f => f.id === fileId ? { ...f, progress: 70 } : f)
+        );
+          
+        if (error) throw error;
+        
+        // Obter URL pública do arquivo
+        const { data: { publicUrl } } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(filePath);
+        
+        // Atualizar arquivo na lista com URL e progresso completo
+        setUploadingFiles(prev => 
+          prev.map(f => f.id === fileId ? { 
+            ...f, 
+            url: publicUrl, 
+            progress: 100 
+          } : f)
+        );
+        
+      } catch (error) {
+        console.error('Erro ao fazer upload:', error);
+        
+        // Atualizar arquivo na lista com erro
+        setUploadingFiles(prev => 
+          prev.map(f => f.id === fileId ? { 
+            ...f, 
+            error: 'Erro ao fazer upload', 
+            progress: 0 
+          } : f)
+        );
+        
+        toast.error(`Erro ao fazer upload de ${file.name}`);
+      }
+    }
+  };
+
+  // Função para remover arquivo da lista de uploads
+  const removeUploadingFile = (fileId: string) => {
+    setUploadingFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  // Função para verificar se um ticket está finalizado
+  const isTicketFinalized = (ticket: Ticket) => {
+    return ticket.status === 'resolved' || ticket.status === 'closed';
+  };
+
+  // Função para abrir o chat de um ticket
+  const openChat = (ticket: Ticket) => {
     setSelectedTicket(ticket);
     setShowChat(true);
     
-    // Clear unread messages for this ticket
-    setUnreadMessages(prev => ({
-      ...prev,
-      [ticket.id]: 0
-    }));
+    // Marcar mensagens como lidas quando abrir o chat
+    if (user?.id && unreadMessages[ticket.id] > 0) {
+      markMessagesAsRead(ticket.id);
+    }
+    
+    // Configurar assinatura para digitação
+    setupTypingSubscription();
   };
 
+  // Função para fechar o chat
   const closeChat = () => {
     setShowChat(false);
     setSelectedTicket(null);
     setChatMessages([]);
-  };
-
-  // Verificar se o ticket está finalizado (resolved ou closed)
-  const isTicketFinalized = (ticket) => {
-    return ticket && (ticket.status === 'resolved' || ticket.status === 'closed');
-  };
-
-// Ordenar tickets: abertos primeiro, depois fechados
-const sortedTickets = Array.isArray(tickets) 
-  ? [...tickets].sort((a, b) => {
-      // Verificar se algum dos tickets é finalizado
-      const aFinalized = isTicketFinalized(a);
-      const bFinalized = isTicketFinalized(b);
-      
-      // Se um é finalizado e outro não, o não finalizado vem primeiro
-      if (aFinalized && !bFinalized) return 1;
-      if (!aFinalized && bFinalized) return -1;
-      
-      // Se ambos têm o mesmo status (ambos finalizados ou ambos não finalizados)
-      // ordenar por data de criação (mais recentes primeiro)
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    })
-  : [];
-
-// Filter tickets based on search and filters
-const filteredTickets = sortedTickets.filter(ticket => {
-  if (!ticket || !ticket.id) return false;
-  
-  const matchesSearch = (ticket.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       (ticket.description || '').toLowerCase().includes(searchTerm.toLowerCase());
-  
-  const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-  const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
-  
-  let matchesAssigned = true;
-  if (assignedFilter === 'assigned') {
-    matchesAssigned = !!ticket.assignedTo;
-  } else if (assignedFilter === 'unassigned') {
-    matchesAssigned = !ticket.assignedTo;
-  }
-
-  return matchesSearch && matchesStatus && matchesPriority && matchesAssigned;
-});
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'urgent': return 'bg-red-100 text-red-800 border-red-200';
-      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'low': return 'bg-green-100 text-green-800 border-green-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    setNewMessage('');
+    setUploadingFiles([]);
+    
+    // Cancelar assinaturas
+    if (messageSubscription.current) {
+      messageSubscription.current.unsubscribe();
+    }
+    if (typingSubscription.current) {
+      typingSubscription.current.unsubscribe();
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'open': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'in_progress': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'resolved': return 'bg-green-100 text-green-800 border-green-200';
-      case 'closed': return 'bg-gray-100 text-gray-800 border-gray-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
+  // Funções para filtrar tickets
+  const getFilteredTickets = () => {
+    return tickets.filter(ticket => {
+      // Filtro de pesquisa
+      const matchesSearch = searchTerm === '' || 
+        ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      // Filtro de status
+      const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
+      
+      // Filtro de prioridade
+      const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
+      
+      // Filtro de atribuição
+      const matchesAssigned = assignedFilter === 'all' || 
+        (assignedFilter === 'assigned' && ticket.assignedTo) ||
+        (assignedFilter === 'unassigned' && !ticket.assignedTo);
+      
+      // Filtro de usuário (para atribuição)
+      const matchesUser = userFilter === 'all' || 
+        (userFilter === 'mine' && ticket.assignedTo === user?.id) ||
+        (userFilter !== 'mine' && userFilter !== 'all' && ticket.assignedTo === userFilter);
+      
+      return matchesSearch && matchesStatus && matchesPriority && matchesAssigned && matchesUser;
     });
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+  // Organizar tickets por status para o quadro Kanban
+  const getTicketsByStatus = () => {
+    const filteredTickets = getFilteredTickets();
+    
+    return {
+      open: filteredTickets.filter(ticket => ticket.status === 'open'),
+      in_progress: filteredTickets.filter(ticket => ticket.status === 'in_progress'),
+      resolved: filteredTickets.filter(ticket => ticket.status === 'resolved'),
+      closed: filteredTickets.filter(ticket => ticket.status === 'closed')
+    };
   };
 
-  if (loading) {
+  // Organizar tickets por usuário para o quadro de usuários
+  const getTicketsByUser = () => {
+    const filteredTickets = getFilteredTickets();
+    const result: Record<string, Ticket[]> = {
+      unassigned: filteredTickets.filter(ticket => !ticket.assignedTo)
+    };
+    
+    // Adicionar tickets para cada usuário de suporte
+    supportUsers.forEach(user => {
+      result[user.id] = filteredTickets.filter(ticket => ticket.assignedTo === user.id);
+    });
+    
+    return result;
+  };
+
+  // Funções para cores de status e prioridade
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'high':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low':
+        return 'bg-green-100 text-green-800 border-green-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'open':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'in_progress':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'resolved':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'closed':
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  // Renderizar cartão de ticket
+  const renderTicketCard = (ticket: Ticket) => {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170] mx-auto mb-4"></div>
-          <p className="text-lg text-slate-600">Carregando tickets...</p>
-        </div>
-      </div>
+      <SimpleTicketCard
+        key={ticket.id}
+        ticket={ticket}
+        selectedTicketId={selectedTicket?.id}
+        unreadCount={unreadMessages[ticket.id] || 0}
+        onClick={() => openChat(ticket)}
+        getPriorityColor={getPriorityColor}
+        getStatusColor={getStatusColor}
+        isTicketFinalized={isTicketFinalized}
+      />
     );
-  }
+  };
 
   return (
-    <div className="flex h-[calc(100vh-120px)] gap-4">
-      {/* Left Sidebar - Tickets List */}
-      <div className={`${showChat ? 'w-1/3' : 'w-full'} transition-all duration-300`}>
-        <div className="h-full flex flex-col">
-          {/* Header */}
-          <div className="flex flex-col gap-4 mb-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-2xl font-bold text-[#101F2E]">Tickets de Suporte</h1>
-                <p className="text-slate-600 text-sm">
-                  {user?.role === 'user' 
-                    ? 'Suas solicitações de suporte jurídico'
-                    : 'Todos os tickets do sistema'
-                  }
-                </p>
-              </div>
-              
-              {user?.role === 'user' && (
-                <Button
-                  onClick={() => setShowCreateForm(true)}
-                  size="sm"
-                  className="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] hover:from-[#0a1520] hover:to-[#1f3240] text-white"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Novo Ticket
-                </Button>
-              )}
-            </div>
+    <div className="flex flex-col h-full">
+      {/* Cabeçalho com filtros e botões */}
+          <TicketHeader
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            priorityFilter={priorityFilter}
+            setPriorityFilter={setPriorityFilter}
+            assignedFilter={assignedFilter}
+            setAssignedFilter={setAssignedFilter}
+            userFilter={userFilter}
+            setUserFilter={setUserFilter}
+            view={view}
+            setView={setView}
+            // Remover esta linha:
+            // showCreateForm={showCreateForm}
+            setShowCreateForm={setShowCreateForm}
+            supportUsers={supportUsers}
+            user={user}
+          />
 
-            {/* Filters */}
-            <Card className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-                  <Input
-                    placeholder="Buscar tickets..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 h-9"
-                  />
-                </div>
-                
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="open">Aberto</SelectItem>
-                    <SelectItem value="in_progress">Em Andamento</SelectItem>
-                    <SelectItem value="resolved">Resolvido</SelectItem>
-                    <SelectItem value="closed">Fechado</SelectItem>
-                  </SelectContent>
-                </Select>
-                
-                <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Prioridade" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    <SelectItem value="low">Baixa</SelectItem>
-                    <SelectItem value="medium">Média</SelectItem>
-                    <SelectItem value="high">Alta</SelectItem>
-                    <SelectItem value="urgent">Urgente</SelectItem>
-                  </SelectContent>
-                </Select>
-                
-                {(user?.role === 'support' || user?.role === 'admin') && (
-                  <Select value={assignedFilter} onValueChange={setAssignedFilter}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Atribuição" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="assigned">Atribuídos</SelectItem>
-                      <SelectItem value="unassigned">Não Atribuídos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            </Card>
-          </div>
-
-          {/* Tickets List */}
-          <ScrollArea className="flex-1">
-            <div className="space-y-2">
-              {filteredTickets.length === 0 ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-8">
-                    <MessageSquare className="h-8 w-8 text-slate-400 mb-2" />
-                    <p className="text-slate-500 text-center text-sm">
-                      {tickets.length === 0 ? 'Nenhum ticket encontrado' : 'Nenhum ticket corresponde aos filtros'}
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                filteredTickets.map((ticket) => (
-                  <Card 
-                    key={ticket.id} 
-                    className={`cursor-pointer transition-all hover:shadow-md ${
-                      selectedTicket?.id === ticket.id 
-                        ? 'border-[#D5B170] bg-[#D5B170]/5' 
-                        : unreadMessages[ticket.id] > 0 
-                          ? 'border-blue-300 bg-blue-50' 
-                          : isTicketFinalized(ticket)
-                            ? 'border-slate-200 bg-slate-100'
-                            : 'border-slate-200'
-                    }`}
-                    onClick={() => openChat(ticket)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-semibold text-sm text-[#101F2E] line-clamp-1">
-                          {ticket.title}
-                          {isTicketFinalized(ticket) && (
-                            <span className="ml-2 inline-flex">
-                              <Lock className="h-3 w-3 text-slate-400" />
-                            </span>
-                          )}
-                        </h3>
-                        {unreadMessages[ticket.id] > 0 && (
-                          <Badge className="bg-red-500 text-white text-xs ml-2">
-                            {unreadMessages[ticket.id]}
-                          </Badge>
-                        )}
-                      </div>
-                      
-                      <p className="text-xs text-slate-600 line-clamp-2 mb-3">
-                        {ticket.description}
-                      </p>
-                      
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        <Badge className={`${getStatusColor(ticket.status)} border text-xs`}>
-                          {ticket.status === 'open' ? 'Aberto' : 
-                           ticket.status === 'in_progress' ? 'Em Andamento' : 
-                           ticket.status === 'resolved' ? 'Resolvido' : 'Fechado'}
-                        </Badge>
-                        <Badge className={`${getPriorityColor(ticket.priority)} border text-xs`}>
-                          {ticket.priority === 'urgent' ? 'Urgente' : 
-                           ticket.priority === 'high' ? 'Alta' : 
-                           ticket.priority === 'medium' ? 'Média' : 'Baixa'}
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <span>{ticket.createdByName}</span>
-                        <span>{new Date(ticket.createdAt).toLocaleDateString('pt-BR')}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </div>
-      </div>
-
-      {/* Right Side - Chat */}
-      {showChat && selectedTicket && (
-        <div className="w-2/3 flex flex-col border-l border-slate-200">
-
-         { /* Chat Header */}
-          <div className="p-4 border-b border-slate-200 bg-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={closeChat}
-                  className="h-8 w-8 lg:hidden"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <MessageCircle className="h-5 w-5 text-[#D5B170]" />
-                <div>
-                  <h2 className="font-semibold text-[#101F2E]">
-                    {selectedTicket.title}
-                  </h2>
-                  <p className="text-xs text-slate-600">
-                    Ticket #{selectedTicket.id.slice(-8)}
-                  </p>
-                </div>
-              </div>
-            <div className="flex items-center gap-2">
-              {/* Botão de excluir ticket (apenas para admin) */}
-              {user?.role === 'admin' && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Excluir Ticket</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Tem certeza que deseja excluir este ticket? Esta ação não pode ser desfeita e todas as mensagens relacionadas serão perdidas.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => handleDeleteTicket(selectedTicket.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white"
-                      >
-                        Excluir
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-                  )}
-  
-                {/* Botão de finalizar ticket */}
-                {selectedTicket.status !== 'resolved' && selectedTicket.status !== 'closed' && user && (
-                  <FinishTicketButton
-                    ticketId={selectedTicket.id}
-                    ticketTitle={selectedTicket.title}
-                    isSupport={user.role === 'support' || user.role === 'admin'}
-                    onTicketFinished={() => {
-                      // Atualizar o ticket na lista
-                      handleUpdateTicket(selectedTicket.id, { status: 'resolved' });
-                      // Opcionalmente, fechar o chat
-                      // closeChat();
-                    }}
-                  />
-                )}
-                
-                {/* Botão de fechar chat */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={closeChat}
-                  className="h-8 w-8 hidden lg:flex"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Chat Messages */}
-          <ScrollArea className="flex-1 p-4">
-            {loadingMessages ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#D5B170]"></div>
-              </div>
-            ) : chatMessages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <MessageCircle className="h-8 w-8 text-slate-300 mb-2" />
-                <p className="text-slate-500 text-sm">Nenhuma mensagem ainda</p>
-                <p className="text-xs text-slate-400">
-                  {isTicketFinalized(selectedTicket) 
-                    ? 'Este ticket está finalizado e não pode receber novas mensagens.'
-                    : 'Seja o primeiro a enviar uma mensagem!'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {chatMessages.map((message) => {
-                  const isOwnMessage = user?.id === message.userId;
-                  
-                  return (
-                    <div
-                      key={message.id}
-                      className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
-                    >
-                      <Avatar className="h-6 w-6 flex-shrink-0">
-                        <AvatarFallback className="text-xs bg-[#D5B170] text-white">
-                          {message.userName.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      
-                      <div className={`flex flex-col max-w-[70%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium text-slate-700">
-                            {message.userName}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {formatTime(message.createdAt)}
-                          </span>
-                        </div>
-                        
-                        <div
-                          className={`px-3 py-2 rounded-2xl text-sm ${
-                            isOwnMessage
-                              ? 'bg-[#D5B170] text-white'
-                              : 'bg-slate-100 text-slate-900'
-                          }`}
-                        >
-                          <p className="whitespace-pre-wrap">
-                            {message.message}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </ScrollArea>
-
-          {/* Chat Input */}
-          <div className="p-4 border-t border-slate-200 bg-white">
-            {isTicketFinalized(selectedTicket) ? (
-              <div className="flex items-center justify-center py-2 bg-slate-50 rounded-md border border-slate-200">
-                <Lock className="h-4 w-4 text-slate-400 mr-2" />
-                <p className="text-sm text-slate-500">Este ticket está finalizado e não pode receber novas mensagens</p>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Digite sua mensagem..."
-                  disabled={sending}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={sendMessage}
-                  disabled={!newMessage.trim() || sending}
-                  className="bg-[#D5B170] hover:bg-[#c4a05f] text-white px-4"
-                >
-                  {sending ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            )}
-          </div>
+      {/* Formulário de criação de ticket */}
+      {showCreateForm && (
+        <div className="mb-4">
+          <TicketForm onSubmit={handleCreateTicket} onCancel={() => setShowCreateForm(false)} />
         </div>
       )}
 
-      {/* Create Ticket Modal */}
-      {showCreateForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-slate-200">
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 rounded-t-xl">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-[#101F2E]">Criar Novo Ticket</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCreateForm(false)}
-                  className="h-8 w-8 p-0 hover:bg-slate-100"
-                >
-                  ×
-                </Button>
-              </div>
-            </div>
-            <div className="p-6">
-              <TicketForm
-                onSubmit={handleCreateTicket}
-                onCancel={() => setShowCreateForm(false)}
+      {/* Mensagem de erro */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md flex items-center">
+          <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+          <p className="text-red-700">{error}</p>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setError(null)} 
+            className="ml-auto"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Carregando */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170]"></div>
+          <span className="ml-3 text-slate-600">Carregando tickets...</span>
+        </div>
+      )}
+
+      {/* Layout principal: lista de tickets + chat */}
+      {!loading && (
+        <div className="flex-1 flex">
+          {/* Área principal (lista ou quadro) */}
+          <div className={`flex-1 ${showChat ? 'hidden lg:block' : ''}`}>
+            {/* Visualização em lista */}
+            {view === 'list' && (
+              <TicketList
+                filteredTickets={getFilteredTickets()}
+                tickets={tickets}
+                renderTicketCard={renderTicketCard}
               />
-            </div>
+            )}
+
+            {/* Visualização em quadro Kanban */}
+            {view === 'board' && (
+              <TicketKanbanBoard
+                ticketsByStatus={getTicketsByStatus()}
+                renderTicketCard={renderTicketCard}
+              />
+            )}
+
+            {/* Visualização por usuários */}
+            {view === 'users' && (
+              <TicketUserBoard
+                ticketsByUser={getTicketsByUser()}
+                supportUsers={supportUsers}
+                renderTicketCard={renderTicketCard}
+              />
+            )}
+          </div>
+
+          {/* Painel de chat */}
+          {showChat && selectedTicket && (
+            <TicketChatPanel
+              selectedTicket={selectedTicket}
+              chatMessages={chatMessages}
+              user={user}
+              sending={sending}
+              newMessage={newMessage}
+              setNewMessage={setNewMessage}
+              uploadingFiles={uploadingFiles}
+              handleFileUpload={handleFileUpload}
+              removeUploadingFile={removeUploadingFile}
+              sendMessage={sendMessage}
+              handleKeyPress={handleKeyPress}
+              closeChat={closeChat}
+              handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
+              handleUpdateTicket={handleUpdateTicket}
+              isTicketFinalized={isTicketFinalized}
+              messagesEndRef={messagesEndRef}
+              markMessagesAsRead={markMessagesAsRead}
+              setShowImagePreview={setShowImagePreview}
+              typingUsers={typingUsers}
+              handleTyping={handleTyping}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Preview de imagem */}
+      {showImagePreview && (
+        <div 
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowImagePreview(null)}
+        >
+          <div className="max-w-4xl max-h-[90vh] relative">
+            <img 
+              src={showImagePreview} 
+              alt="Preview" 
+              className="max-w-full max-h-[90vh] object-contain"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute top-2 right-2 bg-white/80"
+              onClick={() => setShowImagePreview(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       )}

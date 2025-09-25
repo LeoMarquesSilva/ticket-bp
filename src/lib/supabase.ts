@@ -2,8 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://jhgbrbarfpvgdaaznldj.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZ2JyYmFyZnB2Z2RhYXpubGRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwNDU4MDMsImV4cCI6MjA3MzYyMTgwM30.QaaMs2MNbD05Lpm_H1qP25FJT3pT_mmPGvhZ1wsJNcA';
+// Adicione sua chave service_role aqui (você precisará adicionar ao .env)
+const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Cliente admin com a chave service_role
+// ATENÇÃO: Usar a chave service_role no frontend é um RISCO DE SEGURANÇA
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // Database table names
 export const TABLES = {
@@ -18,7 +24,9 @@ export interface DatabaseUser {
   auth_user_id?: string;
   name: string;
   email: string;
-  role: 'user' | 'support' | 'admin';
+  role: 'user' | 'support' | 'admin' | 'lawyer';
+  is_online?: boolean;
+  last_active_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -29,10 +37,12 @@ export interface DatabaseTicket {
   description: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   category: string;
+  subcategory?: string;
   status: 'open' | 'assigned' | 'in_progress' | 'resolved' | 'closed';
   created_by: string;
   created_by_name: string;
   assigned_to?: string;
+  assigned_to_name?: string;
   assigned_by?: string;
   assigned_at?: string;
   started_at?: string;
@@ -54,3 +64,4 @@ export interface DatabaseChatMessage {
   message: string;
   created_at: string;
 }
+

@@ -1,10 +1,25 @@
-export type UserRole = 'user' | 'support' | 'admin';
+// Enum para departamentos
+export enum Department {
+  OPERACOES_LEGAIS = 'Operações Legais',
+  TRABALHISTA = 'Trabalhista',
+  DISTRESSED_DEALS = 'Distressed Deals - Special Situations',
+  TRIBUTARIO = 'Tributário',
+  CIVEL = 'Cível',
+  REESTRUTURACAO = 'Reestruturação',
+  SOCIETARIO = 'Societário e Contratos',
+  GERAL = 'Geral'
+}
+
+export type UserRole = 'user' | 'support' | 'admin' | 'lawyer';
 
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
+  department: Department | string; // Agora usando o enum Department
+  isOnline?: boolean;
+  lastActiveAt?: string;
 }
 
 export type TicketStatus = 'open' | 'assigned' | 'in_progress' | 'resolved' | 'closed';
@@ -24,10 +39,11 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   assignedAt?: string;
-  startedAt?: string;  // Add this line
+  startedAt?: string;
   resolvedAt?: string;
   closedAt?: string;
   category: string;
+  subcategory?: string;
   npsScore?: number;
   npsComment?: string;
 }

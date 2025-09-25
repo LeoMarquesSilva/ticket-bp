@@ -1,48 +1,40 @@
 import React, { useState } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-// OU se preferir manter o BrowserRouter:
-// import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-
-import { AuthProvider } from '@/contexts/AuthContext';
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
 import Layout from '@/components/Layout';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
-import { useAuth } from '@/contexts/AuthContext';
+import UserManagement from '@/pages/UserManagement';
+import DatabaseManagement from '@/pages/DatabaseManagement';
 
-// Uma solução mais simples é modificar o componente Layout para aceitar props opcionais
-// Vamos criar um wrapper para o Layout que fornece valores padrão
-
-const LayoutWrapper: React.FC<{ children: React.ReactNode; pageName?: 'tickets' | 'dashboard' }> = ({ 
+// Componente para rotas protegidas
+const ProtectedRoute = ({ 
   children, 
-  pageName = 'dashboard' 
-}) => {
-  const [currentPage, setCurrentPage] = useState<'tickets' | 'dashboard'>(pageName);
-  
-  const handlePageChange = (page: 'tickets' | 'dashboard') => {
-    setCurrentPage(page);
-    // Navegação usando window.location para simplicidade
-    window.location.href = page === 'dashboard' ? '/' : '/tickets';
-  };
-  
-  return (
-    <Layout currentPage={currentPage} onPageChange={handlePageChange}>
-      {children}
-    </Layout>
-  );
-};
-
-const ProtectedRoute: React.FC<{ 
+  allowedRoles = [] 
+}: { 
   children: React.ReactNode; 
   allowedRoles?: string[];
-  pageName?: 'tickets' | 'dashboard';
-}> = ({ 
-  children, 
-  allowedRoles = [],
-  pageName
 }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  
+  // Determinar a página atual com base na URL
+  const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'database' => {
+    const path = location.pathname;
+    if (path.includes('/dashboard')) return 'dashboard';
+    if (path.includes('/users')) return 'users';
+    if (path.includes('/database')) return 'database';
+    return 'tickets'; // default
+  };
+  
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'database'>(getCurrentPage());
+  
+  // Handler para mudança de página
+  const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'database') => {
+    setCurrentPage(page);
+  };
 
   if (loading) {
     return (
@@ -59,18 +51,26 @@ const ProtectedRoute: React.FC<{
     return <Navigate to="/login" replace />;
   }
 
-  // Check if user role is allowed for this route
+  // Verificar se o usuário tem permissão para acessar esta rota
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return <Navigate to="/tickets" replace />;
   }
 
-  return <LayoutWrapper pageName={pageName}>{children}</LayoutWrapper>;
+  // Passando as props necessárias para o Layout
+  return (
+    <Layout 
+      currentPage={currentPage} 
+      onPageChange={handlePageChange}
+    >
+      {children}
+    </Layout>
+  );
 };
 
-const AppRoutes: React.FC = () => {
+const AppRoutes = () => {
   const { user, loading } = useAuth();
 
-  // Show login page if no user and not loading
+  // Mostrar página de login se não houver usuário e não estiver carregando
   if (!loading && !user) {
     return (
       <Routes>
@@ -80,7 +80,7 @@ const AppRoutes: React.FC = () => {
     );
   }
 
-  // Show loading if still loading
+  // Mostrar carregamento se ainda estiver carregando
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -92,45 +92,70 @@ const AppRoutes: React.FC = () => {
     );
   }
 
-  // Show main app if user is logged in
+  // Mostrar o aplicativo principal se o usuário estiver logado
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/tickets" replace />} />
       
-      {/* Dashboard only for admins */}
+      {/* Dashboard apenas para administradores */}
       <Route
-        path="/"
+        path="/dashboard"
         element={
-          <ProtectedRoute allowedRoles={['admin']} pageName="dashboard">
+          <ProtectedRoute allowedRoles={['admin']}>
             <Dashboard />
           </ProtectedRoute>
         }
       />
       
-      {/* Tickets page for all authenticated users */}
+      {/* Página de tickets para todos os usuários autenticados */}
       <Route
         path="/tickets"
         element={
-          <ProtectedRoute pageName="tickets">
+          <ProtectedRoute>
             <Tickets />
           </ProtectedRoute>
         }
       />
       
-      {/* Redirect all other routes based on user role */}
+      {/* Página de gerenciamento de usuários apenas para administradores */}
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <UserManagement />
+          </ProtectedRoute>
+        }
+      />
+      
+      {/* Página de gerenciamento de banco de dados apenas para administradores */}
+      <Route
+        path="/database"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <DatabaseManagement />
+          </ProtectedRoute>
+        }
+      />
+      
+      {/* Redirecionar todas as outras rotas com base na função do usuário */}
+      <Route 
+        path="/" 
+        element={
+          <Navigate to={user?.role === 'admin' ? "/dashboard" : "/tickets"} replace />
+        } 
+      />
+      
       <Route 
         path="*" 
         element={
-          user?.role === 'admin' ? 
-            <Navigate to="/" replace /> : 
-            <Navigate to="/tickets" replace />
+          <Navigate to={user?.role === 'admin' ? "/dashboard" : "/tickets"} replace />
         } 
       />
     </Routes>
   );
 };
 
-const App: React.FC = () => {
+const App = () => {
   return (
     <AuthProvider>
       <Router>

@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, TABLES } from '@/lib/supabase';
+export type UserRole = 'user' | 'support' | 'admin' | 'lawyer';
 
 interface User {
   id: string;
   name: string;
   email: string;
-  role: 'user' | 'support' | 'admin';
+  role: UserRole;
+  department: string; // Agora é obrigatório
+  isOnline?: boolean;
+  lastActiveAt?: string;
 }
 
 interface SupabaseQueryResult {
@@ -158,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 name: authUser.user_metadata?.name || authUser.email.split('@')[0],
                 email: authUser.email,
                 role: 'user',
+                department: 'Geral', // Adicionando departamento padrão
                 auth_user_id: authUserId
               })
               .select()
@@ -181,7 +186,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: userProfile.id,
           name: userProfile.name,
           email: userProfile.email,
-          role: userProfile.role,
+          role: userProfile.role as UserRole, // Garantir que o tipo seja correto
+          department: userProfile.department || 'Geral', // Garantir que sempre tenha um valor
+          isOnline: userProfile.is_online || false,
+          lastActiveAt: userProfile.last_active_at
         };
 
         console.log('User profile loaded successfully:', userData);
@@ -210,6 +218,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: name,
           email: email,
           role: 'user', // Default role for new registrations
+          department: 'Geral', // Adicionando departamento padrão
+          is_online: false, // Definir status online inicial
         })
         .select()
         .single();
@@ -251,7 +261,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             id: directProfile.id,
             name: directProfile.name,
             email: directProfile.email,
-            role: directProfile.role,
+            role: directProfile.role as UserRole,
+            department: directProfile.department || 'Geral', // Garantir que sempre tenha um valor
+            isOnline: directProfile.is_online || false,
           };
 
           setUser(user);
@@ -304,6 +316,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     console.log('Logging out');
+    
+    // Atualizar status para offline antes de sair
+    if (user) {
+      try {
+        await supabase
+          .from(TABLES.USERS)
+          .update({ is_online: false })
+          .eq('id', user.id);
+      } catch (error) {
+        console.error('Error updating online status on logout:', error);
+      }
+    }
+    
     setUser(null);
     await supabase.auth.signOut();
   };

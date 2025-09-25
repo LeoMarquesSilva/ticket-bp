@@ -60,12 +60,17 @@ const Login: React.FC = () => {
         setTimeout(() => {
           navigate('/');
         }, 1000);
+      } else if (result.error) {
+        console.error('Login error from result:', result.error);
+        setError(result.error);
+        toast.error(result.error);
       } else {
-        setError(result.error || 'Credenciais inválidas');
-        toast.error(result.error || 'Credenciais inválidas');
+        // Se não houver erro específico, então é um problema de credenciais
+        setError('Credenciais inválidas');
+        toast.error('Credenciais inválidas');
       }
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.error('Login error from exception:', error);
       setError(error.message || 'Erro ao fazer login');
       toast.error(error.message || 'Erro ao fazer login');
     } finally {
