@@ -19,11 +19,11 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
   renderTicketCard
 }) => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 h-full max-h-[calc(100vh-250px)]">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 h-full max-h-[calc(100vh-220px)]">
       {/* Coluna: Abertos */}
-      <div className="flex flex-col h-full min-h-[300px] max-h-full">
+      <div className="flex flex-col h-full min-h-[250px] max-h-full">
         <div className="bg-blue-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <h3 className="font-medium text-blue-700">Abertos</h3>
           </div>
@@ -31,10 +31,10 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             {ticketsByStatus.open.length}
           </Badge>
         </div>
-        <ScrollArea className="flex-1 bg-blue-50/30 rounded-b-md p-2 overflow-y-auto">
-          <div className="space-y-2 pb-1">
+        <ScrollArea className="flex-1 bg-blue-50/30 rounded-b-md p-1 overflow-y-auto">
+          <div className="space-y-1 pb-1">
             {ticketsByStatus.open.length === 0 ? (
-              <div className="text-center py-8 text-sm text-slate-500">
+              <div className="text-center py-6 text-sm text-slate-500">
                 Nenhum ticket aberto
               </div>
             ) : (
@@ -45,9 +45,9 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
       </div>
 
       {/* Coluna: Em Andamento */}
-      <div className="flex flex-col h-full min-h-[300px] max-h-full">
+      <div className="flex flex-col h-full min-h-[250px] max-h-full">
         <div className="bg-yellow-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Clock className="h-4 w-4 text-yellow-600" />
             <h3 className="font-medium text-yellow-700">Em Andamento</h3>
           </div>
@@ -55,10 +55,10 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             {ticketsByStatus.in_progress.length}
           </Badge>
         </div>
-        <ScrollArea className="flex-1 bg-yellow-50/30 rounded-b-md p-2 overflow-y-auto">
-          <div className="space-y-2 pb-1">
+        <ScrollArea className="flex-1 bg-yellow-50/30 rounded-b-md p-1 overflow-y-auto">
+          <div className="space-y-1 pb-1">
             {ticketsByStatus.in_progress.length === 0 ? (
-              <div className="text-center py-8 text-sm text-slate-500">
+              <div className="text-center py-6 text-sm text-slate-500">
                 Nenhum ticket em andamento
               </div>
             ) : (
@@ -69,9 +69,9 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
       </div>
 
       {/* Coluna: Resolvidos */}
-      <div className="flex flex-col h-full min-h-[300px] max-h-full">
+      <div className="flex flex-col h-full min-h-[250px] max-h-full">
         <div className="bg-green-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <CheckCircle className="h-4 w-4 text-green-600" />
             <h3 className="font-medium text-green-700">Resolvidos</h3>
           </div>
@@ -79,10 +79,10 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             {ticketsByStatus.resolved.length}
           </Badge>
         </div>
-        <ScrollArea className="flex-1 bg-green-50/30 rounded-b-md p-2 overflow-y-auto">
-          <div className="space-y-2 pb-1">
+        <ScrollArea className="flex-1 bg-green-50/30 rounded-b-md p-1 overflow-y-auto">
+          <div className="space-y-1 pb-1">
             {ticketsByStatus.resolved.length === 0 ? (
-              <div className="text-center py-8 text-sm text-slate-500">
+              <div className="text-center py-6 text-sm text-slate-500">
                 Nenhum ticket resolvido
               </div>
             ) : (
@@ -93,9 +93,9 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
       </div>
 
       {/* Coluna: Fechados */}
-      <div className="flex flex-col h-full min-h-[300px] max-h-full">
+      <div className="flex flex-col h-full min-h-[250px] max-h-full">
         <div className="bg-slate-100 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Lock className="h-4 w-4 text-slate-600" />
             <h3 className="font-medium text-slate-700">Fechados</h3>
           </div>
@@ -103,10 +103,10 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             {ticketsByStatus.closed.length}
           </Badge>
         </div>
-        <ScrollArea className="flex-1 bg-slate-50 rounded-b-md p-2 overflow-y-auto">
-          <div className="space-y-2 pb-1">
+        <ScrollArea className="flex-1 bg-slate-50 rounded-b-md p-1 overflow-y-auto">
+          <div className="space-y-1 pb-1">
             {ticketsByStatus.closed.length === 0 ? (
-              <div className="text-center py-8 text-sm text-slate-500">
+              <div className="text-center py-6 text-sm text-slate-500">
                 Nenhum ticket fechado
               </div>
             ) : (

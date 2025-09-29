@@ -689,6 +689,8 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
     if (availableLawyer) {
       dbData.status = 'assigned';
       dbData.assigned_to = availableLawyer.id;
+      // Remover esta linha se a coluna assigned_to_name não existir no banco de dados
+      // Se a coluna existe, mantenha esta linha
       dbData.assigned_to_name = availableLawyer.name;
       dbData.assigned_at = new Date().toISOString();
     }
@@ -729,6 +731,8 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
       const updates = {
         status: 'assigned',
         assigned_to: availableLawyer.id,
+        // Remover esta linha se a coluna assigned_to_name não existir no banco de dados
+        // Se a coluna existe, mantenha esta linha
         assigned_to_name: availableLawyer.name,
         assigned_at: now,
         updated_at: now,
@@ -831,6 +835,8 @@ static async markAllMessagesAsRead(ticketId: string): Promise<boolean> {
       
       const updates = {
         assigned_to: newSupportId,
+        // Remover esta linha se a coluna assigned_to_name não existir no banco de dados
+        // Se a coluna existe, mantenha esta linha
         assigned_to_name: newSupportName,
         assigned_at: now,
         updated_at: now,

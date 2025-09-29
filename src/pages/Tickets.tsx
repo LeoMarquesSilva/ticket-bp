@@ -730,8 +730,6 @@ const handleCreateTicket = async (ticketData: any) => {
             setUserFilter={setUserFilter}
             view={view}
             setView={setView}
-            // Remover esta linha:
-            // showCreateForm={showCreateForm}
             setShowCreateForm={setShowCreateForm}
             supportUsers={supportUsers}
             user={user}
@@ -771,62 +769,86 @@ const handleCreateTicket = async (ticketData: any) => {
       {/* Layout principal: lista de tickets + chat */}
       {!loading && (
         <div className="flex-1 flex">
-          {/* Área principal (lista ou quadro) */}
-          <div className={`flex-1 ${showChat ? 'hidden lg:block' : ''}`}>
-            {/* Visualização em lista */}
-            {view === 'list' && (
-              <TicketList
-                filteredTickets={getFilteredTickets()}
-                tickets={tickets}
-                renderTicketCard={renderTicketCard}
-              />
-            )}
-
-            {/* Visualização em quadro Kanban */}
-            {view === 'board' && (
-              <TicketKanbanBoard
-                ticketsByStatus={getTicketsByStatus()}
-                renderTicketCard={renderTicketCard}
-              />
-            )}
-
-            {/* Visualização por usuários */}
-            {view === 'users' && (
-              <TicketUserBoard
-                ticketsByUser={getTicketsByUser()}
-                supportUsers={supportUsers}
-                renderTicketCard={renderTicketCard}
-              />
-            )}
-          </div>
-
-          {/* Painel de chat */}
-              {showChat && selectedTicket && (
-                <TicketChatPanel
-                  selectedTicket={selectedTicket}
-                  chatMessages={chatMessages}
-                  user={user}
-                  sending={sending}
-                  newMessage={newMessage}
-                  setNewMessage={setNewMessage}
-                  uploadingFiles={uploadingFiles}
-                  handleFileUpload={handleFileUpload}
-                  removeUploadingFile={removeUploadingFile}
-                  sendMessage={sendMessage}
-                  handleKeyPress={handleKeyPress}
-                  closeChat={closeChat}
-                  handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
-                  handleUpdateTicket={handleUpdateTicket}
-                  isTicketFinalized={isTicketFinalized}
-                  messagesEndRef={messagesEndRef}
-                  markMessagesAsRead={markMessagesAsRead}
-                  setShowImagePreview={setShowImagePreview}
-                  typingUsers={typingUsers}
-                  handleTyping={handleTyping}
-                  supportUsers={supportUsers} // Adicionando a lista de usuários de suporte
-                  handleAssignTicket={handleAssignTicket} // Adicionando a função de atribuição
+          {/* Área principal (lista ou quadro) - AQUI ESTÁ A MUDANÇA PRINCIPAL */}
+          {showChat ? (
+            <div className="hidden lg:block lg:w-1/4 xl:w-1/5">
+              {/* Versão compacta quando o chat está aberto */}
+              {view === 'list' && (
+                <TicketList
+                  filteredTickets={getFilteredTickets()}
+                  tickets={tickets}
+                  renderTicketCard={renderTicketCard}
                 />
               )}
+              {view === 'board' && (
+                <TicketKanbanBoard
+                  ticketsByStatus={getTicketsByStatus()}
+                  renderTicketCard={renderTicketCard}
+                />
+              )}
+              {view === 'users' && (
+                <TicketUserBoard
+                  ticketsByUser={getTicketsByUser()}
+                  supportUsers={supportUsers}
+                  renderTicketCard={renderTicketCard}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="flex-1">
+              {/* Versão normal quando o chat está fechado */}
+              {view === 'list' && (
+                <TicketList
+                  filteredTickets={getFilteredTickets()}
+                  tickets={tickets}
+                  renderTicketCard={renderTicketCard}
+                />
+              )}
+              {view === 'board' && (
+                <TicketKanbanBoard
+                  ticketsByStatus={getTicketsByStatus()}
+                  renderTicketCard={renderTicketCard}
+                />
+              )}
+              {view === 'users' && (
+                <TicketUserBoard
+                  ticketsByUser={getTicketsByUser()}
+                  supportUsers={supportUsers}
+                  renderTicketCard={renderTicketCard}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Painel de chat - AGORA OCUPA MAIS ESPAÇO */}
+          {showChat && selectedTicket && (
+            <div className={`${showChat ? 'w-full lg:w-3/4 xl:w-4/5' : ''}`}>
+              <TicketChatPanel
+                selectedTicket={selectedTicket}
+                chatMessages={chatMessages}
+                user={user}
+                sending={sending}
+                newMessage={newMessage}
+                setNewMessage={setNewMessage}
+                uploadingFiles={uploadingFiles}
+                handleFileUpload={handleFileUpload}
+                removeUploadingFile={removeUploadingFile}
+                sendMessage={sendMessage}
+                handleKeyPress={handleKeyPress}
+                closeChat={closeChat}
+                handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
+                handleUpdateTicket={handleUpdateTicket}
+                isTicketFinalized={isTicketFinalized}
+                messagesEndRef={messagesEndRef}
+                markMessagesAsRead={markMessagesAsRead}
+                setShowImagePreview={setShowImagePreview}
+                typingUsers={typingUsers}
+                handleTyping={handleTyping}
+                supportUsers={supportUsers}
+                handleAssignTicket={handleAssignTicket}
+              />
+            </div>
+          )}
         </div>
       )}
 

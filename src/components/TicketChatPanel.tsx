@@ -192,9 +192,9 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   };
 
   return (
-  <div className="w-full lg:w-2/3 xl:w-3/5 flex flex-col border-l border-slate-200">
+  <div className="w-full lg:w-3/4 xl:w-4/5 flex flex-col border-l border-slate-200">
       {/* Chat Header */}
-      <div className="p-4 border-b border-slate-200 bg-white">
+      <div className="p-3 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button
@@ -359,7 +359,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       </div>
 
       {/* Chat Messages */}
-      <ScrollArea className="flex-1 p-4" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+      <ScrollArea className="flex-1 p-3" style={{ maxHeight: 'calc(100vh - 240px)' }}>
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 p-4">
             <MessageCircle className="h-8 w-8 text-slate-300 mb-2" />
@@ -387,7 +387,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                       </AvatarFallback>
                     </Avatar>
                     
-                    <div className={`flex flex-col max-w-[70%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+                    <div className={`flex flex-col max-w-[75%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-medium text-slate-700">
                           {message.userName || 'Usuário'}
@@ -428,7 +428,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       </ScrollArea>
 
       {/* Chat Input */}
-      <div className="p-4 border-t border-slate-200 bg-white">
+      <div className="p-3 border-t border-slate-200 bg-white">
         {isTicketFinalized(selectedTicket) ? (
           <div className="flex items-center justify-center py-2 bg-slate-50 rounded-md border border-slate-200">
             <Lock className="h-4 w-4 text-slate-400 mr-2" />

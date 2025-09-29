@@ -104,10 +104,10 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           </div>
         )}
 
-        {/* Main Content */}
-        <main className="flex-1 p-4 md:p-6">
-          <div className="max-w-full mx-auto">
-            <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-2xl border border-[#D5B170]/20 p-4 md:p-8">
+        {/* Main Content - Usando toda a largura disponível */}
+        <main className="flex-1 p-2 md:p-3">
+          <div className="w-full h-full">
+            <div className="bg-white/60 backdrop-blur-sm rounded-lg shadow-lg border border-[#D5B170]/20 p-2 md:p-4 h-full">
               {children}
             </div>
           </div>
