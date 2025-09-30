@@ -192,7 +192,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   };
 
   return (
-  <div className="w-full lg:w-3/4 xl:w-4/5 flex flex-col border-l border-slate-200">
+<div className="flex-1 flex flex-col h-full overflow-hidden border-l border-slate-200">
       {/* Chat Header */}
       <div className="p-3 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between">

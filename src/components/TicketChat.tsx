@@ -413,17 +413,24 @@ const sendMessage = async (e: React.FormEvent) => {
         
         if (!mountedRef.current) return;
         
-          // Substituir a mensagem temporária pela real
-          setMessages(currentMessages => {
-            const updatedMessages = currentMessages.map(msg => 
-              msg.id === tempId ? data : msg
-            );
-            
-            // Atualizar o cache com os dados atualizados
-            saveMessagesToCache(updatedMessages);
-            
-            return updatedMessages;
-          });
+            // Substituir a mensagem temporária pela real
+            setMessages(currentMessages => {
+              const updatedMessages = currentMessages.map(msg => 
+                msg.id === tempId ? {
+                  id: data.id,
+                  ticket_id: data.ticket_id,
+                  user_id: data.user_id,
+                  user_name: data.user_name,
+                  message: data.message,
+                  created_at: data.created_at
+                } as ChatMessage : msg
+              );
+              
+              // Atualizar o cache com os dados atualizados
+              saveMessagesToCache(updatedMessages);
+              
+              return updatedMessages;
+            });
         
       } catch (e) {
         console.error('Erro ao enviar mensagem:', e);

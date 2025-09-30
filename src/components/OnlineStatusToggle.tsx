@@ -36,8 +36,8 @@ const OnlineStatusToggle = () => {
     }
   };
 
-  // Não mostrar para usuários comuns
-  if (!user || user.role === 'user') {
+  // Não mostrar para usuários comuns ou admin
+  if (!user || user.role === 'user' || user.role === 'admin') {
     return null;
   }
 

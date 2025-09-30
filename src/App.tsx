@@ -39,7 +39,7 @@ const ProtectedRoute = ({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-blue-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170] mx-auto mb-4"></div>
           <p className="text-lg text-slate-600">Carregando...</p>
@@ -84,7 +84,7 @@ const AppRoutes = () => {
   // Mostrar carregamento se ainda estiver carregando
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-blue-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170] mx-auto mb-4"></div>
           <p className="text-lg text-slate-600">Carregando...</p>
@@ -168,20 +168,19 @@ const App = () => {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-          <AppRoutes />
-          <Toaster 
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: 'white',
-                color: '#1e293b',
-                border: '1px solid #e2e8f0',
-              },
-            }}
-          />
-        </div>
+        {/* REMOVIDO O WRAPPER DIV QUE LIMITAVA O LAYOUT - AGORA USA ALTURA TOTAL */}
+        <AppRoutes />
+        <Toaster 
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: 'white',
+              color: '#1e293b',
+              border: '1px solid #e2e8f0',
+            },
+          }}
+        />
       </Router>
     </AuthProvider>
   );

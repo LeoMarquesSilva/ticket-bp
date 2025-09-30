@@ -55,46 +55,56 @@ const TicketCard: React.FC<TicketCardProps> = ({
     }
   }, [currentUser.role, ticket.assignedTo]);
 
-  const loadSupportUsers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.USERS)
-        .select('id, name, email, role')
-        .in('role', ['support', 'admin']);
+const loadSupportUsers = async () => {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.USERS)
+      .select('id, name, email, role')
+      .in('role', ['support', 'admin']);
 
-      if (error) {
-        console.error('Error loading support users:', error);
-        return;
-      }
-
-      setSupportUsers(data || []);
-    } catch (error) {
+    if (error) {
       console.error('Error loading support users:', error);
+      return;
     }
-  };
+
+    // Type assertion to ensure the data matches the User interface
+    const typedUsers = data?.map(user => ({
+      id: String(user.id),
+      name: String(user.name),
+      email: String(user.email),
+      role: user.role as 'user' | 'support' | 'admin'
+    })) || [];
+
+    setSupportUsers(typedUsers);
+  } catch (error) {
+    console.error('Error loading support users:', error);
+  }
+};
 
   const loadAssignedUserName = async () => {
-    if (!ticket.assignedTo) return;
+  if (!ticket.assignedTo) return;
 
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.USERS)
-        .select('name')
-        .eq('id', ticket.assignedTo)
-        .single();
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.USERS)
+      .select('name')
+      .eq('id', ticket.assignedTo)
+      .single();
 
-      if (error) {
-        console.error('Error loading assigned user name:', error);
-        setAssignedUserName('Usuário não encontrado');
-        return;
-      }
-
-      setAssignedUserName(data?.name || 'Usuário não encontrado');
-    } catch (error) {
+    if (error) {
       console.error('Error loading assigned user name:', error);
       setAssignedUserName('Usuário não encontrado');
+      return;
     }
-  };
+
+    // Type assertion to ensure name is treated as a string
+    const userName = data?.name ? String(data.name) : 'Usuário não encontrado';
+    setAssignedUserName(userName);
+  } catch (error) {
+    console.error('Error loading assigned user name:', error);
+    setAssignedUserName('Usuário não encontrado');
+  }
+};
 
   const getPriorityColor = (priority: TicketPriority) => {
     switch (priority) {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Ticket } from '@/types';
 import { TicketService, ChatMessage } from '@/services/ticketService';
@@ -13,6 +13,32 @@ import TicketUserBoard from '@/components/TicketUserBoard';
 import TicketList from '@/components/TicketList';
 import TicketChatPanel from '@/components/TicketChatPanel';
 import SimpleTicketCard from '@/components/SimpleTicketCard';
+import OnlineUsersList from '@/components/OnlineUsersList';
+
+interface SupportUser {
+  id: string;
+  name: string;
+  role: string;
+  isOnline?: boolean;
+}
+
+interface UploadingFile {
+  id: string;
+  file: File;
+  name: string;
+  type: string;
+  size: number;
+  progress: number;
+  url: string | null;
+  error: string | null;
+}
+
+interface CreateTicketData {
+  title: string;
+  description: string;
+  category: string;
+  subcategory: string;
+}
 
 const Tickets = () => {
   const { user } = useAuth();
@@ -32,29 +58,39 @@ const Tickets = () => {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [assignedFilter, setAssignedFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
-  const [supportUsers, setSupportUsers] = useState<any[]>([]);
+  const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>({});
   const [showImagePreview, setShowImagePreview] = useState<string | null>(null);
-  const [uploadingFiles, setUploadingFiles] = useState<any[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<string>('connecting');
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
+  const [onlineUsers, setOnlineUsers] = useState<SupportUser[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messageSubscription = useRef<any>(null);
-  const typingSubscription = useRef<any>(null);
+  const messageSubscription = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingSubscription = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const presenceSubscription = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
+  
+  // Verificar se o usuário é admin ou lawyer para mostrar a lista de usuários online
+  const shouldShowOnlineUsers = user?.role === 'admin' || user?.role === 'lawyer';
 
   useEffect(() => {
     loadTickets();
     loadSupportUsers();
     
     // Monitorar status da conexão com Supabase
-        const channel = supabase.channel('system');
-        const connectionData = channel
-          .on('system', { event: 'connection_status' }, (payload) => {
-            setConnectionStatus(payload.status);
-          })
-          .subscribe();
+    const channel = supabase.channel('system');
+    const connectionData = channel
+      .on('system', { event: 'connection_status' }, (payload) => {
+        setConnectionStatus(payload.status);
+      })
+      .subscribe();
+    
+    // Configurar monitoramento de presença (usuários online)
+    if (user && (user.role === 'admin' || user.role === 'lawyer' || user.role === 'support')) {
+      setupPresenceSubscription();
+    }
     
     return () => {
       // Limpar assinaturas ao desmontar
@@ -64,11 +100,96 @@ const Tickets = () => {
       if (typingSubscription.current) {
         typingSubscription.current.unsubscribe();
       }
+      if (presenceSubscription.current) {
+        presenceSubscription.current.unsubscribe();
+      }
       if (connectionData) {
         connectionData.unsubscribe();
       }
     };
   }, []);
+
+  // Configurar monitoramento de presença (usuários online) - VERSÃO CORRIGIDA
+  const setupPresenceSubscription = () => {
+    if (!user) return;
+    
+    // Cancelar assinatura anterior se existir
+    if (presenceSubscription.current) {
+      presenceSubscription.current.unsubscribe();
+    }
+    
+    console.log('Configurando monitoramento de presença para o usuário:', user.id, user.name);
+    
+    // Assinar ao canal de presença
+    presenceSubscription.current = supabase.channel('online-users', {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    })
+    .on('presence', { event: 'sync' }, () => {
+      // Quando o estado de presença é sincronizado, atualizar a lista de usuários online
+      const state = presenceSubscription.current?.presenceState() || {};
+      
+      console.log('Estado de presença recebido:', state);
+      
+      // Converter o estado de presença em uma lista de usuários online
+      const onlineUserIds = Object.keys(state);
+      console.log('IDs de usuários online:', onlineUserIds);
+      
+      // Criar uma lista de usuários online diretamente dos dados de presença
+      const onlineSupportUsers: SupportUser[] = [];
+      
+      // Processar cada usuário presente no estado
+      Object.entries(state).forEach(([userId, presences]) => {
+        // O valor de presences é um array de presenças para o mesmo usuário
+        if (Array.isArray(presences) && presences.length > 0) {
+          const userPresence = presences[0] as any;
+          
+          console.log(`Dados de presença para ${userId}:`, userPresence);
+          
+          // Verificar se é um usuário de suporte ou advogado
+          if (userPresence.role === 'support' || userPresence.role === 'lawyer' || userPresence.role === 'admin') {
+            onlineSupportUsers.push({
+              id: userId,
+              name: userPresence.name || 'Usuário',
+              role: userPresence.role,
+              isOnline: true
+            });
+          }
+        }
+      });
+      
+      console.log('Usuários online filtrados:', onlineSupportUsers);
+      
+      // Atualizar o estado dos usuários de suporte para mostrar quem está online
+      setSupportUsers(prev => 
+        prev.map(supportUser => ({
+          ...supportUser,
+          isOnline: onlineUserIds.includes(supportUser.id)
+        }))
+      );
+      
+      // Atualizar a lista separada de usuários online
+      setOnlineUsers(onlineSupportUsers);
+    })
+    .subscribe((status) => {
+      console.log('Status da assinatura de presença:', status);
+    });
+    
+    // Anunciar presença do usuário atual
+    if (user.role === 'support' || user.role === 'lawyer' || user.role === 'admin') {
+      console.log('Anunciando presença do usuário:', user.id, user.name);
+      
+      presenceSubscription.current.track({
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        online_at: new Date().toISOString(),
+      });
+    }
+  };
 
   useEffect(() => {
     if (selectedTicket?.id) {
@@ -76,6 +197,13 @@ const Tickets = () => {
       setupMessageSubscription();
     }
   }, [selectedTicket?.id]);
+
+  // Função para fechar o chat (não afeta mais a visibilidade da lista de usuários)
+  const closeOnlineUsersList = () => {
+    if (showChat) {
+      closeChat();
+    }
+  };
 
   const loadTickets = async () => {
     try {
@@ -109,7 +237,8 @@ const Tickets = () => {
   const loadSupportUsers = async () => {
     try {
       const users = await TicketService.getSupportUsers();
-      setSupportUsers(users);
+      setSupportUsers(users as SupportUser[]);
+      console.log('Usuários de suporte carregados:', users);
     } catch (error) {
       console.error('Error loading support users:', error);
     }
@@ -291,98 +420,98 @@ const Tickets = () => {
   };
 
   // Função para configurar a assinatura do Supabase para novas mensagens
-const setupMessageSubscription = () => {
-  if (!selectedTicket?.id || !user?.id) return;
-  
-  // Cancelar assinatura anterior se existir
-  if (messageSubscription.current) {
-    messageSubscription.current.unsubscribe();
-  }
-  
-  console.log('Setting up message subscription for ticket:', selectedTicket.id);
-  
-  // Assinar a novas mensagens para este ticket
-  messageSubscription.current = supabase
-    .channel(`ticket-messages-${selectedTicket.id}`)
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
-      filter: `ticket_id=eq.${selectedTicket.id}`
-    }, (payload) => {
-      console.log('Received new message from Supabase:', payload);
-      const newMessage = {
-        id: payload.new.id,
-        ticketId: payload.new.ticket_id,
-        userId: payload.new.user_id,
-        userName: payload.new.user_name,
-        message: payload.new.message,
-        attachments: payload.new.attachments || [],
-        createdAt: payload.new.created_at,
-        read: payload.new.read
-      };
-      
-      // Verificar se a mensagem já existe no estado (para evitar duplicação)
-      setChatMessages(prevMessages => {
-        // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
-        const messageExists = prevMessages.some(
-          msg => msg.id === newMessage.id || 
-                (msg.isTemp && 
-                 msg.userId === newMessage.userId && 
-                 msg.message === newMessage.message)
-        );
+  const setupMessageSubscription = () => {
+    if (!selectedTicket?.id || !user?.id) return;
+    
+    // Cancelar assinatura anterior se existir
+    if (messageSubscription.current) {
+      messageSubscription.current.unsubscribe();
+    }
+    
+    console.log('Setting up message subscription for ticket:', selectedTicket.id);
+    
+    // Assinar a novas mensagens para este ticket
+    messageSubscription.current = supabase
+      .channel(`ticket-messages-${selectedTicket.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
+        filter: `ticket_id=eq.${selectedTicket.id}`
+      }, (payload) => {
+        console.log('Received new message from Supabase:', payload);
+        const newMessage = {
+          id: payload.new.id,
+          ticketId: payload.new.ticket_id,
+          userId: payload.new.user_id,
+          userName: payload.new.user_name,
+          message: payload.new.message,
+          attachments: payload.new.attachments || [],
+          createdAt: payload.new.created_at,
+          read: payload.new.read
+        };
         
-        if (messageExists) {
-          // Se a mensagem já existe, apenas substituir a temporária se houver
-          return prevMessages.map(msg => 
-            (msg.isTemp && 
-             msg.userId === newMessage.userId && 
-             msg.message === newMessage.message) 
-              ? { ...newMessage, isTemp: false } 
-              : msg
+        // Verificar se a mensagem já existe no estado (para evitar duplicação)
+        setChatMessages(prevMessages => {
+          // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
+          const messageExists = prevMessages.some(
+            msg => msg.id === newMessage.id || 
+                  (msg.isTemp && 
+                  msg.userId === newMessage.userId && 
+                  msg.message === newMessage.message)
           );
-        } else {
-          // Se a mensagem não existe, adicionar ao estado
-          return [...prevMessages, newMessage];
+          
+          if (messageExists) {
+            // Se a mensagem já existe, apenas substituir a temporária se houver
+            return prevMessages.map(msg => 
+              (msg.isTemp && 
+              msg.userId === newMessage.userId && 
+              msg.message === newMessage.message) 
+                ? { ...newMessage, isTemp: false } 
+                : msg
+            );
+          } else {
+            // Se a mensagem não existe, adicionar ao estado
+            return [...prevMessages, newMessage];
+          }
+        });
+        
+        // Marcar como lida se for de outro usuário e o chat estiver aberto
+        if (newMessage.userId !== user.id) {
+          markMessagesAsRead(selectedTicket.id);
         }
+        
+        // Rolar para o final da conversa
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 100);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
+        filter: `ticket_id=eq.${selectedTicket.id}`
+      }, (payload) => {
+        console.log('Message updated:', payload);
+        // Atualizar o estado das mensagens quando uma mensagem for atualizada
+        // (por exemplo, quando for marcada como lida)
+        setChatMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === payload.new.id 
+            ? {
+                ...msg,
+                read: payload.new.read
+              }
+            : msg
+          )
+        );
+      })
+      .subscribe((status) => {
+        console.log('Supabase subscription status:', status);
       });
-      
-      // Marcar como lida se for de outro usuário e o chat estiver aberto
-      if (newMessage.userId !== user.id) {
-        markMessagesAsRead(selectedTicket.id);
-      }
-      
-      // Rolar para o final da conversa
-      setTimeout(() => {
-        if (messagesEndRef.current) {
-          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 100);
-    })
-    .on('postgres_changes', {
-      event: 'UPDATE',
-      schema: 'public',
-      table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
-      filter: `ticket_id=eq.${selectedTicket.id}`
-    }, (payload) => {
-      console.log('Message updated:', payload);
-      // Atualizar o estado das mensagens quando uma mensagem for atualizada
-      // (por exemplo, quando for marcada como lida)
-      setChatMessages(prevMessages => 
-        prevMessages.map(msg => 
-          msg.id === payload.new.id 
-          ? {
-              ...msg,
-              read: payload.new.read
-            }
-          : msg
-        )
-      );
-    })
-    .subscribe((status) => {
-      console.log('Supabase subscription status:', status);
-    });
-};
+  };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -391,34 +520,34 @@ const setupMessageSubscription = () => {
     }
   };
 
-const handleCreateTicket = async (ticketData: any) => {
-  if (!user) return;
+  const handleCreateTicket = async (ticketData: CreateTicketData) => {
+    if (!user) return;
 
-  try {
-    console.log('Creating ticket:', ticketData);
-    const newTicket = await TicketService.createTicket({
-      title: ticketData.title,
-      description: ticketData.description,
-      category: ticketData.category,
-      subcategory: ticketData.subcategory,
-      createdBy: user.id,
-      createdByName: user.name,
-    });
-    
-    console.log('Ticket created:', newTicket);
-    
-    if (newTicket && newTicket.id) {
-      setTickets(prev => [newTicket, ...prev]);
-      setShowCreateForm(false);
-      toast.success('Ticket criado com sucesso!');
+    try {
+      console.log('Creating ticket:', ticketData);
+      const newTicket = await TicketService.createTicket({
+        title: ticketData.title,
+        description: ticketData.description,
+        category: ticketData.category,
+        subcategory: ticketData.subcategory,
+        createdBy: user.id,
+        createdByName: user.name,
+      });
+      
+      console.log('Ticket created:', newTicket);
+      
+      if (newTicket && newTicket.id) {
+        setTickets(prev => [newTicket, ...prev]);
+        setShowCreateForm(false);
+        toast.success('Ticket criado com sucesso!');
+      }
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      toast.error('Erro ao criar ticket');
     }
-  } catch (error) {
-    console.error('Error creating ticket:', error);
-    toast.error('Erro ao criar ticket');
-  }
-};
+  };
 
-  const handleUpdateTicket = async (ticketId: string, updates: any) => {
+  const handleUpdateTicket = async (ticketId: string, updates: Record<string, unknown>) => {
     try {
       console.log('Updating ticket:', ticketId, updates);
       
@@ -496,7 +625,7 @@ const handleCreateTicket = async (ticketData: any) => {
       
       // Adicionar arquivo à lista de uploads com progresso 0
       const fileId = `${Date.now()}-${i}`;
-      const newFile = {
+      const newFile: UploadingFile = {
         id: fileId,
         file: file,
         name: file.name,
@@ -581,8 +710,24 @@ const handleCreateTicket = async (ticketData: any) => {
     return ticket.status === 'resolved' || ticket.status === 'closed';
   };
 
+  // Função para alternar entre vistas (list, board, users)
+  // Nova função que gerencia a mudança de visualização
+  const handleViewChange = (newView: 'list' | 'board' | 'users') => {
+    // Se estiver mudando para Kanban ou UserBoard e o chat estiver aberto, feche-o
+    if (newView !== 'list' && showChat) {
+      closeChat();
+    }
+    
+    setView(newView);
+  };
+
   // Função para abrir o chat de um ticket
   const openChat = (ticket: Ticket) => {
+    // Se estiver no modo Kanban ou UserBoard, mude para o modo lista antes de abrir o chat
+    if (view !== 'list') {
+      setView('list');
+    }
+    
     setSelectedTicket(ticket);
     setShowChat(true);
     
@@ -714,65 +859,82 @@ const handleCreateTicket = async (ticketData: any) => {
     );
   };
 
+  // Filtrar usuários online para mostrar apenas support e lawyer
+  const getOnlineStaff = () => {
+    // Usar diretamente a lista onlineUsers que já foi filtrada na função setupPresenceSubscription
+    return onlineUsers;
+  };
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Cabeçalho com filtros e botões */}
-          <TicketHeader
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-            priorityFilter={priorityFilter}
-            setPriorityFilter={setPriorityFilter}
-            assignedFilter={assignedFilter}
-            setAssignedFilter={setAssignedFilter}
-            userFilter={userFilter}
-            setUserFilter={setUserFilter}
-            view={view}
-            setView={setView}
-            setShowCreateForm={setShowCreateForm}
-            supportUsers={supportUsers}
-            user={user}
-          />
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* Cabeçalho com filtros e botões - altura fixa */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm w-full">
+        <TicketHeader
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          priorityFilter={priorityFilter}
+          setPriorityFilter={setPriorityFilter}
+          assignedFilter={assignedFilter}
+          setAssignedFilter={setAssignedFilter}
+          userFilter={userFilter}
+          setUserFilter={setUserFilter}
+          view={view}
+          setView={handleViewChange}
+          setShowCreateForm={setShowCreateForm}
+          supportUsers={supportUsers}
+          user={user}
+          onlineUsersCount={getOnlineStaff().length}
+        />
 
-      {/* Formulário de criação de ticket */}
-      {showCreateForm && (
-        <div className="mb-4">
-          <TicketForm onSubmit={handleCreateTicket} onCancel={() => setShowCreateForm(false)} />
-        </div>
-      )}
+        {/* Formulário de criação de ticket */}
+        {showCreateForm && (
+          <div className="px-4 pb-4 border-b border-slate-200 w-full">
+            <TicketForm onSubmit={handleCreateTicket} onCancel={() => setShowCreateForm(false)} />
+          </div>
+        )}
 
-      {/* Mensagem de erro */}
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md flex items-center">
-          <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-          <p className="text-red-700">{error}</p>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setError(null)} 
-            className="ml-auto"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+        {/* Mensagem de erro */}
+        {error && (
+          <div className="mx-4 mb-4 p-4 bg-red-50 border border-red-200 rounded-md flex items-center w-full">
+            <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+            <p className="text-red-700">{error}</p>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setError(null)} 
+              className="ml-auto"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
 
-      {/* Carregando */}
-      {loading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170]"></div>
-          <span className="ml-3 text-slate-600">Carregando tickets...</span>
-        </div>
-      )}
+      {/* Conteúdo principal - ocupa todo o espaço restante */}
+      <div className="flex-1 flex overflow-hidden w-full h-full">
+        {/* Carregando */}
+        {loading && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170]"></div>
+            <span className="ml-3 text-slate-600">Carregando tickets...</span>
+          </div>
+        )}
 
-      {/* Layout principal: lista de tickets + chat */}
-      {!loading && (
-        <div className="flex-1 flex">
-          {/* Área principal (lista ou quadro) - AQUI ESTÁ A MUDANÇA PRINCIPAL */}
-          {showChat ? (
-            <div className="hidden lg:block lg:w-1/4 xl:w-1/5">
-              {/* Versão compacta quando o chat está aberto */}
+        {/* Layout principal: lista de tickets + chat + usuários online */}
+        {!loading && (
+          <div className="flex w-full h-full">
+            {/* Lista de tickets - largura dinâmica baseada no estado do chat */}
+            <div className={`
+              border-r border-slate-200 bg-white
+              ${showChat 
+                ? 'w-80 lg:w-96 flex-shrink-0' // Largura fixa quando chat está aberto
+                : shouldShowOnlineUsers
+                  ? 'flex-1' // Largura flexível quando a lista de usuários online está visível
+                  : 'flex-1 w-full' // Ocupa todo espaço quando chat está fechado e não há lista de usuários
+              }
+            `}>
               {view === 'list' && (
                 <TicketList
                   filteredTickets={getFilteredTickets()}
@@ -794,65 +956,57 @@ const handleCreateTicket = async (ticketData: any) => {
                 />
               )}
             </div>
-          ) : (
-            <div className="flex-1">
-              {/* Versão normal quando o chat está fechado */}
-              {view === 'list' && (
-                <TicketList
-                  filteredTickets={getFilteredTickets()}
-                  tickets={tickets}
-                  renderTicketCard={renderTicketCard}
-                />
-              )}
-              {view === 'board' && (
-                <TicketKanbanBoard
-                  ticketsByStatus={getTicketsByStatus()}
-                  renderTicketCard={renderTicketCard}
-                />
-              )}
-              {view === 'users' && (
-                <TicketUserBoard
-                  ticketsByUser={getTicketsByUser()}
+
+            {/* Painel de chat - ocupa o espaço restante quando aberto */}
+            {showChat && selectedTicket && (
+              <div className={`
+                overflow-hidden
+                ${shouldShowOnlineUsers
+                  ? 'flex-1' // Largura flexível quando a lista de usuários online está visível
+                  : 'flex-1 w-full' // Ocupa todo espaço quando não há lista de usuários
+                }
+              `}>
+                <TicketChatPanel
+                  selectedTicket={selectedTicket}
+                  chatMessages={chatMessages}
+                  user={user}
+                  sending={sending}
+                  newMessage={newMessage}
+                  setNewMessage={setNewMessage}
+                  uploadingFiles={uploadingFiles}
+                  handleFileUpload={handleFileUpload}
+                  removeUploadingFile={removeUploadingFile}
+                  sendMessage={sendMessage}
+                  handleKeyPress={handleKeyPress}
+                  closeChat={closeChat}
+                  handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
+                  handleUpdateTicket={handleUpdateTicket}
+                  isTicketFinalized={isTicketFinalized}
+                  messagesEndRef={messagesEndRef}
+                  markMessagesAsRead={markMessagesAsRead}
+                  setShowImagePreview={setShowImagePreview}
+                  typingUsers={typingUsers}
+                  handleTyping={handleTyping}
                   supportUsers={supportUsers}
-                  renderTicketCard={renderTicketCard}
+                  handleAssignTicket={handleAssignTicket}
                 />
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
-          {/* Painel de chat - AGORA OCUPA MAIS ESPAÇO */}
-          {showChat && selectedTicket && (
-            <div className={`${showChat ? 'w-full lg:w-3/4 xl:w-4/5' : ''}`}>
-              <TicketChatPanel
-                selectedTicket={selectedTicket}
-                chatMessages={chatMessages}
-                user={user}
-                sending={sending}
-                newMessage={newMessage}
-                setNewMessage={setNewMessage}
-                uploadingFiles={uploadingFiles}
-                handleFileUpload={handleFileUpload}
-                removeUploadingFile={removeUploadingFile}
-                sendMessage={sendMessage}
-                handleKeyPress={handleKeyPress}
-                closeChat={closeChat}
-                handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
-                handleUpdateTicket={handleUpdateTicket}
-                isTicketFinalized={isTicketFinalized}
-                messagesEndRef={messagesEndRef}
-                markMessagesAsRead={markMessagesAsRead}
-                setShowImagePreview={setShowImagePreview}
-                typingUsers={typingUsers}
-                handleTyping={handleTyping}
-                supportUsers={supportUsers}
-                handleAssignTicket={handleAssignTicket}
-              />
-            </div>
-          )}
-        </div>
-      )}
+            {/* Lista de usuários online - SEMPRE visível para admin e lawyer */}
+            {shouldShowOnlineUsers && (
+              <div className="w-64 border-l border-slate-200 bg-white flex-shrink-0">
+                <OnlineUsersList 
+                  onlineUsers={getOnlineStaff()}
+                  onClose={closeOnlineUsersList}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* Preview de imagem */}
+      {/* Preview de imagem - overlay fixo */}
       {showImagePreview && (
         <div 
           className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"

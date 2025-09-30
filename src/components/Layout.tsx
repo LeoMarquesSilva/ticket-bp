@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import AppSidebar from '@/components/AppSidebar';
-import OnlineStatusToggle from '@/components/OnlineStatusToggle';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/lib/supabase';
@@ -27,7 +26,7 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     
     // Função para reproduzir som de notificação
     const playNotificationSound = () => {
-      const audio = new Audio('/notification.mp3'); // Certifique-se de adicionar este arquivo ao seu projeto
+      const audio = new Audio('/notification.mp3');
       audio.play().catch(err => console.error('Erro ao reproduzir som:', err));
     };
     
@@ -91,26 +90,15 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   }, [user, navigate]);
   
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
+    <div className="flex min-h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
       {/* Sidebar */}
       <AppSidebar />
       
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col transition-all duration-200 ${state === 'collapsed' ? 'md:ml-12' : ''}`}>
-        {/* Status Toggle para advogados e suporte */}
-        {(user?.role === 'support' || user?.role === 'lawyer') && (
-          <div className="bg-white/60 backdrop-blur-sm p-2 border-b border-[#D5B170]/20 flex justify-end">
-            <OnlineStatusToggle />
-          </div>
-        )}
-
+      <div className={`flex-1 flex flex-col w-full transition-all duration-200 ${state === 'collapsed' ? 'md:ml-12' : ''}`}>
         {/* Main Content - Usando toda a largura disponível */}
-        <main className="flex-1 p-2 md:p-3">
-          <div className="w-full h-full">
-            <div className="bg-white/60 backdrop-blur-sm rounded-lg shadow-lg border border-[#D5B170]/20 p-2 md:p-4 h-full">
-              {children}
-            </div>
-          </div>
+        <main className="flex-1 w-full">
+          {children}
         </main>
         
         {/* Adicionar o indicador de status de conexão */}

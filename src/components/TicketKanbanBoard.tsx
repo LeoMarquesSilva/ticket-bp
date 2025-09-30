@@ -1,5 +1,4 @@
 import React from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, Clock, CheckCircle, Lock } from 'lucide-react';
 import { Ticket } from '@/types';
@@ -19,101 +18,105 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
   renderTicketCard
 }) => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 h-full max-h-[calc(100vh-220px)]">
-      {/* Coluna: Abertos */}
-      <div className="flex flex-col h-full min-h-[250px] max-h-full">
-        <div className="bg-blue-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-1">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <h3 className="font-medium text-blue-700">Abertos</h3>
-          </div>
-          <Badge className="bg-blue-100 text-blue-800 border-blue-200">
-            {ticketsByStatus.open.length}
-          </Badge>
-        </div>
-        <ScrollArea className="flex-1 bg-blue-50/30 rounded-b-md p-1 overflow-y-auto">
-          <div className="space-y-1 pb-1">
-            {ticketsByStatus.open.length === 0 ? (
-              <div className="text-center py-6 text-sm text-slate-500">
-                Nenhum ticket aberto
+    <div className="h-full w-full overflow-auto">
+      <div className="min-w-[1000px] p-4">
+        <div className="grid grid-cols-4 gap-4">
+          {/* Coluna: Abertos */}
+          <div className="flex flex-col h-full min-h-[250px]">
+            <div className="bg-blue-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-1">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <h3 className="font-medium text-blue-700">Abertos</h3>
               </div>
-            ) : (
-              ticketsByStatus.open.map(ticket => renderTicketCard(ticket))
-            )}
+              <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                {ticketsByStatus.open.length}
+              </Badge>
+            </div>
+            <div className="flex-1 bg-blue-50/30 rounded-b-md p-1 overflow-y-auto">
+              <div className="space-y-1 pb-1">
+                {ticketsByStatus.open.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-slate-500">
+                    Nenhum ticket aberto
+                  </div>
+                ) : (
+                  ticketsByStatus.open.map(ticket => renderTicketCard(ticket))
+                )}
+              </div>
+            </div>
           </div>
-        </ScrollArea>
-      </div>
 
-      {/* Coluna: Em Andamento */}
-      <div className="flex flex-col h-full min-h-[250px] max-h-full">
-        <div className="bg-yellow-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-1">
-            <Clock className="h-4 w-4 text-yellow-600" />
-            <h3 className="font-medium text-yellow-700">Em Andamento</h3>
-          </div>
-          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
-            {ticketsByStatus.in_progress.length}
-          </Badge>
-        </div>
-        <ScrollArea className="flex-1 bg-yellow-50/30 rounded-b-md p-1 overflow-y-auto">
-          <div className="space-y-1 pb-1">
-            {ticketsByStatus.in_progress.length === 0 ? (
-              <div className="text-center py-6 text-sm text-slate-500">
-                Nenhum ticket em andamento
+          {/* Coluna: Em Andamento */}
+          <div className="flex flex-col h-full min-h-[250px]">
+            <div className="bg-yellow-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4 text-yellow-600" />
+                <h3 className="font-medium text-yellow-700">Em Andamento</h3>
               </div>
-            ) : (
-              ticketsByStatus.in_progress.map(ticket => renderTicketCard(ticket))
-            )}
+              <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                {ticketsByStatus.in_progress.length}
+              </Badge>
+            </div>
+            <div className="flex-1 bg-yellow-50/30 rounded-b-md p-1 overflow-y-auto">
+              <div className="space-y-1 pb-1">
+                {ticketsByStatus.in_progress.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-slate-500">
+                    Nenhum ticket em andamento
+                  </div>
+                ) : (
+                  ticketsByStatus.in_progress.map(ticket => renderTicketCard(ticket))
+                )}
+              </div>
+            </div>
           </div>
-        </ScrollArea>
-      </div>
 
-      {/* Coluna: Resolvidos */}
-      <div className="flex flex-col h-full min-h-[250px] max-h-full">
-        <div className="bg-green-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-1">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <h3 className="font-medium text-green-700">Resolvidos</h3>
-          </div>
-          <Badge className="bg-green-100 text-green-800 border-green-200">
-            {ticketsByStatus.resolved.length}
-          </Badge>
-        </div>
-        <ScrollArea className="flex-1 bg-green-50/30 rounded-b-md p-1 overflow-y-auto">
-          <div className="space-y-1 pb-1">
-            {ticketsByStatus.resolved.length === 0 ? (
-              <div className="text-center py-6 text-sm text-slate-500">
-                Nenhum ticket resolvido
+          {/* Coluna: Resolvidos */}
+          <div className="flex flex-col h-full min-h-[250px]">
+            <div className="bg-green-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-1">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <h3 className="font-medium text-green-700">Resolvidos</h3>
               </div>
-            ) : (
-              ticketsByStatus.resolved.map(ticket => renderTicketCard(ticket))
-            )}
+              <Badge className="bg-green-100 text-green-800 border-green-200">
+                {ticketsByStatus.resolved.length}
+              </Badge>
+            </div>
+            <div className="flex-1 bg-green-50/30 rounded-b-md p-1 overflow-y-auto">
+              <div className="space-y-1 pb-1">
+                {ticketsByStatus.resolved.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-slate-500">
+                    Nenhum ticket resolvido
+                  </div>
+                ) : (
+                  ticketsByStatus.resolved.map(ticket => renderTicketCard(ticket))
+                )}
+              </div>
+            </div>
           </div>
-        </ScrollArea>
-      </div>
 
-      {/* Coluna: Fechados */}
-      <div className="flex flex-col h-full min-h-[250px] max-h-full">
-        <div className="bg-slate-100 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-1">
-            <Lock className="h-4 w-4 text-slate-600" />
-            <h3 className="font-medium text-slate-700">Fechados</h3>
-          </div>
-          <Badge className="bg-slate-200 text-slate-800 border-slate-300">
-            {ticketsByStatus.closed.length}
-          </Badge>
-        </div>
-        <ScrollArea className="flex-1 bg-slate-50 rounded-b-md p-1 overflow-y-auto">
-          <div className="space-y-1 pb-1">
-            {ticketsByStatus.closed.length === 0 ? (
-              <div className="text-center py-6 text-sm text-slate-500">
-                Nenhum ticket fechado
+          {/* Coluna: Fechados */}
+          <div className="flex flex-col h-full min-h-[250px]">
+            <div className="bg-slate-100 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-1">
+                <Lock className="h-4 w-4 text-slate-600" />
+                <h3 className="font-medium text-slate-700">Fechados</h3>
               </div>
-            ) : (
-              ticketsByStatus.closed.map(ticket => renderTicketCard(ticket))
-            )}
+              <Badge className="bg-slate-200 text-slate-800 border-slate-300">
+                {ticketsByStatus.closed.length}
+              </Badge>
+            </div>
+            <div className="flex-1 bg-slate-50 rounded-b-md p-1 overflow-y-auto">
+              <div className="space-y-1 pb-1">
+                {ticketsByStatus.closed.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-slate-500">
+                    Nenhum ticket fechado
+                  </div>
+                ) : (
+                  ticketsByStatus.closed.map(ticket => renderTicketCard(ticket))
+                )}
+              </div>
+            </div>
           </div>
-        </ScrollArea>
+        </div>
       </div>
     </div>
   );

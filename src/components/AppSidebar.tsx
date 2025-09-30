@@ -11,7 +11,10 @@ import {
   Users,
   Menu,
   Building2,
-  Database
+  Database,
+  ChevronRight,
+  BarChart3,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
@@ -23,20 +26,27 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarTrigger,
+  SidebarMenuBadge,
+  SidebarMenuAction,
+  SidebarSeparator,
   useSidebar
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { User } from '@/types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface AppSidebarProps {
   className?: string;
+  pendingTickets?: number;
+  unreadMessages?: number;
 }
 
-export function AppSidebar({ className }: AppSidebarProps) {
+export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }: AppSidebarProps) {
   const { user, logout } = useAuth();
   const { state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
 
   const navItems = [
     {
@@ -44,51 +54,71 @@ export function AppSidebar({ className }: AppSidebarProps) {
       href: "/dashboard",
       icon: <LayoutDashboard className="h-5 w-5" />,
       roles: ["admin"],
+      badge: null
     },
     {
       name: "Tickets",
       href: "/tickets",
       icon: <Ticket className="h-5 w-5" />,
       roles: ["user", "support", "admin", "lawyer"],
+      badge: pendingTickets > 0 ? pendingTickets : null
     },
     {
       name: "Chat",
       href: "/chat",
       icon: <MessageSquare className="h-5 w-5" />,
       roles: ["user", "support", "admin", "lawyer"],
+      badge: unreadMessages > 0 ? unreadMessages : null
+    },
+    {
+      name: "Relatórios",
+      href: "/reports",
+      icon: <BarChart3 className="h-5 w-5" />,
+      roles: ["admin", "lawyer"],
+      badge: null
+    },
+    {
+      name: "Documentos",
+      href: "/documents",
+      icon: <FileText className="h-5 w-5" />,
+      roles: ["user", "support", "admin", "lawyer"],
+      badge: null
     },
     {
       name: "Gerenciar Usuários",
       href: "/users",
       icon: <Users className="h-5 w-5" />,
-      roles: ["admin"], // Apenas administradores podem acessar
+      roles: ["admin"],
+      badge: null
     },
     {
       name: "Banco de Dados",
       href: "/database",
       icon: <Database className="h-5 w-5" />,
-      roles: ["admin"], // Apenas administradores podem acessar
+      roles: ["admin"],
+      badge: null
     },
     {
       name: "Configurações",
       href: "/settings",
       icon: <Settings className="h-5 w-5" />,
       roles: ["user", "support", "admin", "lawyer"],
+      badge: null
     },
   ];
 
-  const getRoleBadgeColor = (role: string) => {
+  const getRoleBadgeVariant = (role: string) => {
     switch (role) {
       case 'admin':
-        return 'bg-[#D5B170] text-[#101F2E]';
+        return 'gold';
       case 'support':
-        return 'bg-blue-500 text-white';
+        return 'secondary';
       case 'lawyer':
-        return 'bg-purple-500 text-white';
+        return 'warning';
       case 'user':
-        return 'bg-emerald-500 text-white';
+        return 'success';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'outline';
     }
   };
 
@@ -133,12 +163,15 @@ export function AppSidebar({ className }: AppSidebarProps) {
   const userDepartment = getUserDepartment(user);
 
   return (
-    <Sidebar className={cn("border-r border-[#D5B170]/20", className)} style={{ '--sidebar-width': '16rem' } as React.CSSProperties}>
+    <Sidebar 
+      className={cn("border-r border-[#D5B170]/20", className)} 
+      style={{ '--sidebar-width': '16rem' } as React.CSSProperties}
+    >
       <SidebarHeader className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="relative">
             <div className="absolute inset-0 bg-[#D5B170] rounded-xl blur-lg opacity-30"></div>
-            <div className="relative bg-white/10 backdrop-blur-sm p-2 rounded-xl border border-[#D5B170]/30">
+            <div className="relative bg-gradient-to-r from-[#101F2E] to-[#2a3f52] p-2 rounded-xl border border-[#D5B170]/30 shadow-sm">
               <img 
                 src="/assets/logo.png" 
                 alt="Bismarchi Pires" 
@@ -146,10 +179,12 @@ export function AppSidebar({ className }: AppSidebarProps) {
               />
             </div>
           </div>
-          <div>
-            <h1 className="text-lg font-bold">Sistema de Tickets</h1>
-            <p className="text-xs text-muted-foreground">Bismarchi | Pires</p>
-          </div>
+          {!isCollapsed && (
+            <div className="transition-opacity duration-200">
+              <h1 className="text-lg font-bold bg-gradient-to-r from-[#D5B170] to-[#f0d9a3] bg-clip-text text-transparent">Sistema de Tickets</h1>
+              <p className="text-xs text-muted-foreground">Bismarchi | Pires</p>
+            </div>
+          )}
         </div>
         
         {/* Botão de toggle para a sidebar */}
@@ -160,25 +195,30 @@ export function AppSidebar({ className }: AppSidebarProps) {
 
       <SidebarContent className="px-2">
         {/* Perfil do usuário com destaque para o departamento */}
-        <div className="mb-4 px-4 py-3 bg-white/40 backdrop-blur-sm rounded-xl border border-[#D5B170]/20">
+        <div className={cn(
+          "mb-4 px-4 py-3 bg-gradient-to-br from-white/40 to-white/10 backdrop-blur-sm rounded-xl border border-[#D5B170]/20",
+          isCollapsed && "px-2 py-2"
+        )}>
           <div className="flex items-center gap-3 mb-3">
             <Avatar className="h-12 w-12 border-2 border-[#D5B170]/30 shadow-md">
               <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`} />
-              <AvatarFallback className={getRoleBadgeColor(user?.role || '')}>
+              <AvatarFallback className="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] text-white">
                 {user?.name?.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <div>
-              <p className="text-sm font-semibold">{user?.name}</p>
-              <Badge variant="outline" className={cn("mt-1 text-xs font-medium", getRoleBadgeColor(user?.role || ''))}>
-                {getRoleLabel(user?.role || '')}
-              </Badge>
-            </div>
+            {!isCollapsed && (
+              <div className="transition-opacity duration-200">
+                <p className="text-sm font-semibold">{user?.name}</p>
+                <Badge variant={getRoleBadgeVariant(user?.role || '')} size="sm" className="mt-1">
+                  {getRoleLabel(user?.role || '')}
+                </Badge>
+              </div>
+            )}
           </div>
           
-          {/* Departamento do usuário */}
-          {userDepartment && (
-            <div className="flex items-center gap-2 mt-2 p-2 rounded-lg bg-white/50 border border-[#D5B170]/10">
+          {/* Departamento do usuário - visível apenas quando não está colapsado */}
+          {userDepartment && !isCollapsed && (
+            <div className="flex items-center gap-2 mt-2 p-2 rounded-lg bg-white/50 border border-[#D5B170]/10 transition-opacity duration-200">
               <Building2 className="h-4 w-4 text-slate-500" />
               <div className="flex-1">
                 <p className="text-xs text-slate-500">Departamento</p>
@@ -200,6 +240,25 @@ export function AppSidebar({ className }: AppSidebarProps) {
                     <SidebarMenuButton isActive={isActive} tooltip={item.name}>
                       {item.icon}
                       <span>{item.name}</span>
+                      {item.badge && (
+                        <SidebarMenuBadge>
+                          <Badge 
+                            variant={isActive ? "gold" : "secondary"} 
+                            size="sm" 
+                            className={cn(
+                              "ml-auto", 
+                              isActive ? "bg-[#D5B170] text-[#101F2E]" : ""
+                            )}
+                          >
+                            {item.badge}
+                          </Badge>
+                        </SidebarMenuBadge>
+                      )}
+                      {!isCollapsed && (
+                        <SidebarMenuAction showOnHover>
+                          <ChevronRight className="h-4 w-4" />
+                        </SidebarMenuAction>
+                      )}
                     </SidebarMenuButton>
                   )}
                 </NavLink>
@@ -212,10 +271,13 @@ export function AppSidebar({ className }: AppSidebarProps) {
         <Button
           onClick={logout}
           variant="outline"
-          className="w-full flex items-center gap-2 text-red-500 hover:bg-red-50 hover:text-red-600 border-[#D5B170]/20"
+          className={cn(
+            "w-full flex items-center gap-2 text-red-500 hover:bg-red-50 hover:text-red-600 border-[#D5B170]/20",
+            isCollapsed && "justify-center"
+          )}
         >
           <LogOut className="h-4 w-4" />
-          <span>Sair</span>
+          {!isCollapsed && <span>Sair</span>}
         </Button>
       </SidebarFooter>
     </Sidebar>

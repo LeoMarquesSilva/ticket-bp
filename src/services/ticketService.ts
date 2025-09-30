@@ -828,38 +828,90 @@ static async markAllMessagesAsRead(ticketId: string): Promise<boolean> {
   }
 }
 
-  // Adicionar método para transferir ticket para outro suporte
-  static async transferTicket(ticketId: string, newSupportId: string, newSupportName: string): Promise<Ticket> {
-    try {
-      const now = new Date().toISOString();
-      
-      const updates = {
-        assigned_to: newSupportId,
-        // Remover esta linha se a coluna assigned_to_name não existir no banco de dados
-        // Se a coluna existe, mantenha esta linha
-        assigned_to_name: newSupportName,
-        assigned_at: now,
-        updated_at: now,
-      };
-
-      const { data, error } = await supabase
-        .from(TABLES.TICKETS)
-        .update(updates)
-        .eq('id', ticketId)
-        .select()
+// Adicionar método para transferir ticket para outro suporte
+static async transferTicket(ticketId: string, newSupportId: string, newSupportName: string): Promise<Ticket> {
+  try {
+    console.log('Transferindo ticket:', ticketId, 'para suporte:', newSupportId, 'nome:', newSupportName);
+    
+    const now = new Date().toISOString();
+    
+    // Garantir que o nome não seja undefined ou vazio
+    let supportName = newSupportName; // Criar uma nova variável para evitar reatribuir o parâmetro
+    
+    if (!supportName) {
+      console.warn('Nome do suporte não fornecido, buscando do banco de dados...');
+      const { data: userData } = await supabase
+        .from(TABLES.USERS)
+        .select('name')
+        .eq('id', newSupportId)
         .single();
-
-      if (error) {
-        console.error('Error transferring ticket:', error);
-        throw error;
+      
+      if (userData && typeof userData.name === 'string') {
+        supportName = userData.name;
+        console.log('Nome obtido do banco de dados:', supportName);
+      } else {
+        console.warn('Não foi possível obter o nome do usuário, usando ID como nome');
+        supportName = newSupportId;
       }
+    }
+    
+    const updates = {
+      assigned_to: newSupportId,
+      assigned_to_name: supportName,
+      assigned_at: now,
+      updated_at: now,
+    };
 
-      return mapFromDatabase(data);
-    } catch (error) {
-      console.error('Error in transferTicket:', error);
+    console.log('Dados de atualização para transferência:', updates);
+
+    const { data, error } = await supabase
+      .from(TABLES.TICKETS)
+      .update(updates)
+      .eq('id', ticketId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Erro ao transferir ticket:', error);
       throw error;
     }
+
+    console.log('Ticket transferido com sucesso, dados atualizados:', data);
+    return mapFromDatabase(data);
+  } catch (error) {
+    console.error('Erro em transferTicket:', error);
+    throw error;
   }
+}
+
+// Adicionar método para transferir ticket para outro suporte com obtenção automática do nome
+static async transferTicketWithUserLookup(ticketId: string, newSupportId: string): Promise<Ticket> {
+  try {
+    console.log('Transferindo ticket:', ticketId, 'para suporte:', newSupportId);
+    
+    // Primeiro, buscar informações do usuário de suporte
+    const { data: userData, error: userError } = await supabase
+      .from(TABLES.USERS)
+      .select('name')
+      .eq('id', newSupportId)
+      .single();
+    
+    if (userError || !userData) {
+      console.error('Erro ao buscar informações do usuário:', userError);
+      throw new Error('Não foi possível obter informações do usuário de suporte');
+    }
+    
+    // Verificar se o nome é uma string
+    const newSupportName = typeof userData.name === 'string' ? userData.name : newSupportId;
+    console.log('Nome do novo suporte:', newSupportName);
+    
+    // Agora transferir o ticket com o nome obtido
+    return this.transferTicket(ticketId, newSupportId, newSupportName);
+  } catch (error) {
+    console.error('Erro em transferTicketWithUserLookup:', error);
+    throw error;
+  }
+}
 
   // Subscribe to ticket changes (real-time)
   static subscribeToTickets(userId: string, userRole: string, callback: (payload: any) => void, statusCallback?: (status: any) => void) {
