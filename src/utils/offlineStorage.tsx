@@ -1,65 +1,98 @@
-// Crie um sistema simples de armazenamento offline
+// Tipos para as operações pendentes
+type PendingOperation = {
+  id: string;
+  operation: string;
+  data: any;
+  timestamp: number;
+  retries: number;
+};
 
-// Salvar dados para enviar quando online novamente
+// Gerar um ID único
+const generateId = () => {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
+// Chave para armazenar operações pendentes
+const PENDING_OPS_KEY = 'pending_operations';
+
+// Salvar uma operação para processamento posterior
 export const saveForLater = (operation: string, data: any) => {
   try {
-    // Obter a fila existente ou criar uma nova
-    const queueString = localStorage.getItem('offline_queue') || '[]';
-    const queue = JSON.parse(queueString);
-    
-    // Adicionar a nova operação à fila
-    queue.push({
+    // Criar uma nova operação pendente
+    const pendingOp: PendingOperation = {
+      id: generateId(),
       operation,
       data,
-      timestamp: Date.now()
-    });
+      timestamp: Date.now(),
+      retries: 0
+    };
     
-    // Salvar a fila atualizada
-    localStorage.setItem('offline_queue', JSON.stringify(queue));
+    // Obter operações pendentes existentes
+    const existingOps = getPendingOperations();
     
-    return true;
+    // Adicionar a nova operação
+    existingOps.push(pendingOp);
+    
+    // Salvar no localStorage
+    localStorage.setItem(PENDING_OPS_KEY, JSON.stringify(existingOps));
+    
+    console.log(`Operação "${operation}" salva para processamento posterior`, data);
+    return pendingOp.id;
   } catch (error) {
-    console.error('Erro ao salvar operação offline:', error);
-    return false;
+    console.error('Erro ao salvar operação para processamento posterior:', error);
+    return null;
   }
 };
 
-// Processar operações pendentes
-export const processPendingOperations = async (handlers: Record<string, (data: any) => Promise<any>>) => {
+// Obter todas as operações pendentes
+export const getPendingOperations = (): PendingOperation[] => {
   try {
-    const queueString = localStorage.getItem('offline_queue');
-    if (!queueString) return { processed: 0, failed: 0 };
+    const opsString = localStorage.getItem(PENDING_OPS_KEY);
+    if (!opsString) return [];
     
-    const queue = JSON.parse(queueString);
-    if (!queue.length) return { processed: 0, failed: 0 };
-    
-    let processed = 0;
-    let failed = 0;
-    const newQueue = [];
-    
-    for (const item of queue) {
-      const handler = handlers[item.operation];
-      
-      if (!handler) {
-        newQueue.push(item);
-        failed++;
-        continue;
-      }
-      
-      try {
-        await handler(item.data);
-        processed++;
-      } catch (error) {
-        console.error(`Falha ao processar operação offline ${item.operation}:`, error);
-        newQueue.push(item);
-        failed++;
-      }
-    }
-    
-    localStorage.setItem('offline_queue', JSON.stringify(newQueue));
-    return { processed, failed, pending: newQueue.length };
+    return JSON.parse(opsString);
   } catch (error) {
-    console.error('Erro ao processar operações offline:', error);
-    return { processed: 0, failed: 0, error };
+    console.error('Erro ao obter operações pendentes:', error);
+    return [];
+  }
+};
+
+// Marcar uma operação como concluída
+export const markOperationComplete = (operationId: string) => {
+  try {
+    const ops = getPendingOperations();
+    const filteredOps = ops.filter(op => op.id !== operationId);
+    
+    localStorage.setItem(PENDING_OPS_KEY, JSON.stringify(filteredOps));
+    console.log(`Operação ${operationId} marcada como concluída`);
+  } catch (error) {
+    console.error('Erro ao marcar operação como concluída:', error);
+  }
+};
+
+// Incrementar o contador de tentativas de uma operação
+export const incrementOperationRetries = (operationId: string) => {
+  try {
+    const ops = getPendingOperations();
+    const updatedOps = ops.map(op => {
+      if (op.id === operationId) {
+        return { ...op, retries: op.retries + 1 };
+      }
+      return op;
+    });
+    
+    localStorage.setItem(PENDING_OPS_KEY, JSON.stringify(updatedOps));
+  } catch (error) {
+    console.error('Erro ao incrementar tentativas de operação:', error);
+  }
+};
+
+// Limpar todas as operações pendentes
+export const clearAllPendingOperations = () => {
+  try {
+    localStorage.removeItem(PENDING_OPS_KEY);
+    console.log('Todas as operações pendentes foram removidas');
+  } catch (error) {
+    console.error('Erro ao limpar operações pendentes:', error);
   }
 };

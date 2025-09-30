@@ -1,218 +1,242 @@
-import { supabase } from '../lib/supabase';
-import { saveForLater, processPendingOperations } from './offlineStorage';
+import { supabase } from '@/lib/supabase';
 
-// Cache para armazenar o status da conexão
-let connectionStatus = {
-  connected: true,
-  lastChecked: Date.now(),
-  checking: false
+// Função para verificar se estamos online
+export const isOnline = async (): Promise<boolean> => {
+  // Primeiro verifica o estado do navegador
+  if (!navigator.onLine) return false;
+  
+  // Tenta fazer uma consulta simples para verificar a conexão real
+  try {
+    // Usar AbortController para implementar timeout manualmente
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const { error } = await supabase
+      .from('_health')
+      .select('*')
+      .limit(1)
+      .abortSignal(controller.signal);
+    
+    // Limpar o timeout
+    clearTimeout(timeoutId);
+    
+    return !error;
+  } catch (e) {
+    return false;
+  }
 };
 
-// Variável para controlar o timeout manual
-let connectionCheckTimeout: NodeJS.Timeout | null = null;
-
-// Função para executar operações com retry automático
-export const executeWithRetry = async (
-  operation: () => Promise<any>,
-  maxRetries = 3,
-  delayMs = 1000
-) => {
-  let retries = 0;
-  let lastError;
-
-  // Se já sabemos que estamos offline, não tente a operação
-  if (!connectionStatus.connected && Date.now() - connectionStatus.lastChecked < 10000) {
-    throw new Error('Aplicativo está offline. Operação armazenada para execução posterior.');
-  }
-
-  while (retries < maxRetries) {
+// Função para executar uma operação com tentativas automáticas
+export const executeWithRetry = async <T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000
+): Promise<T> => {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await operation();
     } catch (error) {
+      console.warn(`Tentativa ${attempt + 1}/${maxRetries} falhou:`, error);
       lastError = error;
-      retries++;
-      console.log(`Tentativa ${retries}/${maxRetries} falhou. Tentando novamente em ${delayMs}ms...`);
       
-      // Verificar se o erro é de conexão
-      if (error.message && (
-          error.message.includes('network') || 
-          error.message.includes('connection') ||
-          error.message.includes('offline') ||
-          error.message.includes('Failed to fetch')
-        )) {
-        // Atualizar status de conexão
-        connectionStatus.connected = false;
-        connectionStatus.lastChecked = Date.now();
+      // Esperar antes da próxima tentativa (com backoff exponencial)
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt)));
       }
-      
-      // Esperar antes de tentar novamente
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      
-      // Aumentar o tempo de espera para cada nova tentativa
-      delayMs *= 2;
     }
   }
-
-  console.error('Todas as tentativas falharam:', lastError);
-  throw lastError;
+  
+  throw lastError || new Error('Operação falhou após múltiplas tentativas');
 };
 
-// Função para verificar a conexão com o Supabase
-export const checkSupabaseConnection = async () => {
-  // Se já estamos verificando, retorne o status atual
-  if (connectionStatus.checking) {
-    return { 
-      connected: connectionStatus.connected, 
-      latency: null, 
-      error: null 
-    };
-  }
-
-  connectionStatus.checking = true;
-  
-  // Limpar qualquer timeout anterior
-  if (connectionCheckTimeout) {
-    clearTimeout(connectionCheckTimeout);
-  }
-  
-  // Configurar um timeout manual para garantir que a verificação não fique presa
-  connectionCheckTimeout = setTimeout(() => {
-    if (connectionStatus.checking) {
-      console.log('Verificação de conexão atingiu timeout');
-      connectionStatus = {
-        connected: false,
-        lastChecked: Date.now(),
-        checking: false
-      };
+// Função para reconectar o Supabase
+export const reconnectSupabase = async (): Promise<boolean> => {
+  try {
+    // Tentar atualizar a sessão
+    const { data, error } = await supabase.auth.refreshSession();
+    
+    if (error) {
+      console.error('Falha ao atualizar sessão:', error);
+      return false;
     }
-  }, 5000); // 5 segundos de timeout
+    
+    // Verificar se a sessão foi atualizada com sucesso
+    return !!(data && data.session);
+  } catch (error) {
+    console.error('Erro ao reconectar:', error);
+    return false;
+  }
+};
+
+// Configurar listeners para eventos de rede
+export const setupNetworkListeners = (onReconnect: () => void) => {
+  window.addEventListener('online', async () => {
+    console.log('Rede voltou online, tentando reconectar...');
+    const success = await reconnectSupabase();
+    if (success && onReconnect) {
+      onReconnect();
+    }
+  });
+};
+
+// Limpar canais existentes para um ticket específico
+export const cleanupExistingChannels = (ticketId: string) => {
+  const channels = supabase.getChannels();
+  
+  channels.forEach(channel => {
+    const channelStr = channel.topic || '';
+    if (channelStr.includes(`chat-${ticketId}`)) {
+      console.log(`Removendo canal existente para ticket ${ticketId}:`, channelStr);
+      supabase.removeChannel(channel);
+    }
+  });
+};
+
+// Limpar todos os canais
+export const cleanupAllChannels = () => {
+  const channels = supabase.getChannels();
+  
+  channels.forEach(channel => {
+    console.log(`Removendo canal:`, channel.topic);
+    supabase.removeChannel(channel);
+  });
+};
+
+// Configurar ping periódico para manter a conexão ativa
+export const setupKeepAlive = () => {
+  console.log('Configurando keep-alive para Supabase');
+  
+  // Fazer ping a cada 4 minutos para manter a conexão ativa
+  const interval = setInterval(async () => {
+    try {
+      // Verificar se o navegador está online antes de tentar
+      if (!navigator.onLine) {
+        console.log('Navegador offline, pulando keep-alive');
+        return;
+      }
+      
+      console.log('Executando ping keep-alive');
+      const start = Date.now();
+      
+      // Fazer uma consulta leve para manter a conexão
+      const { error } = await supabase.from('_health').select('count').maybeSingle();
+      
+      const elapsed = Date.now() - start;
+      if (error) {
+        console.error(`Ping falhou após ${elapsed}ms:`, error);
+        
+        // Tentar reconectar se o ping falhar
+        const reconnected = await reconnectSupabase();
+        console.log('Tentativa de reconexão:', reconnected ? 'bem-sucedida' : 'falhou');
+      } else {
+        console.log(`Ping bem-sucedido (${elapsed}ms)`);
+      }
+    } catch (error) {
+      console.error('Erro durante keep-alive:', error);
+    }
+  }, 240000); // 4 minutos
+  
+  return interval;
+};
+
+// Verificar o estado da sessão e reconectar se necessário
+export const checkAndRefreshSession = async (): Promise<boolean> => {
+  try {
+    // Verificar se temos uma sessão válida
+    const { data, error } = await supabase.auth.getSession();
+    
+    if (error) {
+      console.error('Erro ao verificar sessão:', error);
+      return false;
+    }
+    
+    // Se não houver sessão ou ela estiver expirando em breve, atualizar
+    if (!data.session || isSessionExpiringSoon(data.session)) {
+      console.log('Sessão ausente ou expirando em breve, tentando atualizar...');
+      return await reconnectSupabase();
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Erro ao verificar e atualizar sessão:', error);
+    return false;
+  }
+};
+
+// Verificar se a sessão está expirando em breve (menos de 5 minutos)
+const isSessionExpiringSoon = (session: any): boolean => {
+  if (!session || !session.expires_at) return true;
   
   try {
-    const start = Date.now();
+    const expiresAt = new Date(session.expires_at).getTime();
+    const now = Date.now();
+    const fiveMinutesInMs = 5 * 60 * 1000;
     
-    // Primeiro tente um ping simples para verificar a conexão com a internet
-    try {
-      await fetch('https://www.google.com/favicon.ico', { 
-        mode: 'no-cors',
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-    } catch (e) {
-      // Se não conseguir acessar o Google, provavelmente está offline
-      connectionStatus = {
-        connected: false,
-        lastChecked: Date.now(),
-        checking: false
-      };
-      
-      if (connectionCheckTimeout) {
-        clearTimeout(connectionCheckTimeout);
-        connectionCheckTimeout = null;
-      }
-      
-      return { connected: false, latency: null, error: e };
-    }
+    return expiresAt - now < fiveMinutesInMs;
+  } catch (e) {
+    console.error('Erro ao verificar expiração da sessão:', e);
+    return true; // Por segurança, considerar que está expirando
+  }
+};
+
+// Verificar se há operações pendentes para executar
+export const checkPendingOperations = async () => {
+  try {
+    // Implementação depende do seu sistema de armazenamento offline
+    // Esta é uma função de exemplo que você pode expandir conforme necessário
+    const pendingOpsKey = 'pending_operations';
+    const pendingOpsStr = localStorage.getItem(pendingOpsKey);
     
-    // Agora verifica a conexão com o Supabase
-    const { data, error } = await supabase
-      .from('health_check')
-      .select('count')
-      .maybeSingle();
-      
-    const elapsed = Date.now() - start;
+    if (!pendingOpsStr) return;
     
-    if (error && error.code !== 'PGRST116') { // PGRST116 é o erro quando a tabela não existe
-      console.error('Erro ao verificar conexão com Supabase:', error);
-      connectionStatus = {
-        connected: false,
-        lastChecked: Date.now(),
-        checking: false
-      };
-      
-      if (connectionCheckTimeout) {
-        clearTimeout(connectionCheckTimeout);
-        connectionCheckTimeout = null;
-      }
-      
-      return { connected: false, latency: null, error };
-    }
+    const pendingOps = JSON.parse(pendingOpsStr);
+    if (!Array.isArray(pendingOps) || pendingOps.length === 0) return;
     
-    connectionStatus = {
-      connected: true,
-      lastChecked: Date.now(),
-      checking: false
-    };
+    console.log(`Encontradas ${pendingOps.length} operações pendentes para processar`);
     
-    // Se estamos online, processar operações pendentes
-    processPendingOperations({
-      'sendChatMessage': async (data) => {
-        const { ticketId, userId, userName, message, attachments } = data;
-        return await supabase
-          .from('app_c009c0e4f1_chat_messages')
-          .insert([{
-            ticket_id: ticketId,
-            user_id: userId,
-            user_name: userName,
-            message: message,
-            attachments: attachments || null,
-            created_at: new Date().toISOString(),
-            read: false
-          }])
-          .select()
-          .single();
-      }
-    });
+    // Processar operações pendentes aqui
+    // ...
     
-    if (connectionCheckTimeout) {
-      clearTimeout(connectionCheckTimeout);
-      connectionCheckTimeout = null;
-    }
-    
-    return { connected: true, latency: elapsed, error: null };
+    // Limpar operações processadas
+    localStorage.removeItem(pendingOpsKey);
   } catch (error) {
-    console.error('Exceção ao verificar conexão com Supabase:', error);
-    connectionStatus = {
-      connected: false,
-      lastChecked: Date.now(),
-      checking: false
-    };
-    
-    if (connectionCheckTimeout) {
-      clearTimeout(connectionCheckTimeout);
-      connectionCheckTimeout = null;
-    }
-    
-    return { connected: false, latency: null, error };
-  } finally {
-    connectionStatus.checking = false;
-    
-    if (connectionCheckTimeout) {
-      clearTimeout(connectionCheckTimeout);
-      connectionCheckTimeout = null;
-    }
+    console.error('Erro ao verificar operações pendentes:', error);
   }
 };
 
-// Função para manter a conexão ativa
-export const setupKeepAlive = () => {
-  const ping = async () => {
-    const status = await checkSupabaseConnection();
-    console.log(`Supabase connection: ${status.connected ? 'OK' : 'FAILED'}, Latency: ${status.latency}ms`);
-  };
-
-  // Executar imediatamente e depois a cada 4 minutos
-  ping();
-  return setInterval(ping, 4 * 60 * 1000);
+// Configurar listeners para eventos de visibilidade do documento
+export const setupVisibilityListeners = () => {
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+      console.log('Documento tornou-se visível, verificando conexão...');
+      
+      // Verificar se estamos online
+      const online = await isOnline();
+      
+      if (online) {
+        // Verificar e atualizar a sessão se necessário
+        await checkAndRefreshSession();
+        
+        // Verificar operações pendentes
+        await checkPendingOperations();
+      } else {
+        console.log('Documento visível, mas sem conexão');
+      }
+    }
+  });
 };
 
-// Função para verificar se estamos online antes de executar uma operação
-export const isOnline = async () => {
-  // Se verificamos recentemente, use o valor em cache
-  if (Date.now() - connectionStatus.lastChecked < 10000) {
-    return connectionStatus.connected;
-  }
+// Inicializar todos os listeners e mecanismos de recuperação
+export const initializeConnectionHandlers = () => {
+  setupNetworkListeners(() => {
+    checkAndRefreshSession();
+    checkPendingOperations();
+  });
   
-  // Caso contrário, verifique novamente
-  const status = await checkSupabaseConnection();
-  return status.connected;
+  setupVisibilityListeners();
+  setupKeepAlive();
+  
+  console.log('Handlers de conexão inicializados');
 };

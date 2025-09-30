@@ -5,10 +5,8 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 // Adicione sua chave service_role aqui (você precisará adicionar ao .env)
 const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 
-// Verificar se já existe uma instância global
-const globalForSupabase = globalThis as unknown as {
-  supabase: ReturnType<typeof createClient> | undefined;
-};
+// Gerar um ID único para esta instância do aplicativo
+const instanceId = `app-${Math.random().toString(36).substring(2, 9)}`;
 
 // Tabelas do banco de dados
 export const TABLES = {
@@ -65,23 +63,48 @@ export interface DatabaseChatMessage {
   created_at: string;
 }
 
-// Inicializar o cliente Supabase apenas uma vez
-export const supabase = globalForSupabase.supabase || 
-  createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
+// Criar um armazenamento customizado com prefixo único para evitar conflitos
+const customStorage = {
+  getItem: (key: string) => {
+    const prefixedKey = `${instanceId}-${key}`;
+    const item = localStorage.getItem(prefixedKey);
+    console.log(`Storage get: ${prefixedKey} = ${item ? '[data]' : 'null'}`);
+    return item;
+  },
+  setItem: (key: string, value: string) => {
+    const prefixedKey = `${instanceId}-${key}`;
+    console.log(`Storage set: ${prefixedKey}`);
+    localStorage.setItem(prefixedKey, value);
+  },
+  removeItem: (key: string) => {
+    const prefixedKey = `${instanceId}-${key}`;
+    console.log(`Storage remove: ${prefixedKey}`);
+    localStorage.removeItem(prefixedKey);
+  }
+};
+
+// Inicializar o cliente Supabase com configurações otimizadas
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+    storage: customStorage
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
+  },
+  global: {
+    headers: {
+      'x-app-instance': instanceId
+    }
+  }
+});
 
 // Cliente admin com a chave service_role
 // ATENÇÃO: Usar a chave service_role no frontend é um RISCO DE SEGURANÇA
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-// Armazenar a instância para reutilização
-if (process.env.NODE_ENV !== 'production') {
-  globalForSupabase.supabase = supabase;
-}
 
 export default supabase;

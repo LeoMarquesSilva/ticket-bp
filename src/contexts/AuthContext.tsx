@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, TABLES } from '@/lib/supabase';
+import { cleanupAllChannels } from '@/utils/supabaseHelpers';
 export type UserRole = 'user' | 'support' | 'admin' | 'lawyer';
 
 interface User {
@@ -93,116 +94,149 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // Verificar periodicamente a validade da sessão
+  useEffect(() => {
+    // Verificar periodicamente a validade da sessão
+    const sessionCheckInterval = setInterval(async () => {
+      if (user) {
+        try {
+          const { data, error } = await supabase.auth.getSession();
+          
+          if (error || !data.session) {
+            console.warn('Sessão inválida detectada, fazendo logout');
+            logout();
+          }
+        } catch (e) {
+          console.error('Erro ao verificar sessão:', e);
+        }
+      }
+    }, 60000); // Verificar a cada minuto
+    
+    return () => clearInterval(sessionCheckInterval);
+  }, [user]);
+
   const loadUserProfile = async (authUserId: string) => {
     try {
       console.log('Loading user profile for:', authUserId);
       
-      // Primeiro, tente carregar pelo auth_user_id
-      let userProfile = null;
-      let error = null;
+      // Adicione um timeout para evitar carregamento infinito
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile loading timeout')), 10000); // 10 segundos
+      });
       
-      try {
-        // Evite usar Promise.race e faça a consulta diretamente
-        const response = await supabase
-          .from(TABLES.USERS)
-          .select('*')
-          .eq('auth_user_id', authUserId)
-          .single();
-        
-        userProfile = response.data;
-        error = response.error;
-      } catch (e) {
-        console.error('Error querying by auth_user_id:', e);
-        error = e;
-      }
-
-      // Se não encontrou o perfil ou houve erro, tente pelo email
-      if (!userProfile || error) {
-        console.log('Profile not found by auth_user_id, trying email fallback...');
+      const profilePromise = (async () => {
+        // Primeiro, tente carregar pelo auth_user_id
+        let userProfile = null;
+        let error = null;
         
         try {
-          const { data: { user: authUser } } = await supabase.auth.getUser();
+          // Evite usar Promise.race e faça a consulta diretamente
+          const response = await supabase
+            .from(TABLES.USERS)
+            .select('*')
+            .eq('auth_user_id', authUserId)
+            .single();
           
-          if (authUser?.email) {
-            console.log('Trying fallback by email:', authUser.email);
+          userProfile = response.data;
+          error = response.error;
+        } catch (e) {
+          console.error('Error querying by auth_user_id:', e);
+          error = e;
+        }
+
+        // Se não encontrou o perfil ou houve erro, tente pelo email
+        if (!userProfile || error) {
+          console.log('Profile not found by auth_user_id, trying email fallback...');
+          
+          try {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
             
-            const emailResponse = await supabase
-              .from(TABLES.USERS)
-              .select('*')
-              .eq('email', authUser.email)
-              .single();
-            
-            if (emailResponse.data && !emailResponse.error) {
-              // Update the profile with auth_user_id
-              await supabase
-                .from(TABLES.USERS)
-                .update({ auth_user_id: authUserId })
-                .eq('id', emailResponse.data.id);
+            if (authUser?.email) {
+              console.log('Trying fallback by email:', authUser.email);
               
-              userProfile = emailResponse.data;
-              error = null;
+              const emailResponse = await supabase
+                .from(TABLES.USERS)
+                .select('*')
+                .eq('email', authUser.email)
+                .single();
+              
+              if (emailResponse.data && !emailResponse.error) {
+                // Update the profile with auth_user_id
+                await supabase
+                  .from(TABLES.USERS)
+                  .update({ auth_user_id: authUserId })
+                  .eq('id', emailResponse.data.id);
+                
+                userProfile = emailResponse.data;
+                error = null;
+              }
             }
+          } catch (fallbackError) {
+            console.error('Fallback error:', fallbackError);
           }
-        } catch (fallbackError) {
-          console.error('Fallback error:', fallbackError);
         }
-      }
 
-      // Se ainda não encontrou o perfil, crie um perfil padrão
-      if (!userProfile) {
-        console.log('Profile not found, creating default profile...');
-        
-        try {
-          const { data: { user: authUser } } = await supabase.auth.getUser();
+        // Se ainda não encontrou o perfil, crie um perfil padrão
+        if (!userProfile) {
+          console.log('Profile not found, creating default profile...');
           
-          if (authUser?.email) {
-            const { data: newProfile, error: createError } = await supabase
-              .from(TABLES.USERS)
-              .insert({
-                name: authUser.user_metadata?.name || authUser.email.split('@')[0],
-                email: authUser.email,
-                role: 'user',
-                department: 'Geral', // Adicionando departamento padrão
-                auth_user_id: authUserId
-              })
-              .select()
-              .single();
+          try {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
             
-            if (newProfile && !createError) {
-              userProfile = newProfile;
-              error = null;
-            } else {
-              console.error('Error creating default profile:', createError);
+            if (authUser?.email) {
+              const { data: newProfile, error: createError } = await supabase
+                .from(TABLES.USERS)
+                .insert({
+                  name: authUser.user_metadata?.name || authUser.email.split('@')[0],
+                  email: authUser.email,
+                  role: 'user',
+                  department: 'Geral', // Adicionando departamento padrão
+                  auth_user_id: authUserId
+                })
+                .select()
+                .single();
+              
+              if (newProfile && !createError) {
+                userProfile = newProfile;
+                error = null;
+              } else {
+                console.error('Error creating default profile:', createError);
+              }
             }
+          } catch (createError) {
+            console.error('Error creating default profile:', createError);
           }
-        } catch (createError) {
-          console.error('Error creating default profile:', createError);
         }
-      }
 
-      // Se encontrou o perfil, atualize o estado
-      if (userProfile) {
-        const userData: User = {
-          id: userProfile.id,
-          name: userProfile.name,
-          email: userProfile.email,
-          role: userProfile.role as UserRole, // Garantir que o tipo seja correto
-          department: userProfile.department || 'Geral', // Garantir que sempre tenha um valor
-          isOnline: userProfile.is_online || false,
-          lastActiveAt: userProfile.last_active_at
-        };
+        // Se encontrou o perfil, atualize o estado
+        if (userProfile) {
+          const userData: User = {
+            id: userProfile.id,
+            name: userProfile.name,
+            email: userProfile.email,
+            role: userProfile.role as UserRole, // Garantir que o tipo seja correto
+            department: userProfile.department || 'Geral', // Garantir que sempre tenha um valor
+            isOnline: userProfile.is_online || false,
+            lastActiveAt: userProfile.last_active_at
+          };
 
-        console.log('User profile loaded successfully:', userData);
-        setUser(userData);
-      } else {
-        console.error('Failed to load or create user profile');
-        setUser(null);
-      }
+          console.log('User profile loaded successfully:', userData);
+          setUser(userData);
+        } else {
+          console.error('Failed to load or create user profile');
+          setUser(null);
+        }
+        
+        setLoading(false);
+      })();
       
-      setLoading(false);
+      // Use Promise.race para garantir que não fique preso
+      await Promise.race([profilePromise, timeoutPromise]);
+      
     } catch (error) {
       console.error('Error in loadUserProfile:', error);
       setLoading(false);
+      setUser(null);
     }
   };
 
@@ -329,8 +363,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     
+    try {
+      // Limpar canais de realtime antes de sair
+      cleanupAllChannels();
+      
+      // Fazer logout
+      await supabase.auth.signOut();
+      
+      // Limpar localStorage para evitar conflitos de sessão
+      // Apenas limpar as chaves relacionadas ao Supabase
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('supabase') || key.includes('sb-')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      console.log('Logout completo');
+    } catch (error) {
+      console.error('Erro durante logout:', error);
+    }
+    
     setUser(null);
-    await supabase.auth.signOut();
   };
 
   return (

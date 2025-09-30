@@ -9,6 +9,8 @@ import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
 import DatabaseManagement from '@/pages/DatabaseManagement';
 import { setupKeepAlive } from './utils/supabaseHelpers';
+import { ConnectionStatus } from '@/components/ConnectionStatus';
+import { InactivityDetector } from '@/components/InactivityDetector';
 
 // Componente para rotas protegidas
 const ProtectedRoute = ({ 
@@ -168,7 +170,10 @@ const App = () => {
   return (
     <AuthProvider>
       <Router>
-        {/* REMOVIDO O WRAPPER DIV QUE LIMITAVA O LAYOUT - AGORA USA ALTURA TOTAL */}
+        {/* Adicionar os novos componentes para melhorar a robustez da aplicação */}
+        <ConnectionStatus />
+        <InactivityDetector />
+        
         <AppRoutes />
         <Toaster 
           position="top-right"

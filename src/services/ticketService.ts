@@ -963,41 +963,35 @@ static async transferTicketWithUserLookup(ticketId: string, newSupportId: string
     };
   }
 
+// Substitua apenas o método subscribeToChatMessages no arquivo existente
 // Subscribe to chat messages (real-time) with status callback
 static subscribeToChatMessages(ticketId: string, callback: (payload: any) => void, statusCallback?: (status: string) => void) {
   console.log('Setting up chat subscription for ticket:', ticketId);
   
   try {
-    // Usar um ID de canal único para evitar conflitos
-    const channelId = `chat-${ticketId}-${Date.now()}`;
-    console.log('Canal ID:', channelId);
+    // Usar um ID de canal fixo para este ticket para evitar duplicações
+    const channelId = `chat-${ticketId}`;
     
-    // Verificar se já existe um canal ativo para este ticket e removê-lo
-    // Usamos um método mais seguro para identificar canais
+    // Limpar canais existentes para este ticket
     const existingChannels = supabase.getChannels().filter(ch => {
-      const channelStr = ch.toString();
-      return channelStr.includes(`chat-${ticketId}`);
+      const channelStr = ch.topic || '';
+      return channelStr.includes(`chat-${ticketId}`) || channelStr === channelId;
     });
     
     if (existingChannels.length > 0) {
-      console.log(`Removendo ${existingChannels.length} canais existentes para o ticket ${ticketId}`);
+      console.log(`Removendo ${existingChannels.length} canais existentes`);
       existingChannels.forEach(ch => supabase.removeChannel(ch));
     }
     
-    // Criar um novo canal com configurações válidas
+    // Criar um novo canal com configuração simplificada
     const channel = supabase
-      .channel(channelId, {
-        config: {
-          broadcast: { self: false },
-          presence: { key: '' }
-        }
-      })
+      .channel(channelId)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'app_c009c0e4f1_chat_messages',
+          table: TABLES.CHAT_MESSAGES,
           filter: `ticket_id=eq.${ticketId}`
         },
         (payload) => {
@@ -1006,47 +1000,33 @@ static subscribeToChatMessages(ticketId: string, callback: (payload: any) => voi
         }
       )
       .subscribe((status) => {
-        console.log(`Status da inscrição para ticket ${ticketId}:`, status);
-        if (statusCallback) {
-          statusCallback(status);
-        }
+        console.log(`Status da inscrição: ${status}`);
+        if (statusCallback) statusCallback(status);
       });
 
-    // Configurar reconexão automática
+    // Configurar reconexão automática quando a rede voltar
     const reconnect = () => {
-      console.log('Tentando reconectar ao canal de chat...');
       if (channel.state !== 'joined') {
+        console.log('Tentando reconectar ao canal de chat...');
         channel.subscribe((status) => {
-          console.log(`Reconexão: Status da inscrição para ticket ${ticketId}:`, status);
-          if (statusCallback) {
-            statusCallback(status);
-          }
+          console.log(`Reconexão: Status da inscrição: ${status}`);
+          if (statusCallback) statusCallback(status);
         });
       }
     };
 
-    // Adicionar event listeners para reconectar quando a conexão voltar
+    // Adicionar event listener para reconectar quando a conexão voltar
     window.addEventListener('online', reconnect);
-    
-    // Também adicionar um intervalo para verificar e reconectar periodicamente
-    const reconnectInterval = setInterval(() => {
-      if (channel.state !== 'joined') {
-        console.log('Verificação periódica: tentando reconectar ao canal de chat...');
-        reconnect();
-      }
-    }, 30000); // Verificar a cada 30 segundos
 
     // Return unsubscribe function
     return () => {
       console.log('Unsubscribing from chat messages');
       window.removeEventListener('online', reconnect);
-      clearInterval(reconnectInterval);
       supabase.removeChannel(channel);
     };
   } catch (error) {
     console.error('Error subscribing to chat messages:', error);
-    // Return empty function to avoid errors
-    return () => {};
+    return () => {}; // Return empty function to avoid errors
   }
 }
 
