@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
 import Layout from '@/components/Layout';
@@ -8,7 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
 import DatabaseManagement from '@/pages/DatabaseManagement';
-import ResetPassword from '@/pages/ResetPassword'; // Importando a nova página
+import ResetPassword from '@/pages/ResetPassword';
 import { setupKeepAlive } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { InactivityDetector } from '@/components/InactivityDetector';
@@ -73,8 +73,21 @@ const ProtectedRoute = ({
 
 const AppRoutes = () => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
-  // Mostrar página de login ou reset de senha se não houver usuário e não estiver carregando
+  // Verificar se estamos na página de redefinição de senha
+  const isResetPasswordPage = location.pathname === '/reset-password';
+
+  // Permitir acesso à página de redefinição de senha mesmo sem autenticação
+  if (isResetPasswordPage) {
+    return (
+      <Routes>
+        <Route path="/reset-password" element={<ResetPassword />} />
+      </Routes>
+    );
+  }
+
+  // Mostrar página de login se não houver usuário e não estiver carregando
   if (!loading && !user) {
     return (
       <Routes>
@@ -101,7 +114,6 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/tickets" replace />} />
-      <Route path="/reset-password" element={<Navigate to="/tickets" replace />} />
       
       {/* Dashboard apenas para administradores */}
       <Route

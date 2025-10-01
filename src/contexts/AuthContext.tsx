@@ -389,12 +389,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Atualize a função resetPassword no seu AuthContext.tsx
 
+// Na função resetPassword, atualize a URL de redirecionamento
 const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
   try {
     console.log('Requesting password reset for:', email);
     
     // URL completa com protocolo e caminho correto
-    // Use a URL base do site atual
     const baseUrl = window.location.origin;
     const resetUrl = `${baseUrl}/reset-password`;
     

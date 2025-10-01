@@ -52,7 +52,18 @@ const ResetPassword: React.FC = () => {
         
         // Extrair o hash da URL
         const hash = location.hash;
+        const searchParams = new URLSearchParams(location.search);
         console.log('URL hash:', hash);
+        console.log('URL search params:', location.search);
+        
+        // Verificar se temos um token na URL (via query params)
+        const token = searchParams.get('token');
+        if (token) {
+          console.log('Found token in URL query params');
+          setValidLink(true);
+          setCheckingLink(false);
+          return;
+        }
         
         // Verificar se o hash é "#/login" - este é o formato específico que o Supabase está enviando
         if (hash === '#/login') {
@@ -77,13 +88,6 @@ const ResetPassword: React.FC = () => {
             setCheckingLink(false);
             return;
           }
-          
-          // Se não há sessão nem usuário, mostrar erro
-          console.log('No valid session or user found');
-          setValidLink(false);
-          setError('O link de redefinição de senha é inválido ou expirou. Por favor, solicite um novo link.');
-          setCheckingLink(false);
-          return;
         }
         
         // Verificar se há erro no hash (como otp_expired)
@@ -149,9 +153,18 @@ const ResetPassword: React.FC = () => {
                 setError('Não foi possível estabelecer uma sessão válida.');
               }
             } else {
-              console.error('Missing token or not recovery type:', { accessToken, type });
-              setValidLink(false);
-              setError('Link de redefinição inválido.');
+              // Tentar verificar se há uma sessão ativa mesmo sem token na URL
+              const { data: sessionData } = await supabase.auth.getSession();
+              if (sessionData?.session) {
+                console.log('Valid session found without token, allowing reset');
+                setValidLink(true);
+                setCheckingLink(false);
+                return;
+              } else {
+                console.error('Missing token or not recovery type:', { accessToken, type });
+                setValidLink(false);
+                setError('Link de redefinição inválido.');
+              }
             }
           } catch (parseError) {
             console.error('Error parsing hash parameters:', parseError);
@@ -169,7 +182,7 @@ const ResetPassword: React.FC = () => {
     };
 
     checkResetLink();
-  }, [location.hash]);
+  }, [location.hash, location.search]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
