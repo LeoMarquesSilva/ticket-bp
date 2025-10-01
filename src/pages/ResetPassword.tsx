@@ -54,33 +54,22 @@ const ResetPassword: React.FC = () => {
         const hash = location.hash;
         console.log('URL hash:', hash);
         
-        // Verificar se estamos sendo redirecionados para login
+        // Verificar se o hash é "#/login" - este é o formato específico que o Supabase está enviando
         if (hash === '#/login') {
-          console.log('Detected redirect to login, checking for recovery session');
+          console.log('Detected #/login hash, checking for active session');
           
-          // Verificar se há uma sessão ativa que pode ser usada para redefinir a senha
+          // Verificar se há uma sessão ativa
           const { data: sessionData } = await supabase.auth.getSession();
           console.log('Session data:', sessionData);
           
           if (sessionData?.session) {
-            // Como não temos acesso direto à data de criação da sessão,
-            // vamos simplesmente assumir que a sessão é válida para redefinição
             console.log('Valid session found, allowing reset');
             setValidLink(true);
             setCheckingLink(false);
             return;
           }
           
-          // Se não há sessão, verificar se temos um token na URL
-          const params = getHashParams(hash);
-          if (params.token) {
-            console.log('Found token in URL');
-            setValidLink(true);
-            setCheckingLink(false);
-            return;
-          }
-          
-          // Tentar obter o usuário atual para verificar se estamos autenticados
+          // Se não há sessão, verificar o usuário atual
           const { data: userData } = await supabase.auth.getUser();
           if (userData?.user) {
             console.log('Authenticated user found, allowing reset');
@@ -89,10 +78,10 @@ const ResetPassword: React.FC = () => {
             return;
           }
           
-          // Se não há sessão nem token, redirecionar para login
-          console.log('No valid recovery session found');
+          // Se não há sessão nem usuário, mostrar erro
+          console.log('No valid session or user found');
           setValidLink(false);
-          setError('O link de redefinição de senha é inválido ou expirou.');
+          setError('O link de redefinição de senha é inválido ou expirou. Por favor, solicite um novo link.');
           setCheckingLink(false);
           return;
         }
@@ -115,7 +104,6 @@ const ResetPassword: React.FC = () => {
         
         if (!hash || hash === '#') {
           // Se não temos o hash com o token na URL, verificamos se há uma sessão ativa
-          // que foi criada pelo processo de redefinição de senha
           const { data, error } = await supabase.auth.getSession();
           
           if (error || !data.session) {
