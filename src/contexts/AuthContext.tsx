@@ -387,12 +387,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  // Atualize a função resetPassword no seu AuthContext.tsx
-
-// Na função resetPassword, atualize a URL de redirecionamento
 const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
   try {
     console.log('Requesting password reset for:', email);
+    
+    // Primeiro, verificar se o e-mail existe no banco de dados
+    const { data: userExists, error: userCheckError } = await supabase
+      .from(TABLES.USERS)
+      .select('id')
+      .eq('email', email)
+      .single();
+    
+    if (userCheckError || !userExists) {
+      console.error('User not found in database:', email);
+      return { 
+        success: false, 
+        error: 'E-mail não encontrado no sistema. Verifique se digitou corretamente ou entre em contato com o suporte.' 
+      };
+    }
+    
+    console.log('User found in database, proceeding with password reset');
     
     // URL completa com protocolo e caminho correto
     const baseUrl = window.location.origin;
