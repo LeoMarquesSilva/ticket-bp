@@ -387,39 +387,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  // Nova função para redefinição de senha
-  const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
-    try {
-      console.log('Requesting password reset for:', email);
-      
-      // Verificar se o e-mail existe no sistema
-      const { data: userExists, error: userCheckError } = await supabase
-        .from(TABLES.USERS)
-        .select('id')
-        .eq('email', email)
-        .single();
-      
-      if (userCheckError || !userExists) {
-        console.log('Email not found in system:', email);
-        // Não informamos ao usuário que o e-mail não existe por questões de segurança
-      }
-      
-      // Enviar e-mail de redefinição de senha usando o Supabase Auth
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-      
-      if (error) {
-        console.error('Password reset error:', error);
-        return { success: false, error: error.message };
-      }
-      
-      return { success: true, error: null };
-    } catch (error: any) {
-      console.error('Password reset error:', error);
-      return { success: false, error: error.message || 'Erro ao solicitar redefinição de senha' };
+  // Atualize a função resetPassword para usar a URL correta
+const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
+  try {
+    console.log('Requesting password reset for:', email);
+    
+    // Verificar se o e-mail existe no sistema
+    const { data: userExists, error: userCheckError } = await supabase
+      .from(TABLES.USERS)
+      .select('id')
+      .eq('email', email)
+      .single();
+    
+    if (userCheckError || !userExists) {
+      console.log('Email not found in system:', email);
+      // Não informamos ao usuário que o e-mail não existe por questões de segurança
     }
-  };
+    
+    // URL completa com protocolo e caminho correto
+    const resetUrl = 'https://ticket-bp.vercel.app/#/reset-password';
+    
+    // Enviar e-mail de redefinição de senha usando o Supabase Auth
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: resetUrl,
+    });
+    
+    if (error) {
+      console.error('Password reset error:', error);
+      return { success: false, error: error.message };
+    }
+    
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error('Password reset error:', error);
+    return { success: false, error: error.message || 'Erro ao solicitar redefinição de senha' };
+  }
+};
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout, resetPassword, loading }}>
