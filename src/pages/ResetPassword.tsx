@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,34 +11,93 @@ import { toast } from 'sonner';
 
 const ResetPassword: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [validLink, setValidLink] = useState(true);
+  const [validLink, setValidLink] = useState(false);
+  const [checkingLink, setCheckingLink] = useState(true);
 
   useEffect(() => {
     // Verificar se o link de redefinição é válido
     const checkResetLink = async () => {
       try {
-        // O Supabase automaticamente verifica a validade do token na URL
-        const { data, error } = await supabase.auth.getSession();
+        setCheckingLink(true);
+        console.log('Checking reset password link validity');
         
-        if (error || !data.session) {
-          console.error('Invalid reset password link:', error);
-          setValidLink(false);
-          setError('O link de redefinição de senha é inválido ou expirou.');
+        // Extrair o hash da URL
+        const hash = location.hash;
+        console.log('URL hash:', hash);
+        
+        if (!hash || !hash.includes('access_token=')) {
+          // Se não temos o hash com o token na URL, verificamos se há uma sessão ativa
+          // que foi criada pelo processo de redefinição de senha
+          const { data, error } = await supabase.auth.getSession();
+          
+          if (error || !data.session) {
+            console.error('No valid session or token:', error);
+            setValidLink(false);
+            setError('O link de redefinição de senha é inválido ou expirou.');
+          } else {
+            console.log('Valid session found');
+            setValidLink(true);
+          }
+        } else {
+          // Se temos um hash com token, vamos tentar processar
+          try {
+            // Extrair o token do hash
+            const accessToken = hash.split('access_token=')[1]?.split('&')[0];
+            const refreshToken = hash.split('refresh_token=')[1]?.split('&')[0];
+            const type = hash.split('type=')[1]?.split('&')[0];
+            
+            if (accessToken && type === 'recovery') {
+              console.log('Found recovery token, setting session');
+              
+              // Definir a sessão com o token
+              const { data, error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken || ''
+              });
+              
+              if (error) {
+                console.error('Error setting session:', error);
+                setValidLink(false);
+                setError('O token de redefinição de senha é inválido.');
+              } else if (data.session) {
+                console.log('Session set successfully');
+                setValidLink(true);
+                
+                // Limpar o hash da URL para segurança
+                window.history.replaceState({}, document.title, window.location.pathname);
+              } else {
+                setValidLink(false);
+                setError('Não foi possível estabelecer uma sessão válida.');
+              }
+            } else {
+              console.error('Missing token or not recovery type');
+              setValidLink(false);
+              setError('Link de redefinição inválido.');
+            }
+          } catch (parseError) {
+            console.error('Error parsing hash parameters:', parseError);
+            setValidLink(false);
+            setError('Erro ao processar o link de redefinição.');
+          }
         }
       } catch (error) {
         console.error('Error checking reset link:', error);
         setValidLink(false);
         setError('Ocorreu um erro ao verificar o link de redefinição de senha.');
+      } finally {
+        setCheckingLink(false);
       }
     };
 
     checkResetLink();
-  }, []);
+  }, [location.hash]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +122,7 @@ const ResetPassword: React.FC = () => {
     setSuccess('');
     
     try {
+      console.log('Updating password');
       const { error } = await supabase.auth.updateUser({ password });
       
       if (error) {
@@ -70,12 +130,16 @@ const ResetPassword: React.FC = () => {
         setError(error.message);
         toast.error(error.message);
       } else {
+        console.log('Password updated successfully');
         setSuccess('Senha redefinida com sucesso! Redirecionando para o login...');
         toast.success('Senha redefinida com sucesso!');
         
         // Redirecionar para a página de login após alguns segundos
         setTimeout(() => {
-          navigate('/login');
+          // Fazer logout para limpar a sessão de recuperação
+          supabase.auth.signOut().then(() => {
+            navigate('/login');
+          });
         }, 3000);
       }
     } catch (error: any) {
@@ -86,6 +150,18 @@ const ResetPassword: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Mostrar tela de carregamento enquanto verifica o link
+  if (checkingLink) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0c1621] to-[#1a2a3a]">
+        <div className="text-center">
+          <RefreshCw className="h-10 w-10 animate-spin text-[#D5B170] mx-auto mb-4" />
+          <p className="text-lg text-white/80">Verificando link de redefinição...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0c1621] to-[#1a2a3a] p-4">
