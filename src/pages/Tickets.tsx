@@ -15,6 +15,7 @@ import TicketChatPanel from '@/components/TicketChatPanel';
 import SimpleTicketCard from '@/components/SimpleTicketCard';
 import OnlineUsersList from '@/components/OnlineUsersList';
 import TicketFilters from '@/components/TicketFilters';
+import CreateTicketModal from '@/components/CreateTicketModal'; // Importação do novo componente
 
 interface SupportUser {
   id: string;
@@ -75,6 +76,9 @@ const Tickets = () => {
   
   // Verificar se o usuário é admin ou lawyer para mostrar a lista de usuários online
   const shouldShowOnlineUsers = user?.role === 'admin' || user?.role === 'lawyer';
+  
+  // Verificar se o usuário é "user" para mostrar o modal em vez do formulário embutido
+  const shouldUseModal = user?.role === 'user';
 
   useEffect(() => {
     loadTickets();
@@ -524,18 +528,18 @@ const Tickets = () => {
   const handleCreateTicket = async (ticketData: CreateTicketData) => {
     if (!user) return;
 
-  try {
-    console.log('Creating ticket:', ticketData);
-    const newTicket = await TicketService.createTicket({
-      title: ticketData.title,
-      description: ticketData.description,
-      category: ticketData.category,
-      subcategory: ticketData.subcategory,
-      createdBy: user.id,
-      createdByName: user.name,
-      createdByDepartment: user.department, // Adicionando o departamento do usuário
-    });
-      
+    try {
+      console.log('Creating ticket:', ticketData);
+      const newTicket = await TicketService.createTicket({
+        title: ticketData.title,
+        description: ticketData.description,
+        category: ticketData.category,
+        subcategory: ticketData.subcategory,
+        createdBy: user.id,
+        createdByName: user.name,
+        createdByDepartment: user.department, // Adicionando o departamento do usuário
+      });
+        
       console.log('Ticket created:', newTicket);
       
       if (newTicket && newTicket.id) {
@@ -868,38 +872,47 @@ const Tickets = () => {
   };
 
   return (
-<div className="h-screen flex flex-col overflow-hidden">
-  {/* Cabeçalho com filtros e botões - altura fixa */}
-  <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm w-full">
-    <TicketHeader
-      view={view}
-      setView={handleViewChange}
-      setShowCreateForm={setShowCreateForm}
-      supportUsers={supportUsers}
-      user={user}
-      onlineUsersCount={getOnlineStaff().length}
-    />
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* Cabeçalho com filtros e botões - altura fixa */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm w-full">
+        <TicketHeader
+          view={view}
+          setView={handleViewChange}
+          setShowCreateForm={setShowCreateForm}
+          supportUsers={supportUsers}
+          user={user}
+          onlineUsersCount={getOnlineStaff().length}
+        />
 
-    {/* Filtros sempre visíveis */}
-    <div className="px-4 pb-4">
-      <TicketFilters
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        priorityFilter={priorityFilter}
-        setPriorityFilter={setPriorityFilter}
-        assignedFilter={assignedFilter}
-        setAssignedFilter={setAssignedFilter}
-        userFilter={userFilter}
-        setUserFilter={setUserFilter}
-        supportUsers={supportUsers}
-        isSupport={user?.role === 'admin' || user?.role === 'lawyer' || user?.role === 'support'}
-      />
-    </div>
+        {/* Filtros sempre visíveis */}
+        <div className="px-4 pb-4">
+          <TicketFilters
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            priorityFilter={priorityFilter}
+            setPriorityFilter={setPriorityFilter}
+            assignedFilter={assignedFilter}
+            setAssignedFilter={setAssignedFilter}
+            userFilter={userFilter}
+            setUserFilter={setUserFilter}
+            supportUsers={supportUsers}
+            isSupport={user?.role === 'admin' || user?.role === 'lawyer' || user?.role === 'support'}
+          />
+        </div>
 
-        {/* Formulário de criação de ticket */}
-        {showCreateForm && (
+        {/* Modal para criação de ticket (para usuários comuns) */}
+        {shouldUseModal && (
+          <CreateTicketModal
+            isOpen={showCreateForm}
+            onClose={() => setShowCreateForm(false)}
+            onSubmit={handleCreateTicket}
+          />
+        )}
+
+        {/* Formulário de criação de ticket embutido (para admin, support, lawyer) */}
+        {!shouldUseModal && showCreateForm && (
           <div className="px-4 pb-4 border-b border-slate-200 w-full">
             <TicketForm onSubmit={handleCreateTicket} onCancel={() => setShowCreateForm(false)} />
           </div>

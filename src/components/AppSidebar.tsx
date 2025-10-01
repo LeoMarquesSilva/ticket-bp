@@ -4,7 +4,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { 
   LayoutDashboard, 
   Ticket, 
-  MessageSquare, 
   Settings,
   UserPlus,
   LogOut,
@@ -63,18 +62,12 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
       roles: ["user", "support", "admin", "lawyer"],
       badge: pendingTickets > 0 ? pendingTickets : null
     },
-    {
-      name: "Chat",
-      href: "/chat",
-      icon: <MessageSquare className="h-5 w-5" />,
-      roles: ["user", "support", "admin", "lawyer"],
-      badge: unreadMessages > 0 ? unreadMessages : null
-    },
+    // Removido o item "Chat" conforme solicitado
     {
       name: "Relatórios",
       href: "/reports",
       icon: <BarChart3 className="h-5 w-5" />,
-      roles: ["admin", "lawyer"],
+      roles: ["admin"], // Removido "lawyer" conforme solicitado
       badge: null
     },
     {

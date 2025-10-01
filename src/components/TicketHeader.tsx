@@ -51,7 +51,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
               </div>
             )}
             
-            {/* Botão para criar novo ticket */}
+            {/* Botão para criar novo ticket - APENAS para usuários comuns */}
             {user?.role === 'user' && (
               <Button
                 onClick={() => setShowCreateForm(true)}
@@ -128,19 +128,8 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
           )}
         </div>
         
-        <Separator orientation="vertical" className="h-8 mx-2" />
-        
-        {/* Botão para criar novo ticket (para usuários que não são clientes) */}
-        {user?.role !== 'user' && (
-          <Button
-            onClick={() => setShowCreateForm(true)}
-            size="sm"
-            className="bg-[#D5B170] hover:bg-[#c9a25e] text-[#101F2E] font-medium"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Ticket
-          </Button>
-        )}
+        {/* Removido o botão "Novo Ticket" da barra de ferramentas para outros usuários */}
+        {/* Agora o botão só aparecerá no cabeçalho principal para usuários com role "user" */}
       </div>
     </div>
   );
