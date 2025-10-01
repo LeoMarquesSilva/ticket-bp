@@ -22,6 +22,28 @@ const ResetPassword: React.FC = () => {
   const [checkingLink, setCheckingLink] = useState(true);
 
   useEffect(() => {
+    // Função para extrair parâmetros do hash da URL
+    const getHashParams = (hash: string) => {
+      const params: Record<string, string> = {};
+      
+      if (!hash || hash === '#') return params;
+      
+      // Remover o # inicial se existir
+      const hashContent = hash.startsWith('#') ? hash.substring(1) : hash;
+      
+      // Dividir os parâmetros
+      const paramPairs = hashContent.split('&');
+      
+      for (const pair of paramPairs) {
+        const [key, value] = pair.split('=');
+        if (key && value) {
+          params[key] = decodeURIComponent(value);
+        }
+      }
+      
+      return params;
+    };
+
     // Verificar se o link de redefinição é válido
     const checkResetLink = async () => {
       try {
@@ -32,7 +54,7 @@ const ResetPassword: React.FC = () => {
         const hash = location.hash;
         console.log('URL hash:', hash);
         
-        if (!hash || !hash.includes('access_token=')) {
+        if (!hash || hash === '#') {
           // Se não temos o hash com o token na URL, verificamos se há uma sessão ativa
           // que foi criada pelo processo de redefinição de senha
           const { data, error } = await supabase.auth.getSession();
@@ -48,10 +70,13 @@ const ResetPassword: React.FC = () => {
         } else {
           // Se temos um hash com token, vamos tentar processar
           try {
-            // Extrair o token do hash
-            const accessToken = hash.split('access_token=')[1]?.split('&')[0];
-            const refreshToken = hash.split('refresh_token=')[1]?.split('&')[0];
-            const type = hash.split('type=')[1]?.split('&')[0];
+            // Extrair parâmetros do hash
+            const params = getHashParams(hash);
+            console.log('Hash params:', params);
+            
+            const accessToken = params.access_token;
+            const refreshToken = params.refresh_token;
+            const type = params.type;
             
             if (accessToken && type === 'recovery') {
               console.log('Found recovery token, setting session');
@@ -77,7 +102,7 @@ const ResetPassword: React.FC = () => {
                 setError('Não foi possível estabelecer uma sessão válida.');
               }
             } else {
-              console.error('Missing token or not recovery type');
+              console.error('Missing token or not recovery type:', { accessToken, type });
               setValidLink(false);
               setError('Link de redefinição inválido.');
             }

@@ -405,7 +405,8 @@ const resetPassword = async (email: string): Promise<{ success: boolean; error: 
     }
     
     // URL completa com protocolo e caminho correto
-    const resetUrl = 'https://ticket-bp.vercel.app/#/reset-password';
+    // Nota: Não use hash (#) na URL de redirecionamento
+    const resetUrl = 'https://ticket-bp.vercel.app/reset-password';
     
     // Enviar e-mail de redefinição de senha usando o Supabase Auth
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
