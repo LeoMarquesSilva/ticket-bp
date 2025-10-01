@@ -387,21 +387,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
+  // Atualize a função resetPassword no seu AuthContext.tsx
+
+const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
   try {
     console.log('Requesting password reset for:', email);
-    
-    // Verificar se o e-mail existe no sistema
-    const { data: userExists, error: userCheckError } = await supabase
-      .from(TABLES.USERS)
-      .select('id')
-      .eq('email', email)
-      .single();
-    
-    if (userCheckError || !userExists) {
-      console.log('Email not found in system:', email);
-      // Não informamos ao usuário que o e-mail não existe por questões de segurança
-    }
     
     // URL completa com protocolo e caminho correto
     // Use a URL base do site atual

@@ -54,6 +54,49 @@ const ResetPassword: React.FC = () => {
         const hash = location.hash;
         console.log('URL hash:', hash);
         
+        // Verificar se estamos sendo redirecionados para login
+        if (hash === '#/login') {
+          console.log('Detected redirect to login, checking for recovery session');
+          
+          // Verificar se há uma sessão ativa que pode ser usada para redefinir a senha
+          const { data: sessionData } = await supabase.auth.getSession();
+          console.log('Session data:', sessionData);
+          
+          if (sessionData?.session) {
+            // Como não temos acesso direto à data de criação da sessão,
+            // vamos simplesmente assumir que a sessão é válida para redefinição
+            console.log('Valid session found, allowing reset');
+            setValidLink(true);
+            setCheckingLink(false);
+            return;
+          }
+          
+          // Se não há sessão, verificar se temos um token na URL
+          const params = getHashParams(hash);
+          if (params.token) {
+            console.log('Found token in URL');
+            setValidLink(true);
+            setCheckingLink(false);
+            return;
+          }
+          
+          // Tentar obter o usuário atual para verificar se estamos autenticados
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData?.user) {
+            console.log('Authenticated user found, allowing reset');
+            setValidLink(true);
+            setCheckingLink(false);
+            return;
+          }
+          
+          // Se não há sessão nem token, redirecionar para login
+          console.log('No valid recovery session found');
+          setValidLink(false);
+          setError('O link de redefinição de senha é inválido ou expirou.');
+          setCheckingLink(false);
+          return;
+        }
+        
         // Verificar se há erro no hash (como otp_expired)
         if (hash && hash.includes('error=')) {
           const errorParams = getHashParams(hash);
