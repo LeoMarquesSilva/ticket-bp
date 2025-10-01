@@ -387,8 +387,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  // Atualize a função resetPassword para usar a URL correta
-const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
+  const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
   try {
     console.log('Requesting password reset for:', email);
     
@@ -405,8 +404,11 @@ const resetPassword = async (email: string): Promise<{ success: boolean; error: 
     }
     
     // URL completa com protocolo e caminho correto
-    // Nota: Não use hash (#) na URL de redirecionamento
-    const resetUrl = 'https://ticket-bp.vercel.app/reset-password';
+    // Use a URL base do site atual
+    const baseUrl = window.location.origin;
+    const resetUrl = `${baseUrl}/reset-password`;
+    
+    console.log('Reset URL:', resetUrl);
     
     // Enviar e-mail de redefinição de senha usando o Supabase Auth
     const { error } = await supabase.auth.resetPasswordForEmail(email, {

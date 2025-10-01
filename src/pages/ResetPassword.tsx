@@ -54,6 +54,22 @@ const ResetPassword: React.FC = () => {
         const hash = location.hash;
         console.log('URL hash:', hash);
         
+        // Verificar se há erro no hash (como otp_expired)
+        if (hash && hash.includes('error=')) {
+          const errorParams = getHashParams(hash);
+          console.log('Error params:', errorParams);
+          
+          if (errorParams.error_code === 'otp_expired') {
+            setError('O link de redefinição de senha expirou. Por favor, solicite um novo link.');
+          } else {
+            setError(errorParams.error_description || 'Link de redefinição inválido.');
+          }
+          
+          setValidLink(false);
+          setCheckingLink(false);
+          return;
+        }
+        
         if (!hash || hash === '#') {
           // Se não temos o hash com o token na URL, verificamos se há uma sessão ativa
           // que foi criada pelo processo de redefinição de senha
