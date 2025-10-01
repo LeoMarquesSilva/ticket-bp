@@ -14,6 +14,7 @@ import TicketList from '@/components/TicketList';
 import TicketChatPanel from '@/components/TicketChatPanel';
 import SimpleTicketCard from '@/components/SimpleTicketCard';
 import OnlineUsersList from '@/components/OnlineUsersList';
+import TicketFilters from '@/components/TicketFilters';
 
 interface SupportUser {
   id: string;
@@ -523,16 +524,17 @@ const Tickets = () => {
   const handleCreateTicket = async (ticketData: CreateTicketData) => {
     if (!user) return;
 
-    try {
-      console.log('Creating ticket:', ticketData);
-      const newTicket = await TicketService.createTicket({
-        title: ticketData.title,
-        description: ticketData.description,
-        category: ticketData.category,
-        subcategory: ticketData.subcategory,
-        createdBy: user.id,
-        createdByName: user.name,
-      });
+  try {
+    console.log('Creating ticket:', ticketData);
+    const newTicket = await TicketService.createTicket({
+      title: ticketData.title,
+      description: ticketData.description,
+      category: ticketData.category,
+      subcategory: ticketData.subcategory,
+      createdBy: user.id,
+      createdByName: user.name,
+      createdByDepartment: user.department, // Adicionando o departamento do usuário
+    });
       
       console.log('Ticket created:', newTicket);
       
@@ -866,27 +868,35 @@ const Tickets = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      {/* Cabeçalho com filtros e botões - altura fixa */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm w-full">
-        <TicketHeader
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          priorityFilter={priorityFilter}
-          setPriorityFilter={setPriorityFilter}
-          assignedFilter={assignedFilter}
-          setAssignedFilter={setAssignedFilter}
-          userFilter={userFilter}
-          setUserFilter={setUserFilter}
-          view={view}
-          setView={handleViewChange}
-          setShowCreateForm={setShowCreateForm}
-          supportUsers={supportUsers}
-          user={user}
-          onlineUsersCount={getOnlineStaff().length}
-        />
+<div className="h-screen flex flex-col overflow-hidden">
+  {/* Cabeçalho com filtros e botões - altura fixa */}
+  <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm w-full">
+    <TicketHeader
+      view={view}
+      setView={handleViewChange}
+      setShowCreateForm={setShowCreateForm}
+      supportUsers={supportUsers}
+      user={user}
+      onlineUsersCount={getOnlineStaff().length}
+    />
+
+    {/* Filtros sempre visíveis */}
+    <div className="px-4 pb-4">
+      <TicketFilters
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        priorityFilter={priorityFilter}
+        setPriorityFilter={setPriorityFilter}
+        assignedFilter={assignedFilter}
+        setAssignedFilter={setAssignedFilter}
+        userFilter={userFilter}
+        setUserFilter={setUserFilter}
+        supportUsers={supportUsers}
+        isSupport={user?.role === 'admin' || user?.role === 'lawyer' || user?.role === 'support'}
+      />
+    </div>
 
         {/* Formulário de criação de ticket */}
         {showCreateForm && (

@@ -5,25 +5,21 @@ export const isOnline = async (): Promise<boolean> => {
   // Primeiro verifica o estado do navegador
   if (!navigator.onLine) return false;
   
-  // Tenta fazer uma consulta simples para verificar a conexão real
-  try {
-    // Usar AbortController para implementar timeout manualmente
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-    
-    const { error } = await supabase
-      .from('_health')
-      .select('*')
-      .limit(1)
-      .abortSignal(controller.signal);
-    
-    // Limpar o timeout
-    clearTimeout(timeoutId);
-    
-    return !error;
-  } catch (e) {
-    return false;
-  }
+ // Tenta fazer uma consulta simples para verificar a conexão real
+try {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
+  
+  const { error } = await supabase.from('_health')
+    .select('*')
+    .limit(1)
+    .abortSignal(controller.signal);
+  
+  clearTimeout(timeoutId);
+  return !error;
+} catch (e) {
+  return false;
+}
 };
 
 // Função para executar uma operação com tentativas automáticas

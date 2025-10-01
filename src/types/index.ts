@@ -34,6 +34,7 @@ export interface Ticket {
   status: TicketStatus;
   createdBy: string;
   createdByName: string;
+  createdByDepartment?: string; // Adicionando o departamento do criador
   assignedTo?: string;
   assignedToName?: string;
   createdAt: string;

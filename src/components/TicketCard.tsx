@@ -125,6 +125,8 @@ const loadSupportUsers = async () => {
     switch (status) {
       case 'open':
         return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'assigned':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
       case 'in_progress':
         return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'resolved':
@@ -155,6 +157,8 @@ const loadSupportUsers = async () => {
     switch (status) {
       case 'open':
         return 'Aberto';
+      case 'assigned':
+        return 'Atribuído';
       case 'in_progress':
         return 'Em Andamento';
       case 'resolved':
@@ -170,6 +174,8 @@ const loadSupportUsers = async () => {
     switch (status) {
       case 'open':
         return <AlertCircle className="h-4 w-4" />;
+      case 'assigned':
+        return <UserCheck className="h-4 w-4" />;
       case 'in_progress':
         return <Clock className="h-4 w-4" />;
       case 'resolved':
@@ -195,8 +201,15 @@ const loadSupportUsers = async () => {
   };
 
   const handleAssign = (supportUserId: string) => {
-    if (supportUserId) {
-      onAssignTicket(ticket.id, supportUserId);
+    if (supportUserId === 'unassigned') {
+      onAssignTicket(ticket.id, '');
+    } else if (supportUserId) {
+      // Quando atribuímos um ticket, também atualizamos o status para "assigned" se estiver aberto
+      if (ticket.status === 'open') {
+        onUpdateTicket(ticket.id, { status: 'assigned', assignedTo: supportUserId });
+      } else {
+        onAssignTicket(ticket.id, supportUserId);
+      }
     }
   };
 
@@ -306,6 +319,7 @@ const loadSupportUsers = async () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="open">Aberto</SelectItem>
+                  <SelectItem value="assigned">Atribuído</SelectItem>
                   <SelectItem value="in_progress">Em Andamento</SelectItem>
                   <SelectItem value="resolved">Resolvido</SelectItem>
                   <SelectItem value="closed">Fechado</SelectItem>

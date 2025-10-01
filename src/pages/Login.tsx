@@ -6,17 +6,31 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Scale, RefreshCw, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
+import { Scale, RefreshCw, AlertCircle, CheckCircle2, Lock, Mail } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const Login: React.FC = () => {
-  const { user, login, loading } = useAuth();
+  const { user, login, loading, resetPassword } = useAuth();
   const navigate = useNavigate();
   
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  
+  // Reset password state
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -68,6 +82,33 @@ const Login: React.FC = () => {
       toast.error(error.message || 'Erro ao fazer login');
     } finally {
       setLoginLoading(false);
+    }
+  };
+
+  // Função para lidar com a solicitação de redefinição de senha
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail) {
+      toast.error('Por favor, informe seu e-mail');
+      return;
+    }
+
+    setResetLoading(true);
+
+    try {
+      const result = await resetPassword(resetEmail);
+      
+      if (result.success) {
+        toast.success('E-mail de redefinição de senha enviado com sucesso!');
+        setResetDialogOpen(false);
+        setResetEmail('');
+      } else if (result.error) {
+        toast.error(result.error);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao solicitar redefinição de senha');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -170,7 +211,59 @@ const Login: React.FC = () => {
               </Button>
             </form>
           </CardContent>
-          <CardFooter className="flex justify-center pt-0">
+          <CardFooter className="flex justify-center pt-0 flex-col gap-2">
+            <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="link" className="text-[#D5B170] hover:text-[#c4a05f] font-medium">
+                  Esqueci minha senha
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Recuperação de Senha</DialogTitle>
+                  <DialogDescription>
+                    Digite seu e-mail para receber um link de redefinição de senha.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="resetEmail" className="text-[#101F2E] font-medium">
+                      Email
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="resetEmail"
+                        type="email"
+                        placeholder="seu@email.com"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        disabled={resetLoading}
+                        className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] pl-10"
+                      />
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        <Mail className="h-4 w-4" />
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="submit"
+                      className="bg-[#D5B170] hover:bg-[#c4a05f] text-[#101F2E] font-medium"
+                      disabled={resetLoading}
+                    >
+                      {resetLoading ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        'Enviar link de recuperação'
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
             <p className="text-xs text-slate-500">
               Acesso restrito a usuários autorizados
             </p>

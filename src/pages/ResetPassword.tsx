@@ -1,0 +1,222 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Scale, RefreshCw, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
+import { toast } from 'sonner';
+
+const ResetPassword: React.FC = () => {
+  const navigate = useNavigate();
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [validLink, setValidLink] = useState(true);
+
+  useEffect(() => {
+    // Verificar se o link de redefinição é válido
+    const checkResetLink = async () => {
+      try {
+        // O Supabase automaticamente verifica a validade do token na URL
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error || !data.session) {
+          console.error('Invalid reset password link:', error);
+          setValidLink(false);
+          setError('O link de redefinição de senha é inválido ou expirou.');
+        }
+      } catch (error) {
+        console.error('Error checking reset link:', error);
+        setValidLink(false);
+        setError('Ocorreu um erro ao verificar o link de redefinição de senha.');
+      }
+    };
+
+    checkResetLink();
+  }, []);
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!password || !confirmPassword) {
+      setError('Por favor, preencha todos os campos');
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem');
+      return;
+    }
+    
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      
+      if (error) {
+        console.error('Reset password error:', error);
+        setError(error.message);
+        toast.error(error.message);
+      } else {
+        setSuccess('Senha redefinida com sucesso! Redirecionando para o login...');
+        toast.success('Senha redefinida com sucesso!');
+        
+        // Redirecionar para a página de login após alguns segundos
+        setTimeout(() => {
+          navigate('/login');
+        }, 3000);
+      }
+    } catch (error: any) {
+      console.error('Reset password error:', error);
+      setError(error.message || 'Erro ao redefinir senha');
+      toast.error(error.message || 'Erro ao redefinir senha');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0c1621] to-[#1a2a3a] p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-10">
+          <div className="flex items-center justify-center mb-6">
+            <div className="bg-gradient-to-r from-[#D5B170] to-[#e9d4a7] p-4 rounded-2xl shadow-2xl">
+              <Scale className="h-12 w-12 text-[#101F2E]" />
+            </div>
+          </div>
+          <h1 className="text-4xl font-bold text-white mb-3">Sistema de Tickets BP</h1>
+          <p className="text-[#D5B170] text-lg font-medium">Redefinição de Senha</p>
+        </div>
+
+        {error && (
+          <Alert className="mb-6 border-red-300 bg-red-50/90 backdrop-blur-sm shadow-lg">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {success && (
+          <Alert className="mb-6 border-green-300 bg-green-50/90 backdrop-blur-sm shadow-lg">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">{success}</AlertDescription>
+          </Alert>
+        )}
+
+        {validLink ? (
+          <Card className="shadow-2xl border-0 bg-white/90 backdrop-blur-md">
+            <CardHeader className="text-center pb-2">
+              <CardTitle className="text-2xl text-[#101F2E] font-bold">Redefinir Senha</CardTitle>
+              <CardDescription className="text-slate-600">
+                Digite sua nova senha abaixo
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleResetPassword} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-[#101F2E] font-medium">Nova Senha</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="Digite sua nova senha"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={loading}
+                      className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] pl-10 py-6"
+                    />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Lock className="h-4 w-4" />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword" className="text-[#101F2E] font-medium">Confirmar Senha</Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      placeholder="Confirme sua nova senha"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      disabled={loading}
+                      className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] pl-10 py-6"
+                    />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Lock className="h-4 w-4" />
+                    </div>
+                  </div>
+                </div>
+                <Button 
+                  type="submit" 
+                  className="w-full bg-gradient-to-r from-[#D5B170] to-[#e9d4a7] hover:from-[#c4a05f] hover:to-[#d8c396] text-[#101F2E] font-bold py-6 text-lg shadow-lg"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    'Redefinir Senha'
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+            <CardFooter className="flex justify-center pt-0">
+              <Button 
+                variant="link" 
+                className="text-[#D5B170] hover:text-[#c4a05f] font-medium"
+                onClick={() => navigate('/login')}
+              >
+                Voltar para o login
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : (
+          <Card className="shadow-2xl border-0 bg-white/90 backdrop-blur-md">
+            <CardHeader className="text-center pb-2">
+              <CardTitle className="text-2xl text-[#101F2E] font-bold">Link Inválido</CardTitle>
+              <CardDescription className="text-slate-600">
+                O link de redefinição de senha é inválido ou expirou.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center">
+              <p className="text-slate-600 mb-4">
+                Por favor, solicite um novo link de redefinição de senha na página de login.
+              </p>
+              <Button 
+                onClick={() => navigate('/login')}
+                className="bg-[#D5B170] hover:bg-[#c4a05f] text-[#101F2E] font-medium"
+              >
+                Voltar para o login
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="text-center mt-10 text-white/80">
+          <p className="text-sm">Sistema de Gerenciamento de Tickets Jurídicos</p>
+          <p className="text-xs mt-2 text-[#D5B170]">Desenvolvido pela Área de Operações Legais</p>
+        </div>
+      </div>
+      
+      {/* Elemento decorativo */}
+      <div className="absolute top-10 left-10 w-32 h-32 bg-[#D5B170]/10 rounded-full blur-3xl"></div>
+      <div className="absolute bottom-10 right-10 w-40 h-40 bg-[#D5B170]/10 rounded-full blur-3xl"></div>
+    </div>
+  );
+};
+
+export default ResetPassword;

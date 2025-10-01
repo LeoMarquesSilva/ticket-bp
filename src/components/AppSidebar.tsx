@@ -157,7 +157,7 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
 
   // Função segura para verificar se o usuário tem departamento
   const getUserDepartment = (user: User | null): string | undefined => {
-    return user ? user.department : undefined;
+    return user?.department;
   };
 
   const userDepartment = getUserDepartment(user);
@@ -166,6 +166,7 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
     <Sidebar 
       className={cn("border-r border-[#D5B170]/20", className)} 
       style={{ '--sidebar-width': '16rem' } as React.CSSProperties}
+      collapsible="icon" // Alterado para "icon" para permitir minimização
     >
       <SidebarHeader className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -203,7 +204,7 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
             <Avatar className="h-12 w-12 border-2 border-[#D5B170]/30 shadow-md">
               <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`} />
               <AvatarFallback className="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] text-white">
-                {user?.name?.charAt(0).toUpperCase()}
+                {user?.name?.charAt(0)?.toUpperCase() || '?'}
               </AvatarFallback>
             </Avatar>
             {!isCollapsed && (

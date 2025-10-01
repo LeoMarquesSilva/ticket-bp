@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
 import DatabaseManagement from '@/pages/DatabaseManagement';
+import ResetPassword from '@/pages/ResetPassword'; // Importando a nova página
 import { setupKeepAlive } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { InactivityDetector } from '@/components/InactivityDetector';
@@ -73,11 +74,12 @@ const ProtectedRoute = ({
 const AppRoutes = () => {
   const { user, loading } = useAuth();
 
-  // Mostrar página de login se não houver usuário e não estiver carregando
+  // Mostrar página de login ou reset de senha se não houver usuário e não estiver carregando
   if (!loading && !user) {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -99,6 +101,7 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/tickets" replace />} />
+      <Route path="/reset-password" element={<Navigate to="/tickets" replace />} />
       
       {/* Dashboard apenas para administradores */}
       <Route

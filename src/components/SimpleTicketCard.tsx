@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Lock, User, UserCheck } from 'lucide-react';
+import { Lock, User, UserCheck, Clock, Building2 } from 'lucide-react';
 import { Ticket } from '@/types';
 
 interface SimpleTicketCardProps {
@@ -23,6 +23,18 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   getStatusColor,
   isTicketFinalized
 }) => {
+  // Função para formatar a data e hora
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
     <Card 
       key={ticket.id} 
@@ -77,6 +89,15 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
             <User className="h-3 w-3 mr-1" />
             <span>Solicitante: <span className="font-medium">{ticket.createdByName}</span></span>
           </div>
+          
+          {/* Adicionando o departamento do solicitante */}
+          {ticket.createdByDepartment && (
+            <div className="flex items-center text-slate-600">
+              <Building2 className="h-3 w-3 mr-1" />
+              <span>Departamento: <span className="font-medium">{ticket.createdByDepartment}</span></span>
+            </div>
+          )}
+          
           <div className="flex items-center text-slate-600">
             <UserCheck className="h-3 w-3 mr-1" />
             <span>Atribuído: {ticket.assignedToName ? 
@@ -86,8 +107,10 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
           </div>
         </div>
         
+        {/* Data e hora de criação */}
         <div className="flex items-center justify-end text-xs text-slate-500">
-          <span>{new Date(ticket.createdAt).toLocaleDateString('pt-BR')}</span>
+          <Clock className="h-3 w-3 mr-1" />
+          <span>{formatDateTime(ticket.createdAt)}</span>
         </div>
       </CardContent>
     </Card>

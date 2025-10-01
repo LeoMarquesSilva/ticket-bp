@@ -13,6 +13,7 @@ export interface Ticket {
   status: 'open' | 'assigned' | 'in_progress' | 'resolved' | 'closed';
   createdBy: string;
   createdByName: string;
+  createdByDepartment?: string; // Adicionando o departamento do criador como opcional
   assignedTo?: string;
   assignedToName?: string; // Adicionando assignedToName que também está sendo usado
   assignedBy?: string;
@@ -53,6 +54,7 @@ export interface CreateTicketData {
   subcategory: string;
   createdBy: string;
   createdByName: string;
+  createdByDepartment?: string;
 }
 
 export interface UpdateTicketData {
@@ -86,7 +88,6 @@ export interface TicketFeedbackData {
   serviceScore: number;
   comment: string;
 }
-
 // Map frontend field names to database field names
 const mapToDatabase = (data: any) => {
   const mapped: any = {};
@@ -102,6 +103,7 @@ const mapToDatabase = (data: any) => {
   // Field name mappings
   if (data.createdBy !== undefined) mapped.created_by = data.createdBy;
   if (data.createdByName !== undefined) mapped.created_by_name = data.createdByName;
+  if (data.createdByDepartment !== undefined) mapped.created_by_department = data.createdByDepartment; // Corrigido: com "n"
   if (data.assignedTo !== undefined) mapped.assigned_to = data.assignedTo;
   if (data.assignedBy !== undefined) mapped.assigned_by = data.assignedBy;
   if (data.assignedToName !== undefined) mapped.assigned_to_name = data.assignedToName;
@@ -124,9 +126,13 @@ const mapToDatabase = (data: any) => {
   return mapped;
 };
 
-
-// Atualizar a função mapFromDatabase para incluir subcategory
 const mapFromDatabase = (data: any): Ticket => {
+  // Adicionando log para depuração
+  console.log('Dados do ticket do banco:', {
+    id: data.id,
+    department_field: data.created_by_department, // Corrigido: com "n"
+  });
+
   return {
     id: data.id,
     title: data.title,
@@ -137,6 +143,7 @@ const mapFromDatabase = (data: any): Ticket => {
     status: data.status,
     createdBy: data.created_by,
     createdByName: data.created_by_name,
+    createdByDepartment: data.created_by_department, // Corrigido: com "n"
     assignedTo: data.assigned_to,
     assignedToName: data.assigned_to_name,
     assignedBy: data.assigned_by,
@@ -668,34 +675,33 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
     }
   }
 
-  // Create a new ticket with automatic lawyer assignment
-  static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
+ // Create a new ticket with automatic lawyer assignment
+static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
   try {
     console.log('Creating ticket with data:', ticketData);
+    console.log('Department from user:', ticketData.createdByDepartment); // Log para verificar
     
     // Preparar os dados básicos do ticket
     const dbData = {
       ...mapToDatabase(ticketData),
       priority: 'medium', // Definindo prioridade padrão como média
-      status: 'open',
+      status: 'open', // Sempre iniciar como "open" (em aberto)
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
+    console.log('Database insert data:', dbData); // Log para verificar o mapeamento
+
     // Verificar se há um advogado disponível
     const availableLawyer = await UserService.getNextAvailableLawyer();
     
-    // Se houver um advogado online, atribuir o ticket a ele
+    // Se houver um advogado online, atribuir o ticket a ele, mas manter status como "open"
     if (availableLawyer) {
-      dbData.status = 'assigned';
+      // Não alterar o status aqui, mantê-lo como "open"
       dbData.assigned_to = availableLawyer.id;
-      // Remover esta linha se a coluna assigned_to_name não existir no banco de dados
-      // Se a coluna existe, mantenha esta linha
       dbData.assigned_to_name = availableLawyer.name;
       dbData.assigned_at = new Date().toISOString();
     }
-
-    console.log('Database insert data:', dbData);
 
     const { data, error } = await supabase
       .from(TABLES.TICKETS)
@@ -708,7 +714,7 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
       throw error;
     }
 
-    console.log('Created ticket data:', data);
+    console.log('Created ticket data from DB:', data); // Log para verificar o resultado
     return mapFromDatabase(data);
   } catch (error) {
     console.error('Error in createTicket:', error);
@@ -963,19 +969,18 @@ static async transferTicketWithUserLookup(ticketId: string, newSupportId: string
     };
   }
 
-// Substitua apenas o método subscribeToChatMessages no arquivo existente
 // Subscribe to chat messages (real-time) with status callback
 static subscribeToChatMessages(ticketId: string, callback: (payload: any) => void, statusCallback?: (status: string) => void) {
   console.log('Setting up chat subscription for ticket:', ticketId);
   
   try {
-    // Usar um ID de canal fixo para este ticket para evitar duplicações
-    const channelId = `chat-${ticketId}`;
+    // Usar um ID de canal único para este ticket
+    const channelId = `chat-${ticketId}-${Date.now()}`;
     
     // Limpar canais existentes para este ticket
     const existingChannels = supabase.getChannels().filter(ch => {
       const channelStr = ch.topic || '';
-      return channelStr.includes(`chat-${ticketId}`) || channelStr === channelId;
+      return channelStr.includes(`chat-${ticketId}`);
     });
     
     if (existingChannels.length > 0) {
@@ -983,7 +988,7 @@ static subscribeToChatMessages(ticketId: string, callback: (payload: any) => voi
       existingChannels.forEach(ch => supabase.removeChannel(ch));
     }
     
-    // Criar um novo canal com configuração simplificada
+    // Criar um novo canal
     const channel = supabase
       .channel(channelId)
       .on(
