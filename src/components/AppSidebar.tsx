@@ -35,6 +35,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { User } from '@/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import OnlineStatusToggle from '@/components/OnlineStatusToggle';
 
 interface AppSidebarProps {
   className?: string;
@@ -154,6 +155,7 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
   };
 
   const userDepartment = getUserDepartment(user);
+  const isStaff = user?.role === 'support' || user?.role === 'lawyer';
 
   return (
     <Sidebar 
@@ -220,6 +222,31 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
                   {userDepartment}
                 </Badge>
               </div>
+            </div>
+          )}
+          
+          {/* Toggle de status online/offline - APENAS para support e lawyer */}
+          {isStaff && (
+            <div className={cn(
+              "mt-3 p-2 rounded-lg bg-white/50 border border-[#D5B170]/10",
+              isCollapsed ? "flex justify-center" : ""
+            )}>
+              {isCollapsed ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <OnlineStatusToggle compact={true} />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Status de disponibilidade</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <OnlineStatusToggle compact={true} />
+              )}
             </div>
           )}
         </div>

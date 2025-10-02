@@ -1,233 +1,159 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { TicketService } from '@/services/ticketService';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { 
-  Users, 
-  Clock, 
-  CheckCircle, 
-  AlertTriangle, 
-  TrendingUp,
-  BarChart3,
-  Calendar,
-  MessageSquare,
-  Star,
-  ThumbsUp,
-  ThumbsDown,
-  PieChart,
-  Activity
+import {
+  Activity, AlertTriangle, ArrowDown, ArrowUp, BarChart, BarChart3, Calendar, CheckCircle, ChevronRight, Clock,
+  Layers, LineChart as LineChartIcon, MessageSquare, PieChart, RefreshCw, Star, ThumbsDown, ThumbsUp, TrendingUp,
+  User, Users
 } from 'lucide-react';
+import { getDashboardStats, STATUS_COLORS, COLORS } from '@/services/dashboardService';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart as RechartsPieChart, Pie, Cell, BarChart as RechartsBarChart, Bar, LineChart,
+  Line
+} from 'recharts';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
-import { ColoredProgress } from '@/components/ui/colored-progress';
+import { Badge } from '@/components/ui/badge';
+import { DateRange } from 'react-day-picker';
+import { DatePickerWithRange } from '@/components/ui/date-range-picker';
+import { format, subDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
-interface DashboardStats {
-  totalTickets: number;
-  openTickets: number;
-  inProgressTickets: number;
-  resolvedTickets: number;
-  closedTickets: number;
-  avgResolutionTime: number;
-  userSatisfaction: number;
-  npsScores: {
-    promoters: number;
-    passives: number;
-    detractors: number;
-    total: number;
-    score: number;
-  };
-  serviceScores: {
-    excellent: number;
-    good: number;
-    average: number;
-    poor: number;
-    total: number;
-    averageScore: number;
-  };
-  requestFulfillment: {
-    fulfilled: number;
-    notFulfilled: number;
-    total: number;
-    percentage: number;
-  };
-  recentFeedback: Array<{
-    id: string;
-    title: string;
-    npsScore?: number;
-    serviceScore?: number;
-    comment?: string;
-    requestFulfilled?: boolean;
-    createdAt: string;
-    resolvedAt?: string;
-  }>;
-}
-
-const Dashboard: React.FC = () => {
+const Dashboard = () => {
   const { user } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>({
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<any>({
     totalTickets: 0,
     openTickets: 0,
     inProgressTickets: 0,
     resolvedTickets: 0,
     closedTickets: 0,
     avgResolutionTime: 0,
-    userSatisfaction: 0,
-    npsScores: {
-      promoters: 0,
-      passives: 0,
-      detractors: 0,
-      total: 0,
-      score: 0
-    },
-    serviceScores: {
-      excellent: 0,
-      good: 0,
-      average: 0,
-      poor: 0,
-      total: 0,
-      averageScore: 0
-    },
-    requestFulfillment: {
-      fulfilled: 0,
-      notFulfilled: 0,
-      total: 0,
-      percentage: 0
-    },
+    ticketsOverTime: [],
+    categoryDistribution: [],
+    responseTimeByDay: [],
+    topUsers: [],
+    npsScores: { score: 0, promoters: 0, passives: 0, detractors: 0, total: 0 },
+    serviceScores: { averageScore: 0, excellent: 0, good: 0, average: 0, poor: 0, total: 0 },
+    requestFulfillment: { fulfilled: 0, notFulfilled: 0, percentage: 0 },
     recentFeedback: []
   });
-  const [loading, setLoading] = useState(true);
+  
   const [activeTab, setActiveTab] = useState('overview');
-  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [timeRange, setTimeRange] = useState('30');
+  
+  // Estado para o seletor de datas
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), parseInt(timeRange)),
+    to: new Date()
+  });
 
   useEffect(() => {
-    const loadDashboardData = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
+    const fetchDashboardData = async () => {
       try {
         setLoading(true);
         setError(null);
         
-        console.log("Carregando tickets para o usuário:", user.id);
-        // Get all tickets for the user
-        const tickets = await TicketService.getTickets(user.id, user.role);
-        console.log("Tickets carregados:", tickets.length);
+        let days = parseInt(timeRange);
+        let startDate, endDate;
         
-        // Calculate statistics
-        const totalTickets = tickets.length;
-        const openTickets = tickets.filter(t => t.status === 'open').length;
-        const inProgressTickets = tickets.filter(t => t.status === 'in_progress').length;
-        const resolvedTickets = tickets.filter(t => t.status === 'resolved').length;
-        const closedTickets = tickets.filter(t => t.status === 'closed').length;
+        if (dateRange?.from && dateRange?.to) {
+          // Calcular dias entre as datas selecionadas
+          const diffTime = Math.abs(dateRange.to.getTime() - dateRange.from.getTime());
+          days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          startDate = dateRange.from;
+          endDate = dateRange.to;
+        } else {
+          startDate = subDays(new Date(), days);
+          endDate = new Date();
+        }
         
-        // Calculate average resolution time (simplified)
-        const resolvedWithTime = tickets.filter(t => t.resolvedAt && t.createdAt);
-        const avgResolutionTime = resolvedWithTime.length > 0 
-          ? resolvedWithTime.reduce((acc, ticket) => {
-              const created = new Date(ticket.createdAt).getTime();
-              const resolved = new Date(ticket.resolvedAt!).getTime();
-              return acc + (resolved - created);
-            }, 0) / resolvedWithTime.length / (1000 * 60 * 60 * 24) // Convert to days
-          : 0;
-
-        // Calculate user satisfaction (simplified - based on NPS scores)
-        const ticketsWithNPS = tickets.filter(t => t.npsScore !== undefined);
-        const userSatisfaction = ticketsWithNPS.length > 0
-          ? ticketsWithNPS.reduce((acc, ticket) => acc + (ticket.npsScore || 0), 0) / ticketsWithNPS.length
-          : 0;
-
-        // Calculate NPS scores
-        const promoters = ticketsWithNPS.filter(t => (t.npsScore || 0) >= 9).length;
-        const passives = ticketsWithNPS.filter(t => (t.npsScore || 0) >= 7 && (t.npsScore || 0) <= 8).length;
-        const detractors = ticketsWithNPS.filter(t => (t.npsScore || 0) <= 6).length;
-        const npsTotal = ticketsWithNPS.length;
-        const npsScore = npsTotal > 0 
-          ? Math.round(((promoters - detractors) / npsTotal) * 100) 
-          : 0;
-
-        // Calculate service scores
-        const ticketsWithServiceScore = tickets.filter(t => t.serviceScore !== undefined);
-        const excellent = ticketsWithServiceScore.filter(t => (t.serviceScore || 0) >= 9).length;
-        const good = ticketsWithServiceScore.filter(t => (t.serviceScore || 0) >= 7 && (t.serviceScore || 0) <= 8).length;
-        const average = ticketsWithServiceScore.filter(t => (t.serviceScore || 0) >= 5 && (t.serviceScore || 0) <= 6).length;
-        const poor = ticketsWithServiceScore.filter(t => (t.serviceScore || 0) <= 4).length;
-        const serviceTotal = ticketsWithServiceScore.length;
-        const averageServiceScore = serviceTotal > 0
-          ? ticketsWithServiceScore.reduce((acc, ticket) => acc + (ticket.serviceScore || 0), 0) / serviceTotal
-          : 0;
-
-        // Calculate request fulfillment
-        const ticketsWithFeedback = tickets.filter(t => t.requestFulfilled !== undefined);
-        const fulfilled = ticketsWithFeedback.filter(t => t.requestFulfilled === true).length;
-        const notFulfilled = ticketsWithFeedback.filter(t => t.requestFulfilled === false).length;
-        const fulfillmentTotal = ticketsWithFeedback.length;
-        const fulfillmentPercentage = fulfillmentTotal > 0
-          ? Math.round((fulfilled / fulfillmentTotal) * 100)
-          : 0;
-
-        // Get recent feedback
-        const recentFeedback = tickets
-          .filter(t => t.npsScore !== undefined || t.serviceScore !== undefined || t.comment)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5)
-          .map(t => ({
-            id: t.id,
-            title: t.title,
-            npsScore: t.npsScore,
-            serviceScore: t.serviceScore,
-            comment: t.comment,
-            requestFulfilled: t.requestFulfilled,
-            createdAt: t.createdAt,
-            resolvedAt: t.resolvedAt
-          }));
-
-        setStats({
-          totalTickets,
-          openTickets,
-          inProgressTickets,
-          resolvedTickets,
-          closedTickets,
-          avgResolutionTime,
-          userSatisfaction,
-          npsScores: {
-            promoters,
-            passives,
-            detractors,
-            total: npsTotal,
-            score: npsScore
-          },
-          serviceScores: {
-            excellent,
-            good,
-            average,
-            poor,
-            total: serviceTotal,
-            averageScore: averageServiceScore
-          },
-          requestFulfillment: {
-            fulfilled,
-            notFulfilled,
-            total: fulfillmentTotal,
-            percentage: fulfillmentPercentage
-          },
-          recentFeedback
-        });
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
-        setError('Erro ao carregar dados. Tente novamente.');
+        // Usar a função correta getDashboardStats
+        const stats = await getDashboardStats(
+          days, 
+          user?.role === 'user' ? user.id : undefined,
+          startDate.toISOString(),
+          endDate.toISOString()
+        );
+        
+        setStats(stats);
+      } catch (err) {
+        console.error('Erro ao carregar dados do dashboard:', err);
+        setError('Não foi possível carregar os dados do dashboard. Tente novamente mais tarde.');
       } finally {
         setLoading(false);
       }
     };
 
-    loadDashboardData();
-  }, [user]);
+    fetchDashboardData();
+  }, [timeRange, refreshKey, user, dateRange]);
+
+  // Atualiza o timeRange quando o dateRange muda
+  useEffect(() => {
+    if (dateRange?.from && dateRange?.to) {
+      const diffTime = Math.abs(dateRange.to.getTime() - dateRange.from.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      setTimeRange(diffDays.toString());
+    }
+  }, [dateRange]);
+
+  // Função para gerar dados de tempo de resposta por dia da semana
+  const generateResponseTimeByDayData = (tickets: any[]) => {
+    const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    const dayData: Record<string, { count: number; totalTime: number }> = {};
+    
+    // Inicializar dados para cada dia da semana
+    dayNames.forEach(day => {
+      dayData[day] = { count: 0, totalTime: 0 };
+    });
+    
+    // Calcular tempo médio de resposta para cada dia
+    tickets.forEach(ticket => {
+      if (ticket.createdAt && ticket.firstResponseAt) {
+        const createdDate = new Date(ticket.createdAt);
+        const dayName = dayNames[createdDate.getDay()];
+        const responseTime = new Date(ticket.firstResponseAt).getTime() - createdDate.getTime();
+        const responseTimeHours = responseTime / (1000 * 60 * 60);
+        
+        dayData[dayName].count++;
+        dayData[dayName].totalTime += responseTimeHours;
+      }
+    });
+    
+    // Calcular a média para cada dia e formatar os dados
+    return dayNames.map(day => ({
+      day,
+      time: dayData[day].count > 0 ? Math.round((dayData[day].totalTime / dayData[day].count) * 10) / 10 : 0
+    }));
+  };
+
+  // Função para gerar dados dos usuários com mais tickets
+  const generateTopUsersData = (tickets: any[]) => {
+    const userCounts: Record<string, { name: string; tickets: number }> = {};
+    
+    tickets.forEach(ticket => {
+      const userName = ticket.createdByName || 'Usuário desconhecido';
+      const userId = ticket.createdBy || 'unknown';
+      const userKey = `${userId}-${userName}`;
+      
+      if (userCounts[userKey]) {
+        userCounts[userKey].tickets++;
+      } else {
+        userCounts[userKey] = { name: userName, tickets: 1 };
+      }
+    });
+    
+    // Ordenar e pegar os top 5
+    return Object.values(userCounts)
+      .sort((a, b) => b.tickets - a.tickets)
+      .slice(0, 5);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -244,19 +170,11 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-red-100 text-red-800';
-      case 'high':
-        return 'bg-orange-100 text-orange-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'low':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const getNpsScoreColor = (score?: number) => {
+    if (score === undefined) return 'text-slate-400';
+    if (score >= 9) return 'text-green-600';
+    if (score >= 7) return 'text-yellow-600';
+    return 'text-red-600';
   };
 
   const formatDate = (dateString?: string) => {
@@ -264,11 +182,82 @@ const Dashboard: React.FC = () => {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
-  const getNpsScoreColor = (score?: number) => {
-    if (score === undefined) return 'text-slate-400';
-    if (score >= 9) return 'text-green-600';
-    if (score >= 7) return 'text-yellow-600';
-    return 'text-red-600';
+  const handleRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+  };
+
+  // Componente para exibir a variação percentual
+  const PercentageChange = ({ current, previous }: { current: number, previous: number }) => {
+    if (previous === 0) return null;
+    
+    const percentChange = ((current - previous) / previous) * 100;
+    const isPositive = percentChange > 0;
+    
+    return (
+      <span className={`text-xs flex items-center ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+        {isPositive ? <ArrowUp className="h-3 w-3 mr-1" /> : <ArrowDown className="h-3 w-3 mr-1" />}
+        {Math.abs(percentChange).toFixed(1)}%
+      </span>
+    );
+  };
+
+  // Componente para cartão de estatística
+  const StatCard = ({ 
+    title, 
+    value, 
+    previousValue, 
+    icon, 
+    color = 'blue',
+    description 
+  }: { 
+    title: string; 
+    value: number | string; 
+    previousValue?: number; 
+    icon: React.ReactNode; 
+    color?: 'blue' | 'green' | 'yellow' | 'purple' | 'red'; 
+    description?: string;
+  }) => {
+    const colorClasses = {
+      blue: 'border-l-blue-500 from-blue-50 to-transparent',
+      green: 'border-l-green-500 from-green-50 to-transparent',
+      yellow: 'border-l-yellow-500 from-yellow-50 to-transparent',
+      purple: 'border-l-purple-500 from-purple-50 to-transparent',
+      red: 'border-l-red-500 from-red-50 to-transparent'
+    };
+    
+    const iconColorClasses = {
+      blue: 'text-blue-500',
+      green: 'text-green-500',
+      yellow: 'text-yellow-500',
+      purple: 'text-purple-500',
+      red: 'text-red-500'
+    };
+    
+    return (
+      <Card className={`border-l-4 ${colorClasses[color]} bg-gradient-to-r`}>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium text-slate-600">
+            {title}
+          </CardTitle>
+          <div className={iconColorClasses[color]}>
+            {icon}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-baseline">
+            <div className="text-2xl font-bold text-[#101F2E]">{value}</div>
+            {previousValue !== undefined && (
+              <div className="ml-2">
+                <PercentageChange current={typeof value === 'number' ? value : 0} previous={previousValue} />
+              </div>
+            )}
+          </div>
+          {description && (
+            <p className="text-xs text-slate-500 mt-1">{description}</p>
+          )}
+        </CardContent>
+      </Card>
+    );
   };
 
   if (loading) {
@@ -289,7 +278,7 @@ const Dashboard: React.FC = () => {
           <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-lg text-slate-600">{error}</p>
           <Button 
-            onClick={() => window.location.reload()}
+            onClick={handleRefresh}
             className="mt-4"
           >
             Tentar novamente
@@ -300,8 +289,8 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-6 py-6">
+      {/* Header com título e controles */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-[#101F2E]">Dashboard</h1>
@@ -312,224 +301,540 @@ const Dashboard: React.FC = () => {
             }
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Calendar className="h-4 w-4" />
-          <span>{new Date().toLocaleDateString('pt-BR')}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-sm text-slate-500 bg-white px-3 py-1 rounded-md border">
+            <Calendar className="h-4 w-4" />
+            <span>{new Date().toLocaleDateString('pt-BR')}</span>
+          </div>
+          
+          {(user?.role === 'admin' || user?.role === 'support') && (
+            <div className="flex items-center gap-2">
+              {/* Substituímos o Select por um DatePickerWithRange */}
+              <DatePickerWithRange 
+                date={dateRange} 
+                setDate={setDateRange} 
+                className="w-auto"
+                locale={ptBR}
+                placeholder="Selecione o período"
+              />
+              
+              <Button variant="outline" size="sm" onClick={handleRefresh}>
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Atualizar
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Exibir período selecionado */}
+      {dateRange?.from && dateRange?.to && (
+        <div className="text-sm text-slate-500">
+          Período selecionado: {format(dateRange.from, 'dd/MM/yyyy')} até {format(dateRange.to, 'dd/MM/yyyy')} ({timeRange} dias)
+        </div>
+      )}
+
+      {/* Cards de estatísticas principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Total de Tickets
-            </CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-[#101F2E]">{stats.totalTickets}</div>
-            <p className="text-xs text-slate-500 mt-1">
-              Todos os tickets no sistema
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-yellow-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Em Andamento
-            </CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-[#101F2E]">
-              {stats.openTickets + stats.inProgressTickets}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Abertos + Em progresso
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Resolvidos
-            </CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-[#101F2E]">{stats.resolvedTickets}</div>
-            <p className="text-xs text-slate-500 mt-1">
-              Tickets resolvidos
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-purple-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Taxa de Resolução
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-purple-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-[#101F2E]">
-              {stats.totalTickets > 0 
-                ? Math.round((stats.resolvedTickets / stats.totalTickets) * 100)
-                : 0
-              }%
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Tickets resolvidos vs total
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard 
+          title="Total de Tickets" 
+          value={stats.totalTickets} 
+          icon={<Users className="h-4 w-4" />} 
+          color="blue"
+          description="Todos os tickets no sistema"
+        />
+        
+        <StatCard 
+          title="Em Andamento" 
+          value={stats.openTickets + stats.inProgressTickets} 
+          icon={<Clock className="h-4 w-4" />} 
+          color="yellow"
+          description="Abertos + Em progresso"
+        />
+        
+        <StatCard 
+          title="Resolvidos" 
+          value={stats.resolvedTickets} 
+          icon={<CheckCircle className="h-4 w-4" />} 
+          color="green"
+          description="Tickets resolvidos"
+        />
+        
+        <StatCard 
+          title="Taxa de Resolução" 
+          value={`${stats.totalTickets > 0 
+            ? Math.round((stats.resolvedTickets / stats.totalTickets) * 100)
+            : 0}%`} 
+          icon={<TrendingUp className="h-4 w-4" />} 
+          color="purple"
+          description="Tickets resolvidos vs total"
+        />
       </div>
 
-      {/* Tabs for different dashboard views */}
+      {/* Tabs para diferentes visões do dashboard */}
       {(user?.role === 'support' || user?.role === 'admin') && (
-        <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-            <TabsTrigger value="nps">Dados NPS</TabsTrigger>
-            <TabsTrigger value="feedback">Feedback</TabsTrigger>
+        <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="bg-slate-100">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-white">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Visão Geral
+            </TabsTrigger>
+            <TabsTrigger value="performance" className="data-[state=active]:bg-white">
+              <LineChartIcon className="h-4 w-4 mr-2" />
+              Performance
+            </TabsTrigger>
+            <TabsTrigger value="satisfaction" className="data-[state=active]:bg-white">
+              <Star className="h-4 w-4 mr-2" />
+              Satisfação
+            </TabsTrigger>
+            <TabsTrigger value="feedback" className="data-[state=active]:bg-white">
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Feedback
+            </TabsTrigger>
           </TabsList>
           
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
-            {/* Performance Metrics */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5 text-[#D5B170]" />
-                    Métricas de Performance
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Tempo Médio de Resolução</span>
-                    <Badge variant="outline">
-                      {stats.avgResolutionTime > 0 
-                        ? `${stats.avgResolutionTime.toFixed(1)} dias`
-                        : 'N/A'
-                      }
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Satisfação do Usuário</span>
-                    <Badge variant="outline">
-                      {stats.userSatisfaction > 0 
-                        ? `${stats.userSatisfaction.toFixed(1)}/10`
-                        : 'N/A'
-                      }
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Tickets Fechados</span>
-                    <Badge variant="outline">{stats.closedTickets}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">NPS Score</span>
-                    <Badge 
-                      variant="outline"
-                      className={stats.npsScores.score >= 50 ? "bg-green-100 text-green-800 border-green-200" : 
-                              stats.npsScores.score >= 0 ? "bg-yellow-100 text-yellow-800 border-yellow-200" : 
-                              "bg-red-100 text-red-800 border-red-200"}
+          {/* Tab de Visão Geral */}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Gráfico de tickets ao longo do tempo */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <BarChart className="h-5 w-5 text-[#D5B170]" />
+                  Tickets ao Longo do Tempo
+                </CardTitle>
+                <CardDescription>
+                  Distribuição de tickets por status no período selecionado
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={stats.ticketsOverTime}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                     >
-                      {stats.npsScores.total > 0 ? `${stats.npsScores.score}` : 'N/A'}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis 
+                        dataKey="date" 
+                        tickFormatter={(date) => {
+                          const d = new Date(date);
+                          return `${d.getDate()}/${d.getMonth() + 1}`;
+                        }}
+                        padding={{ left: 10, right: 10 }}
+                      />
+                      <YAxis />
+                      <Tooltip 
+                        formatter={(value: number) => [value, 'Tickets']}
+                        labelFormatter={(label) => `Data: ${formatDate(label)}`}
+                        wrapperStyle={{ zIndex: 1000 }}
+                      />
+                      <Legend wrapperStyle={{ paddingTop: 15 }} />
+                      <Area 
+                        type="monotone" 
+                        dataKey="open" 
+                        name="Abertos" 
+                        stackId="1"
+                        stroke={STATUS_COLORS.open} 
+                        fill={STATUS_COLORS.open} 
+                        fillOpacity={0.6}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="inProgress" 
+                        name="Em Progresso" 
+                        stackId="1"
+                        stroke={STATUS_COLORS.in_progress} 
+                        fill={STATUS_COLORS.in_progress} 
+                        fillOpacity={0.6}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="resolved" 
+                        name="Resolvidos" 
+                        stackId="1"
+                        stroke={STATUS_COLORS.resolved} 
+                        fill={STATUS_COLORS.resolved} 
+                        fillOpacity={0.6}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="closed" 
+                        name="Fechados" 
+                        stackId="1"
+                        stroke={STATUS_COLORS.closed} 
+                        fill={STATUS_COLORS.closed} 
+                        fillOpacity={0.6}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
 
+            {/* Estatísticas de Status e Categorias */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Distribuição por Status */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5 text-[#D5B170]" />
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <PieChart className="h-5 w-5 text-[#D5B170]" />
                     Distribuição por Status
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Abertos</span>
-                    <Badge className={getStatusColor('open')}>
-                      {stats.openTickets}
-                    </Badge>
+                <CardContent>
+                  <div className="h-[250px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={[
+                            { name: 'Abertos', value: stats.openTickets },
+                            { name: 'Em Progresso', value: stats.inProgressTickets },
+                            { name: 'Resolvidos', value: stats.resolvedTickets },
+                            { name: 'Fechados', value: stats.closedTickets }
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        >
+                          <Cell key="open" fill={STATUS_COLORS.open} />
+                          <Cell key="in_progress" fill={STATUS_COLORS.in_progress} />
+                          <Cell key="resolved" fill={STATUS_COLORS.resolved} />
+                          <Cell key="closed" fill={STATUS_COLORS.closed} />
+                        </Pie>
+                        <Tooltip 
+                          formatter={(value) => [`${value} tickets`, '']}
+                          wrapperStyle={{ zIndex: 1000 }}
+                        />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Em Progresso</span>
-                    <Badge className={getStatusColor('in_progress')}>
-                      {stats.inProgressTickets}
-                    </Badge>
+                  <div className="flex flex-wrap justify-center gap-4 mt-4">
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
+                      <span className="text-sm">Abertos</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+                      <span className="text-sm">Em Progresso</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+                      <span className="text-sm">Resolvidos</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-gray-500 mr-2"></div>
+                      <span className="text-sm">Fechados</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Resolvidos</span>
-                    <Badge className={getStatusColor('resolved')}>
-                      {stats.resolvedTickets}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Fechados</span>
-                    <Badge className={getStatusColor('closed')}>
-                      {stats.closedTickets}
-                    </Badge>
+                </CardContent>
+              </Card>
+
+              {/* Distribuição por Categoria */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Layers className="h-5 w-5 text-[#D5B170]" />
+                    Distribuição por Categoria
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[250px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBarChart
+                        data={stats.categoryDistribution}
+                        layout="vertical"
+                        margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                        <XAxis type="number" />
+                        <YAxis 
+                          dataKey="name" 
+                          type="category" 
+                          width={80}
+                          tick={{ fontSize: 12 }}
+                        />
+                        <Tooltip 
+                          wrapperStyle={{ zIndex: 1000 }}
+                        />
+                        <Bar 
+                          dataKey="value" 
+                          name="Tickets" 
+                          fill="#D5B170"
+                          radius={[0, 4, 4, 0]}
+                        />
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-            {/* System Overview for Support/Admin */}
+            {/* Usuários com mais tickets */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-[#D5B170]" />
-                  Visão do Sistema
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <User className="h-5 w-5 text-[#D5B170]" />
+                  Usuários com Mais Tickets
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <div className="text-2xl font-bold text-[#101F2E] mb-1">
-                      {stats.openTickets}
+                <div className="h-[250px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsBarChart
+                      data={stats.topUsers}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis 
+                        dataKey="name" 
+                        tick={{ fontSize: 12 }}
+                        interval={0}
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis />
+                      <Tooltip 
+                        wrapperStyle={{ zIndex: 1000 }}
+                      />
+                      <Bar 
+                        dataKey="tickets" 
+                        name="Tickets" 
+                        fill="#3b82f6"
+                        radius={[4, 4, 0, 0]}
+                      >
+                        {stats.topUsers.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </RechartsBarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          {/* Tab de Performance */}
+          <TabsContent value="performance" className="space-y-6">
+            {/* Tempo Médio de Resposta por Dia */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Clock className="h-5 w-5 text-[#D5B170]" />
+                  Tempo Médio de Resposta por Dia
+                </CardTitle>
+                <CardDescription>
+                  Tempo médio (em horas) para primeira resposta por dia da semana
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={stats.responseTimeByDay}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="day" />
+                      <YAxis />
+                      <Tooltip 
+                        formatter={(value: number) => [`${value} horas`, 'Tempo de Resposta']}
+                        wrapperStyle={{ zIndex: 1000 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="time" 
+                        name="Tempo de Resposta" 
+                        stroke="#D5B170" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Métricas de Performance */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Tempo Médio de Resolução</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-4xl font-bold mb-2 text-[#D5B170]">
+                      {stats.avgResolutionTime > 0 
+                        ? `${stats.avgResolutionTime.toFixed(1)}`
+                        : 'N/A'
+                      }
                     </div>
-                    <div className="text-sm text-slate-600">Tickets Aguardando</div>
+                    <div className="text-sm text-slate-600">
+                      Dias em média para resolver um ticket
+                    </div>
                   </div>
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <div className="text-2xl font-bold text-[#101F2E] mb-1">
-                      {stats.inProgressTickets}
+                  
+                  <div className="mt-6">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Meta: 2 dias</span>
+                      <span>{stats.avgResolutionTime <= 2 ? 'Atingida' : 'Não atingida'}</span>
                     </div>
-                    <div className="text-sm text-slate-600">Em Atendimento</div>
+                    <Progress 
+                      value={Math.min(100, (stats.avgResolutionTime / 2) * 100)} 
+                      className="h-2" 
+                      indicatorClassName={stats.avgResolutionTime <= 2 ? "bg-green-500" : "bg-yellow-500"}
+                    />
                   </div>
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <div className="text-2xl font-bold text-[#101F2E] mb-1">
-                      {stats.totalTickets > 0 
-                        ? Math.round(((stats.resolvedTickets + stats.closedTickets) / stats.totalTickets) * 100)
-                        : 0
-                      }%
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Taxa de Atendimento</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-4xl font-bold mb-2 text-[#D5B170]">
+                      {stats.requestFulfillment.percentage}%
                     </div>
-                    <div className="text-sm text-slate-600">Taxa de Conclusão</div>
+                    <div className="text-sm text-slate-600">
+                      Solicitações atendidas
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Meta: 90%</span>
+                      <span>{stats.requestFulfillment.percentage >= 90 ? 'Atingida' : 'Não atingida'}</span>
+                    </div>
+                    <Progress 
+                      value={stats.requestFulfillment.percentage} 
+                      className="h-2" 
+                      indicatorClassName={stats.requestFulfillment.percentage >= 90 ? "bg-green-500" : "bg-yellow-500"}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Tickets Resolvidos</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-4xl font-bold mb-2 text-[#D5B170]">
+                      {stats.resolvedTickets}
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      Total de tickets resolvidos
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Meta: 70% do total</span>
+                      <span>
+                        {stats.totalTickets > 0 && (stats.resolvedTickets / stats.totalTickets) * 100 >= 70 
+                          ? 'Atingida' 
+                          : 'Não atingida'}
+                      </span>
+                    </div>
+                    <Progress 
+                      value={stats.totalTickets > 0 ? (stats.resolvedTickets / stats.totalTickets) * 100 : 0} 
+                      className="h-2" 
+                      indicatorClassName={(stats.totalTickets > 0 && (stats.resolvedTickets / stats.totalTickets) * 100 >= 70) 
+                        ? "bg-green-500" 
+                        : "bg-yellow-500"}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Estatísticas de Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Activity className="h-5 w-5 text-[#D5B170]" />
+                  Estatísticas de Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-blue-700">Abertos</h3>
+                      <div className="bg-blue-100 text-blue-700 rounded-full w-8 h-8 flex items-center justify-center">
+                        {Math.round((stats.openTickets / stats.totalTickets) * 100)}%
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold">{stats.openTickets}</p>
+                    <p className="text-sm text-blue-600 mt-1">Aguardando atendimento</p>
+                  </div>
+                  
+                  <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-yellow-700">Em Progresso</h3>
+                      <div className="bg-yellow-100 text-yellow-700 rounded-full w-8 h-8 flex items-center justify-center">
+                        {Math.round((stats.inProgressTickets / stats.totalTickets) * 100)}%
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold">{stats.inProgressTickets}</p>
+                    <p className="text-sm text-yellow-600 mt-1">Em atendimento</p>
+                  </div>
+                  
+                  <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-green-700">Resolvidos</h3>
+                      <div className="bg-green-100 text-green-700 rounded-full w-8 h-8 flex items-center justify-center">
+                        {Math.round((stats.resolvedTickets / stats.totalTickets) * 100)}%
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold">{stats.resolvedTickets}</p>
+                    <p className="text-sm text-green-600 mt-1">Solucionados</p>
+                  </div>
+                  
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-slate-700">Fechados</h3>
+                      <div className="bg-slate-100 text-slate-700 rounded-full w-8 h-8 flex items-center justify-center">
+                        {Math.round((stats.closedTickets / stats.totalTickets) * 100)}%
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold">{stats.closedTickets}</p>
+                    <p className="text-sm text-slate-600 mt-1">Finalizados</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
           
-          {/* NPS Tab */}
-          <TabsContent value="nps" className="space-y-4">
+          {/* Tab de Satisfação */}
+          <TabsContent value="satisfaction" className="space-y-6">
+            {/* NPS Score */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-lg">
                     <Star className="h-5 w-5 text-[#D5B170]" />
-                    Pontuação NPS
+                    Net Promoter Score (NPS)
                   </CardTitle>
+                  <CardDescription>
+                    Medida de satisfação e lealdade dos usuários
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="text-center">
-                    <div className="text-4xl font-bold mb-2">
+                    <div className={`text-5xl font-bold mb-2 ${
+                      stats.npsScores.score >= 50 ? "text-green-600" : 
+                      stats.npsScores.score >= 0 ? "text-yellow-600" : 
+                      "text-red-600"
+                    }`}>
                       {stats.npsScores.total > 0 ? stats.npsScores.score : 'N/A'}
                     </div>
                     <div className="text-sm text-slate-600">
@@ -540,35 +845,35 @@ const Dashboard: React.FC = () => {
                     </div>
                   </div>
                   
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex justify-between text-sm">
-                      <span className="text-green-600">Promotores</span>
+                      <span className="text-green-600 font-medium">Promotores (9-10)</span>
                       <span>{stats.npsScores.promoters} ({stats.npsScores.total > 0 ? Math.round((stats.npsScores.promoters / stats.npsScores.total) * 100) : 0}%)</span>
                     </div>
-                    <ColoredProgress 
+                    <Progress 
                       value={stats.npsScores.total > 0 ? (stats.npsScores.promoters / stats.npsScores.total) * 100 : 0} 
                       className="h-2 bg-slate-100" 
-                      color="green"
+                      indicatorClassName="bg-green-500"
                     />
                     
                     <div className="flex justify-between text-sm">
-                      <span className="text-yellow-600">Neutros</span>
+                      <span className="text-yellow-600 font-medium">Neutros (7-8)</span>
                       <span>{stats.npsScores.passives} ({stats.npsScores.total > 0 ? Math.round((stats.npsScores.passives / stats.npsScores.total) * 100) : 0}%)</span>
                     </div>
-                    <ColoredProgress 
+                    <Progress 
                       value={stats.npsScores.total > 0 ? (stats.npsScores.passives / stats.npsScores.total) * 100 : 0} 
                       className="h-2 bg-slate-100" 
-                      color="yellow"
+                      indicatorClassName="bg-yellow-500"
                     />
                     
                     <div className="flex justify-between text-sm">
-                      <span className="text-red-600">Detratores</span>
+                      <span className="text-red-600 font-medium">Detratores (0-6)</span>
                       <span>{stats.npsScores.detractors} ({stats.npsScores.total > 0 ? Math.round((stats.npsScores.detractors / stats.npsScores.total) * 100) : 0}%)</span>
                     </div>
-                    <ColoredProgress 
+                    <Progress 
                       value={stats.npsScores.total > 0 ? (stats.npsScores.detractors / stats.npsScores.total) * 100 : 0} 
                       className="h-2 bg-slate-100" 
-                      color="red"
+                      indicatorClassName="bg-red-500"
                     />
                   </div>
                 </CardContent>
@@ -576,14 +881,21 @@ const Dashboard: React.FC = () => {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-lg">
                     <ThumbsUp className="h-5 w-5 text-[#D5B170]" />
                     Satisfação do Serviço
                   </CardTitle>
+                  <CardDescription>
+                    Avaliação da qualidade do atendimento
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="text-center">
-                    <div className="text-4xl font-bold mb-2">
+                    <div className={`text-5xl font-bold mb-2 ${
+                      stats.serviceScores.averageScore >= 8 ? "text-green-600" : 
+                      stats.serviceScores.averageScore >= 6 ? "text-yellow-600" : 
+                      "text-red-600"
+                    }`}>
                       {stats.serviceScores.total > 0 ? stats.serviceScores.averageScore.toFixed(1) : 'N/A'}
                     </div>
                     <div className="text-sm text-slate-600">
@@ -594,91 +906,149 @@ const Dashboard: React.FC = () => {
                     </div>
                   </div>
                   
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex justify-between text-sm">
-                      <span className="text-green-600">Excelente (9-10)</span>
+                      <span className="text-green-600 font-medium">Excelente (9-10)</span>
                       <span>{stats.serviceScores.excellent} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.excellent / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <ColoredProgress 
+                    <Progress 
                       value={stats.serviceScores.total > 0 ? (stats.serviceScores.excellent / stats.serviceScores.total) * 100 : 0} 
                       className="h-2 bg-slate-100" 
-                      color="green"
+                      indicatorClassName="bg-green-500"
                     />
                     
                     <div className="flex justify-between text-sm">
-                      <span className="text-blue-600">Bom (7-8)</span>
+                      <span className="text-blue-600 font-medium">Bom (7-8)</span>
                       <span>{stats.serviceScores.good} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.good / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <ColoredProgress 
+                    <Progress 
                       value={stats.serviceScores.total > 0 ? (stats.serviceScores.good / stats.serviceScores.total) * 100 : 0} 
                       className="h-2 bg-slate-100" 
-                      color="blue"
+                      indicatorClassName="bg-blue-500"
                     />
                     
                     <div className="flex justify-between text-sm">
-                      <span className="text-yellow-600">Regular (5-6)</span>
+                      <span className="text-yellow-600 font-medium">Regular (5-6)</span>
                       <span>{stats.serviceScores.average} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.average / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <ColoredProgress 
+                    <Progress 
                       value={stats.serviceScores.total > 0 ? (stats.serviceScores.average / stats.serviceScores.total) * 100 : 0} 
                       className="h-2 bg-slate-100" 
-                      color="yellow"
+                      indicatorClassName="bg-yellow-500"
                     />
                     
                     <div className="flex justify-between text-sm">
-                      <span className="text-red-600">Ruim (1-4)</span>
+                      <span className="text-red-600 font-medium">Ruim (1-4)</span>
                       <span>{stats.serviceScores.poor} ({stats.serviceScores.total > 0 ? Math.round((stats.serviceScores.poor / stats.serviceScores.total) * 100) : 0}%)</span>
                     </div>
-                    <ColoredProgress 
+                    <Progress 
                       value={stats.serviceScores.total > 0 ? (stats.serviceScores.poor / stats.serviceScores.total) * 100 : 0} 
                       className="h-2 bg-slate-100" 
-                      color="red"
+                      indicatorClassName="bg-red-500"
                     />
                   </div>
                 </CardContent>
               </Card>
             </div>
 
+            {/* Atendimento de Solicitações */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <PieChart className="h-5 w-5 text-[#D5B170]" />
                   Atendimento de Solicitações
                 </CardTitle>
+                <CardDescription>
+                  Taxa de solicitações atendidas conforme expectativa do usuário
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600 mb-1">
-                      {stats.requestFulfillment.fulfilled}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-gradient-to-br from-green-50 to-transparent rounded-lg p-6 border border-green-100">
+                    <div className="flex flex-col items-center">
+                      <div className="text-3xl font-bold text-green-600 mb-2">
+                        {stats.requestFulfillment.fulfilled}
+                      </div>
+                      <div className="text-sm text-green-700 text-center">Solicitações Atendidas</div>
+                      <ThumbsUp className="h-6 w-6 text-green-500 mt-2" />
                     </div>
-                    <div className="text-sm text-slate-600">Solicitações Atendidas</div>
                   </div>
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <div className="text-2xl font-bold text-red-600 mb-1">
-                      {stats.requestFulfillment.notFulfilled}
+                  
+                  <div className="bg-gradient-to-br from-red-50 to-transparent rounded-lg p-6 border border-red-100">
+                    <div className="flex flex-col items-center">
+                      <div className="text-3xl font-bold text-red-600 mb-2">
+                        {stats.requestFulfillment.notFulfilled}
+                      </div>
+                      <div className="text-sm text-red-700 text-center">Solicitações Não Atendidas</div>
+                      <ThumbsDown className="h-6 w-6 text-red-500 mt-2" />
                     </div>
-                    <div className="text-sm text-slate-600">Solicitações Não Atendidas</div>
                   </div>
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <div className="text-2xl font-bold text-[#101F2E] mb-1">
-                      {stats.requestFulfillment.percentage}%
+                  
+                  <div className="bg-gradient-to-br from-blue-50 to-transparent rounded-lg p-6 border border-blue-100">
+                    <div className="flex flex-col items-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-2">
+                        {stats.requestFulfillment.percentage}%
+                      </div>
+                      <div className="text-sm text-blue-700 text-center">Taxa de Atendimento</div>
+                      <div className="w-full mt-2">
+                        <Progress 
+                          value={stats.requestFulfillment.percentage} 
+                          className="h-2 bg-slate-200" 
+                          indicatorClassName={
+                            stats.requestFulfillment.percentage >= 90 ? "bg-green-500" : 
+                            stats.requestFulfillment.percentage >= 70 ? "bg-yellow-500" : 
+                            "bg-red-500"
+                          }
+                        />
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-600">Taxa de Atendimento</div>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="text-sm font-medium text-slate-600 mb-2">Metas de Atendimento</h3>
+                  <div className="space-y-2">
+                   <div className="flex justify-between items-center">
+                      <span className="text-sm">Meta Mensal (90%)</span>
+                      <Badge variant={stats.requestFulfillment.percentage >= 90 ? "success" : "danger"}>
+                        {stats.requestFulfillment.percentage >= 90 ? "Atingida" : "Não atingida"}
+                      </Badge>
+                    </div>
+                    <Progress 
+                      value={stats.requestFulfillment.percentage} 
+                      className="h-1.5 bg-slate-100" 
+                      indicatorClassName={stats.requestFulfillment.percentage >= 90 ? "bg-green-500" : "bg-red-500"}
+                    />
+
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-sm">Meta Mínima (70%)</span>
+                        <Badge variant={stats.requestFulfillment.percentage >= 70 ? "success" : "danger"}>
+                          {stats.requestFulfillment.percentage >= 70 ? "Atingida" : "Não atingida"}
+                        </Badge>
+                    </div>
+                    <Progress 
+                      value={stats.requestFulfillment.percentage} 
+                      className="h-1.5 bg-slate-100" 
+                      indicatorClassName={stats.requestFulfillment.percentage >= 70 ? "bg-green-500" : "bg-red-500"}
+                    />
                   </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
           
-          {/* Feedback Tab */}
-          <TabsContent value="feedback" className="space-y-4">
+          {/* Tab de Feedback */}
+          <TabsContent value="feedback" className="space-y-6">
+            {/* Feedback Recente */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <MessageSquare className="h-5 w-5 text-[#D5B170]" />
                   Feedback Recente
                 </CardTitle>
+                <CardDescription>
+                  Últimos feedbacks recebidos dos usuários
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[400px] w-full pr-4">
@@ -687,57 +1057,63 @@ const Dashboard: React.FC = () => {
                       Nenhum feedback disponível
                     </div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ticket</TableHead>
-                          <TableHead>NPS</TableHead>
-                          <TableHead>Serviço</TableHead>
-                          <TableHead>Atendido</TableHead>
-                          <TableHead>Data</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {stats.recentFeedback.map((feedback) => (
-                          <TableRow key={feedback.id} className="cursor-pointer hover:bg-slate-50" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
-                            <TableCell className="font-medium">{feedback.title}</TableCell>
-                            <TableCell className={getNpsScoreColor(feedback.npsScore)}>
-                              {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
-                            </TableCell>
-                            <TableCell className={getNpsScoreColor(feedback.serviceScore)}>
-                              {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
-                            </TableCell>
-                            <TableCell>
-                              {feedback.requestFulfilled === undefined ? (
-                                <span className="text-slate-400">N/A</span>
-                              ) : feedback.requestFulfilled ? (
-                                <span className="text-green-600 flex items-center">
-                                  <ThumbsUp className="h-4 w-4 mr-1" /> Sim
-                                </span>
-                              ) : (
-                                <span className="text-red-600 flex items-center">
-                                  <ThumbsDown className="h-4 w-4 mr-1" /> Não
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-slate-500">
-                              {formatDate(feedback.resolvedAt)}
-                            </TableCell>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Ticket</TableHead>
+                            <TableHead className="text-center">NPS</TableHead>
+                            <TableHead className="text-center">Serviço</TableHead>
+                            <TableHead className="text-center">Atendido</TableHead>
+                            <TableHead className="text-right">Data</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {stats.recentFeedback.map((feedback) => (
+                            <TableRow key={feedback.id} className="cursor-pointer hover:bg-slate-50" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
+                              <TableCell className="font-medium">{feedback.title}</TableCell>
+                              <TableCell className={`text-center ${getNpsScoreColor(feedback.npsScore)}`}>
+                                {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
+                              </TableCell>
+                              <TableCell className={`text-center ${getNpsScoreColor(feedback.serviceScore)}`}>
+                                {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {feedback.requestFulfilled === undefined ? (
+                                  <span className="text-slate-400">N/A</span>
+                                ) : feedback.requestFulfilled ? (
+                                  <span className="text-green-600 flex items-center justify-center">
+                                    <ThumbsUp className="h-4 w-4 mr-1" /> Sim
+                                  </span>
+                                ) : (
+                                  <span className="text-red-600 flex items-center justify-center">
+                                    <ThumbsDown className="h-4 w-4 mr-1" /> Não
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-slate-500 text-right">
+                                {formatDate(feedback.resolvedAt)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </ScrollArea>
               </CardContent>
             </Card>
 
+            {/* Comentários dos Usuários */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <Activity className="h-5 w-5 text-[#D5B170]" />
                   Comentários dos Usuários
                 </CardTitle>
+                <CardDescription>
+                  Feedback textual fornecido pelos usuários
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[300px] w-full pr-4">
@@ -750,21 +1126,35 @@ const Dashboard: React.FC = () => {
                       {stats.recentFeedback
                         .filter(f => f.comment)
                         .map((feedback) => (
-                          <Card key={feedback.id} className="bg-slate-50">
+                          <Card key={feedback.id} className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
                             <CardContent className="p-4">
                               <div className="flex justify-between mb-2">
                                 <div className="font-medium">{feedback.title}</div>
                                 <div className="text-sm text-slate-500">{formatDate(feedback.resolvedAt)}</div>
                               </div>
                               <div className="flex items-center gap-2 mb-2">
-                                <Badge className={getNpsScoreColor(feedback.npsScore)}>
+                                <Badge className={getNpsScoreColor(feedback.npsScore)} variant="outline">
                                   NPS: {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
                                 </Badge>
-                                <Badge className={getNpsScoreColor(feedback.serviceScore)}>
+                                <Badge className={getNpsScoreColor(feedback.serviceScore)} variant="outline">
                                   Serviço: {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
                                 </Badge>
+                                {feedback.requestFulfilled !== undefined && (
+                                  feedback.requestFulfilled ? 
+                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                      <ThumbsUp className="h-3 w-3 mr-1" /> Atendido
+                                    </Badge> :
+                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                      <ThumbsDown className="h-3 w-3 mr-1" /> Não atendido
+                                    </Badge>
+                                )}
                               </div>
                               <p className="text-slate-700 text-sm">{feedback.comment}</p>
+                              <div className="mt-2 flex justify-end">
+                                <Button variant="ghost" size="sm" className="text-xs text-slate-500 hover:text-slate-800">
+                                  Ver detalhes <ChevronRight className="h-3 w-3 ml-1" />
+                                </Button>
+                              </div>
                             </CardContent>
                           </Card>
                         ))

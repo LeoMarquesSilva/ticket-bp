@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import AppSidebar from '@/components/AppSidebar';
-import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
+import Header from '@/components/Header';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -14,10 +13,8 @@ interface LayoutProps {
   onPageChange: (page: 'tickets' | 'dashboard' | 'users' | 'database') => void;
 }
 
-// Componente interno que usa o hook useSidebar
-const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user } = useAuth();
-  const { state } = useSidebar();
   const navigate = useNavigate();
   
   // Efeito para configurar as notificações em tempo real
@@ -90,32 +87,20 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   }, [user, navigate]);
   
   return (
-    <div className="flex min-h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
-      {/* Sidebar */}
-      <AppSidebar />
+    <div className="flex flex-col min-h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
+      {/* Header */}
+      <Header />
       
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col w-full transition-all duration-200 ${state === 'collapsed' ? 'md:ml-12' : ''}`}>
-        {/* Main Content - Usando toda a largura disponível */}
-        <main className="flex-1 w-full">
+      <main className="flex-1 w-full pt-4">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
           {children}
-        </main>
-        
-        {/* Adicionar o indicador de status de conexão */}
-        <ConnectionStatus />
-      </div>
+        </div>
+      </main>
+      
+      {/* Adicionar o indicador de status de conexão */}
+      <ConnectionStatus />
     </div>
-  );
-};
-
-// Componente principal que fornece o SidebarProvider
-const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const isMobile = useIsMobile();
-
-  return (
-    <SidebarProvider defaultOpen={!isMobile}>
-      <LayoutContent>{children}</LayoutContent>
-    </SidebarProvider>
   );
 };
 

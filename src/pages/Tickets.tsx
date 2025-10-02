@@ -13,7 +13,6 @@ import TicketUserBoard from '@/components/TicketUserBoard';
 import TicketList from '@/components/TicketList';
 import TicketChatPanel from '@/components/TicketChatPanel';
 import SimpleTicketCard from '@/components/SimpleTicketCard';
-import OnlineUsersList from '@/components/OnlineUsersList';
 import TicketFilters from '@/components/TicketFilters';
 import CreateTicketModal from '@/components/CreateTicketModal'; // Importação do novo componente
 
@@ -75,7 +74,7 @@ const Tickets = () => {
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   
   // Verificar se o usuário é admin ou lawyer para mostrar a lista de usuários online
-  const shouldShowOnlineUsers = user?.role === 'admin' || user?.role === 'lawyer';
+  const shouldShowOnlineUsers = false; // Removendo a funcionalidade relacionada ao OnlineUsersList
   
   // Verificar se o usuário é "user" para mostrar o modal em vez do formulário embutido
   const shouldUseModal = user?.role === 'user';
@@ -577,17 +576,23 @@ const Tickets = () => {
     }
   };
 
-  const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
-    try {
-      await handleUpdateTicket(ticketId, { 
-        assignedTo: supportUserId,
-        status: 'in_progress'
-      });
-    } catch (error) {
-      console.error('Error assigning ticket:', error);
-      toast.error('Erro ao atribuir ticket');
-    }
-  };
+const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
+  try {
+    // Encontrar o nome do usuário de suporte pelo ID
+    const supportUser = supportUsers.find(user => user.id === supportUserId);
+    const supportUserName = supportUser ? supportUser.name : "Usuário de suporte";
+    
+    // Atualizar o ticket com o ID e o nome do usuário atribuído
+    await handleUpdateTicket(ticketId, { 
+      assignedTo: supportUserId,
+      assignedToName: supportUserName,
+      status: 'in_progress'
+    });
+  } catch (error) {
+    console.error('Error assigning ticket:', error);
+    toast.error('Erro ao atribuir ticket');
+  }
+};
 
   const handleDeleteTicket = async (ticketId: string) => {
     try {
@@ -945,88 +950,71 @@ const Tickets = () => {
           </div>
         )}
 
-        {/* Layout principal: lista de tickets + chat + usuários online */}
-        {!loading && (
-          <div className="flex w-full h-full">
-            {/* Lista de tickets - largura dinâmica baseada no estado do chat */}
-            <div className={`
-              border-r border-slate-200 bg-white
-              ${showChat 
-                ? 'w-80 lg:w-96 flex-shrink-0' // Largura fixa quando chat está aberto
-                : shouldShowOnlineUsers
-                  ? 'flex-1' // Largura flexível quando a lista de usuários online está visível
-                  : 'flex-1 w-full' // Ocupa todo espaço quando chat está fechado e não há lista de usuários
-              }
-            `}>
-              {view === 'list' && (
-                <TicketList
-                  filteredTickets={getFilteredTickets()}
-                  tickets={tickets}
-                  renderTicketCard={renderTicketCard}
-                />
-              )}
-              {view === 'board' && (
-                <TicketKanbanBoard
-                  ticketsByStatus={getTicketsByStatus()}
-                  renderTicketCard={renderTicketCard}
-                />
-              )}
-              {view === 'users' && (
-                <TicketUserBoard
-                  ticketsByUser={getTicketsByUser()}
-                  supportUsers={supportUsers}
-                  renderTicketCard={renderTicketCard}
-                />
-              )}
-            </div>
-
-            {/* Painel de chat - ocupa o espaço restante quando aberto */}
-            {showChat && selectedTicket && (
+          {/* Layout principal: lista de tickets + chat */}
+          {!loading && (
+            <div className="flex w-full h-full">
+              {/* Lista de tickets - largura dinâmica baseada no estado do chat */}
               <div className={`
-                overflow-hidden
-                ${shouldShowOnlineUsers
-                  ? 'flex-1' // Largura flexível quando a lista de usuários online está visível
-                  : 'flex-1 w-full' // Ocupa todo espaço quando não há lista de usuários
+                border-r border-slate-200 bg-white
+                ${showChat 
+                  ? 'w-60 sm:w-64 md:w-72 lg:w-80 xl:w-96 flex-shrink-0' // Largura responsiva quando chat está aberto
+                  : 'flex-1 w-full' // Ocupa todo espaço quando chat está fechado
                 }
               `}>
-                <TicketChatPanel
-                  selectedTicket={selectedTicket}
-                  chatMessages={chatMessages}
-                  user={user}
-                  sending={sending}
-                  newMessage={newMessage}
-                  setNewMessage={setNewMessage}
-                  uploadingFiles={uploadingFiles}
-                  handleFileUpload={handleFileUpload}
-                  removeUploadingFile={removeUploadingFile}
-                  sendMessage={sendMessage}
-                  handleKeyPress={handleKeyPress}
-                  closeChat={closeChat}
-                  handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
-                  handleUpdateTicket={handleUpdateTicket}
-                  isTicketFinalized={isTicketFinalized}
-                  messagesEndRef={messagesEndRef}
-                  markMessagesAsRead={markMessagesAsRead}
-                  setShowImagePreview={setShowImagePreview}
-                  typingUsers={typingUsers}
-                  handleTyping={handleTyping}
-                  supportUsers={supportUsers}
-                  handleAssignTicket={handleAssignTicket}
-                />
+                {view === 'list' && (
+                  <TicketList
+                    filteredTickets={getFilteredTickets()}
+                    tickets={tickets}
+                    renderTicketCard={renderTicketCard}
+                  />
+                )}
+                {view === 'board' && (
+                  <TicketKanbanBoard
+                    ticketsByStatus={getTicketsByStatus()}
+                    renderTicketCard={renderTicketCard}
+                  />
+                )}
+                {view === 'users' && (
+                  <TicketUserBoard
+                    ticketsByUser={getTicketsByUser()}
+                    supportUsers={supportUsers}
+                    renderTicketCard={renderTicketCard}
+                    handleAssignTicket={handleAssignTicket}
+                  />
+                )}
               </div>
-            )}
 
-            {/* Lista de usuários online - SEMPRE visível para admin e lawyer */}
-            {shouldShowOnlineUsers && (
-              <div className="w-64 border-l border-slate-200 bg-white flex-shrink-0">
-                <OnlineUsersList 
-                  onlineUsers={getOnlineStaff()}
-                  onClose={closeOnlineUsersList}
-                />
-              </div>
-            )}
-          </div>
-        )}
+              {/* Painel de chat - ocupa o espaço restante quando aberto */}
+              {showChat && selectedTicket && (
+                <div className="flex-1 overflow-hidden">
+                  <TicketChatPanel
+                    selectedTicket={selectedTicket}
+                    chatMessages={chatMessages}
+                    user={user}
+                    sending={sending}
+                    newMessage={newMessage}
+                    setNewMessage={setNewMessage}
+                    uploadingFiles={uploadingFiles}
+                    handleFileUpload={handleFileUpload}
+                    removeUploadingFile={removeUploadingFile}
+                    sendMessage={sendMessage}
+                    handleKeyPress={handleKeyPress}
+                    closeChat={closeChat}
+                    handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
+                    handleUpdateTicket={handleUpdateTicket}
+                    isTicketFinalized={isTicketFinalized}
+                    messagesEndRef={messagesEndRef}
+                    markMessagesAsRead={markMessagesAsRead}
+                    setShowImagePreview={setShowImagePreview}
+                    typingUsers={typingUsers}
+                    handleTyping={handleTyping}
+                    supportUsers={supportUsers}
+                    handleAssignTicket={handleAssignTicket}
+                  />
+                </div>
+              )}
+            </div>
+          )}
       </div>
 
       {/* Preview de imagem - overlay fixo */}
