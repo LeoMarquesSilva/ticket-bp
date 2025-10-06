@@ -4,10 +4,55 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Clock } from 'lucide-react';
 
-// Definir tipos para categoria e subcategoria
-type TicketCategory = 'protocolo' | 'cadastro' | 'agendamento' | 'publicacoes' | 'assinatura_digital' | 'outros';
+// Definição de categorias, subcategorias e seus SLAs
+export const CATEGORIES_CONFIG = {
+  'protocolo': {
+    label: 'Protocolo',
+    subcategories: [
+      { value: 'pedido_urgencia', label: 'Pedido de urgência', slaHours: 2 },
+      { value: 'inconsistencia', label: 'Inconsistência', slaHours: 2 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 2 }
+    ]
+  },
+  'cadastro': {
+    label: 'Cadastro',
+    subcategories: [
+      { value: 'senhas_outros_tribunais', label: 'Senhas Outros Tribunais', slaHours: 1 },
+      { value: 'senha_tribunal_expirada', label: 'Senha Tribunal Expirada', slaHours: 1 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 24 },
+      { value: 'atualizacao_cadastro', label: 'Atualização de Cadastro', slaHours: 24 },
+      { value: 'correcao_cadastro', label: 'Correção de Cadastro', slaHours: 24 }
+    ]
+  },
+  'agendamento': {
+    label: 'Agendamento',
+    subcategories: [
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 4 }
+    ]
+  },
+  'publicacoes': {
+    label: 'Publicações',
+    subcategories: [
+      { value: 'problemas_central_publi', label: 'Problemas na central de publi', slaHours: 1 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 2 }
+    ]
+  },
+  'assinatura_digital': {
+    label: 'Assinatura Digital',
+    subcategories: [
+      { value: 'pedido_urgencia', label: 'Pedido de urgência', slaHours: 3 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 3 }
+    ]
+  },
+  'outros': {
+    label: 'Outros',
+    subcategories: [
+      { value: 'outros', label: 'Outros', slaHours: 24 }
+    ]
+  }
+};
 
 interface TicketFormProps {
   onSubmit: (data: {
@@ -32,37 +77,30 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
   const [subcategory, setSubcategory] = useState(initialData.subcategory || '');
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Definir as subcategorias disponíveis para cada categoria
-  const subcategories: { [key: string]: { value: string, label: string }[] } = {
-    protocolo: [
-      { value: 'pedido_urgencia', label: 'Pedido de urgência' },
-      { value: 'inconsistencia', label: 'Inconsistência' },
-    ],
-    cadastro: [
-      { value: 'senhas_tribunais', label: 'Senhas Tribunais' },
-      { value: 'inconsistencia', label: 'Inconsistência' },
-      { value: 'abertura_pasta', label: 'Abertura de pasta' },
-    ],
-    agendamento: [
-      { value: 'inconsistencia', label: 'Inconsistência' },
-      { value: 'reagendamento', label: 'Reagendamento' },
-    ],
-    publicacoes: [
-      { value: 'inconsistencia', label: 'Inconsistência' },
-    ],
-    assinatura_digital: [
-      { value: 'pedido_urgencia', label: 'Pedido de urgência' },
-    ],
-    outros: [
-      { value: 'outros', label: 'Outros' },
-    ],
-  };
+  const [slaHours, setSlaHours] = useState<number | null>(null);
 
   // Resetar subcategoria quando a categoria muda
   useEffect(() => {
     setSubcategory('');
+    setSlaHours(null);
   }, [category]);
+
+  // Atualizar SLA quando a subcategoria muda
+  useEffect(() => {
+    if (category && subcategory) {
+      const selectedSubcategory = CATEGORIES_CONFIG[category]?.subcategories.find(
+        sub => sub.value === subcategory
+      );
+      
+      if (selectedSubcategory) {
+        setSlaHours(selectedSubcategory.slaHours);
+      } else {
+        setSlaHours(null);
+      }
+    } else {
+      setSlaHours(null);
+    }
+  }, [category, subcategory]);
 
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
@@ -162,12 +200,11 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
               <SelectValue placeholder="Selecione uma categoria" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="protocolo">Protocolo</SelectItem>
-              <SelectItem value="cadastro">Cadastro</SelectItem>
-              <SelectItem value="agendamento">Agendamento</SelectItem>
-              <SelectItem value="publicacoes">Publicações</SelectItem>
-              <SelectItem value="assinatura_digital">Assinatura Digital</SelectItem>
-              <SelectItem value="outros">Outros</SelectItem>
+              {Object.entries(CATEGORIES_CONFIG).map(([key, config]) => (
+                <SelectItem key={key} value={key}>
+                  {config.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {errors.category && (
@@ -189,7 +226,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
               <SelectValue placeholder="Selecione uma subcategoria" />
             </SelectTrigger>
             <SelectContent>
-              {category && subcategories[category]?.map((sub) => (
+              {category && CATEGORIES_CONFIG[category]?.subcategories.map((sub) => (
                 <SelectItem key={sub.value} value={sub.value}>
                   {sub.label}
                 </SelectItem>
@@ -204,6 +241,17 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
           )}
         </div>
       </div>
+      
+      {slaHours !== null && (
+        <div className="bg-slate-50 p-3 rounded-md border border-slate-200">
+          <div className="flex items-center text-sm text-slate-700">
+            <Clock className="h-4 w-4 mr-2 text-blue-500" />
+            <span>
+              <strong>Tempo estimado de atendimento:</strong> {slaHours} {slaHours === 1 ? 'hora' : 'horas'}
+            </span>
+          </div>
+        </div>
+      )}
       
       <div className="flex justify-end space-x-2 pt-4">
         <Button

@@ -22,6 +22,7 @@ import { DateRange } from 'react-day-picker';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import RecentFeedbackList from '@/components/RecentFeedbackList';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -1037,134 +1038,72 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
           
-          {/* Tab de Feedback */}
-          <TabsContent value="feedback" className="space-y-6">
-            {/* Feedback Recente */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <MessageSquare className="h-5 w-5 text-[#D5B170]" />
-                  Feedback Recente
-                </CardTitle>
-                <CardDescription>
-                  Últimos feedbacks recebidos dos usuários
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[400px] w-full pr-4">
-                  {stats.recentFeedback.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      Nenhum feedback disponível
-                    </div>
-                  ) : (
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Ticket</TableHead>
-                            <TableHead className="text-center">NPS</TableHead>
-                            <TableHead className="text-center">Serviço</TableHead>
-                            <TableHead className="text-center">Atendido</TableHead>
-                            <TableHead className="text-right">Data</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {stats.recentFeedback.map((feedback) => (
-                            <TableRow key={feedback.id} className="cursor-pointer hover:bg-slate-50" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
-                              <TableCell className="font-medium">{feedback.title}</TableCell>
-                              <TableCell className={`text-center ${getNpsScoreColor(feedback.npsScore)}`}>
-                                {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
-                              </TableCell>
-                              <TableCell className={`text-center ${getNpsScoreColor(feedback.serviceScore)}`}>
-                                {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {feedback.requestFulfilled === undefined ? (
-                                  <span className="text-slate-400">N/A</span>
-                                ) : feedback.requestFulfilled ? (
-                                  <span className="text-green-600 flex items-center justify-center">
-                                    <ThumbsUp className="h-4 w-4 mr-1" /> Sim
-                                  </span>
-                                ) : (
-                                  <span className="text-red-600 flex items-center justify-center">
-                                    <ThumbsDown className="h-4 w-4 mr-1" /> Não
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-slate-500 text-right">
-                                {formatDate(feedback.resolvedAt)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
+{/* Tab de Feedback */}
+<TabsContent value="feedback" className="space-y-6">
+  {/* Feedback Recente usando o componente RecentFeedbackList */}
+  <RecentFeedbackList feedbackItems={stats.recentFeedback} />
 
-            {/* Comentários dos Usuários */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Activity className="h-5 w-5 text-[#D5B170]" />
-                  Comentários dos Usuários
-                </CardTitle>
-                <CardDescription>
-                  Feedback textual fornecido pelos usuários
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[300px] w-full pr-4">
-                  {stats.recentFeedback.filter(f => f.comment).length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      Nenhum comentário disponível
+  {/* Comentários dos Usuários */}
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2 text-lg">
+        <Activity className="h-5 w-5 text-[#D5B170]" />
+        Comentários dos Usuários
+      </CardTitle>
+      <CardDescription>
+        Feedback textual fornecido pelos usuários
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      <ScrollArea className="h-[300px] w-full pr-4">
+        {stats.recentFeedback.filter(f => f.comment).length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            Nenhum comentário disponível
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {stats.recentFeedback
+              .filter(f => f.comment)
+              .map((feedback) => (
+                <Card key={feedback.id} className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between mb-2">
+                      <div className="font-medium">{feedback.title}</div>
+                      <div className="text-sm text-slate-500">{formatDate(feedback.resolvedAt)}</div>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {stats.recentFeedback
-                        .filter(f => f.comment)
-                        .map((feedback) => (
-                          <Card key={feedback.id} className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
-                            <CardContent className="p-4">
-                              <div className="flex justify-between mb-2">
-                                <div className="font-medium">{feedback.title}</div>
-                                <div className="text-sm text-slate-500">{formatDate(feedback.resolvedAt)}</div>
-                              </div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge className={getNpsScoreColor(feedback.npsScore)} variant="outline">
-                                  NPS: {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
-                                </Badge>
-                                <Badge className={getNpsScoreColor(feedback.serviceScore)} variant="outline">
-                                  Serviço: {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
-                                </Badge>
-                                {feedback.requestFulfilled !== undefined && (
-                                  feedback.requestFulfilled ? 
-                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                      <ThumbsUp className="h-3 w-3 mr-1" /> Atendido
-                                    </Badge> :
-                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                      <ThumbsDown className="h-3 w-3 mr-1" /> Não atendido
-                                    </Badge>
-                                )}
-                              </div>
-                              <p className="text-slate-700 text-sm">{feedback.comment}</p>
-                              <div className="mt-2 flex justify-end">
-                                <Button variant="ghost" size="sm" className="text-xs text-slate-500 hover:text-slate-800">
-                                  Ver detalhes <ChevronRight className="h-3 w-3 ml-1" />
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      }
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className={getNpsScoreColor(feedback.npsScore)} variant="outline">
+                        NPS: {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
+                      </Badge>
+                      <Badge className={getNpsScoreColor(feedback.serviceScore)} variant="outline">
+                        Serviço: {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
+                      </Badge>
+                      {feedback.requestFulfilled !== undefined && (
+                        feedback.requestFulfilled ? 
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            <ThumbsUp className="h-3 w-3 mr-1" /> Atendido
+                          </Badge> :
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                            <ThumbsDown className="h-3 w-3 mr-1" /> Não atendido
+                          </Badge>
+                      )}
                     </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    <p className="text-slate-700 text-sm">{feedback.comment}</p>
+                    <div className="mt-2 flex justify-end">
+                      <Button variant="ghost" size="sm" className="text-xs text-slate-500 hover:text-slate-800">
+                        Ver detalhes <ChevronRight className="h-3 w-3 ml-1" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            }
+          </div>
+        )}
+      </ScrollArea>
+    </CardContent>
+  </Card>
+</TabsContent>
         </Tabs>
       )}
 

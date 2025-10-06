@@ -14,7 +14,7 @@ import TicketList from '@/components/TicketList';
 import TicketChatPanel from '@/components/TicketChatPanel';
 import SimpleTicketCard from '@/components/SimpleTicketCard';
 import TicketFilters from '@/components/TicketFilters';
-import CreateTicketModal from '@/components/CreateTicketModal'; // Importação do novo componente
+import CreateTicketModal from '@/components/CreateTicketModal';
 
 interface SupportUser {
   id: string;
@@ -68,73 +68,85 @@ const Tickets = () => {
   const [onlineUsers, setOnlineUsers] = useState<SupportUser[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messageSubscription = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const typingSubscription = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const presenceSubscription = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   
-  // Verificar se o usuário é admin ou lawyer para mostrar a lista de usuários online
-  const shouldShowOnlineUsers = false; // Removendo a funcionalidade relacionada ao OnlineUsersList
+  // Referências para controlar inscrições e evitar vazamentos de memória
+  const channelsRef = useRef<{
+    system?: ReturnType<typeof supabase.channel>;
+    presence?: ReturnType<typeof supabase.channel>;
+    messages?: ReturnType<typeof supabase.channel>;
+    typing?: ReturnType<typeof supabase.channel>;
+  }>({});
+  
+  // Referência para verificar se o componente está montado
+  const isMountedRef = useRef(true);
+  const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   
   // Verificar se o usuário é "user" para mostrar o modal em vez do formulário embutido
   const shouldUseModal = user?.role === 'user';
 
-  useEffect(() => {
-    loadTickets();
-    loadSupportUsers();
-    
-    // Monitorar status da conexão com Supabase
-    const channel = supabase.channel('system');
-    const connectionData = channel
-      .on('system', { event: 'connection_status' }, (payload) => {
-        setConnectionStatus(payload.status);
-      })
-      .subscribe();
-    
-    // Configurar monitoramento de presença (usuários online)
-    if (user && (user.role === 'admin' || user.role === 'lawyer' || user.role === 'support')) {
-      setupPresenceSubscription();
+  // Função para configurar um único canal de sistema para monitorar conexão
+  const setupSystemChannel = () => {
+    // Remover canal anterior se existir
+    if (channelsRef.current.system) {
+      supabase.removeChannel(channelsRef.current.system);
     }
     
-    return () => {
-      // Limpar assinaturas ao desmontar
-      if (messageSubscription.current) {
-        messageSubscription.current.unsubscribe();
+    // Criar novo canal
+    const channel = supabase.channel('system');
+    
+    // Monitorar status da conexão
+    channel.on('system', { event: 'connection_status' }, (payload) => {
+      if (isMountedRef.current) {
+        setConnectionStatus(payload.status);
       }
-      if (typingSubscription.current) {
-        typingSubscription.current.unsubscribe();
+    });
+    
+    // Inscrever-se no canal
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('Sistema: Canal de sistema conectado');
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('Sistema: Erro no canal de sistema');
+        
+        // Tentar reconectar após um pequeno atraso
+        setTimeout(() => {
+          if (isMountedRef.current && channelsRef.current.system) {
+            channelsRef.current.system.subscribe();
+          }
+        }, 5000);
       }
-      if (presenceSubscription.current) {
-        presenceSubscription.current.unsubscribe();
-      }
-      if (connectionData) {
-        connectionData.unsubscribe();
-      }
-    };
-  }, []);
+    });
+    
+    // Armazenar referência ao canal
+    channelsRef.current.system = channel;
+  };
 
-  // Configurar monitoramento de presença (usuários online) - VERSÃO CORRIGIDA
-  const setupPresenceSubscription = () => {
+  // Função para configurar um único canal de presença para monitorar usuários online
+  const setupPresenceChannel = () => {
     if (!user) return;
     
-    // Cancelar assinatura anterior se existir
-    if (presenceSubscription.current) {
-      presenceSubscription.current.unsubscribe();
+    // Remover canal anterior se existir
+    if (channelsRef.current.presence) {
+      supabase.removeChannel(channelsRef.current.presence);
     }
     
     console.log('Configurando monitoramento de presença para o usuário:', user.id, user.name);
     
-    // Assinar ao canal de presença
-    presenceSubscription.current = supabase.channel('online-users', {
+    // Criar novo canal
+    const channel = supabase.channel('online-users', {
       config: {
         presence: {
           key: user.id,
         },
       },
-    })
-    .on('presence', { event: 'sync' }, () => {
+    });
+    
+    // Monitorar eventos de presença
+    channel.on('presence', { event: 'sync' }, () => {
+      if (!isMountedRef.current) return;
+      
       // Quando o estado de presença é sincronizado, atualizar a lista de usuários online
-      const state = presenceSubscription.current?.presenceState() || {};
+      const state = channel.presenceState() || {};
       
       console.log('Estado de presença recebido:', state);
       
@@ -151,8 +163,6 @@ const Tickets = () => {
         if (Array.isArray(presences) && presences.length > 0) {
           const userPresence = presences[0] as any;
           
-          console.log(`Dados de presença para ${userId}:`, userPresence);
-          
           // Verificar se é um usuário de suporte ou advogado
           if (userPresence.role === 'support' || userPresence.role === 'lawyer' || userPresence.role === 'admin') {
             onlineSupportUsers.push({
@@ -165,8 +175,6 @@ const Tickets = () => {
         }
       });
       
-      console.log('Usuários online filtrados:', onlineSupportUsers);
-      
       // Atualizar o estado dos usuários de suporte para mostrar quem está online
       setSupportUsers(prev => 
         prev.map(supportUser => ({
@@ -177,37 +185,297 @@ const Tickets = () => {
       
       // Atualizar a lista separada de usuários online
       setOnlineUsers(onlineSupportUsers);
-    })
-    .subscribe((status) => {
-      console.log('Status da assinatura de presença:', status);
     });
     
-    // Anunciar presença do usuário atual
-    if (user.role === 'support' || user.role === 'lawyer' || user.role === 'admin') {
-      console.log('Anunciando presença do usuário:', user.id, user.name);
+    // Inscrever-se no canal
+    channel.subscribe((status) => {
+      console.log('Presença: Status da assinatura de presença:', status);
       
-      presenceSubscription.current.track({
-        id: user.id,
-        name: user.name,
-        role: user.role,
-        online_at: new Date().toISOString(),
+      if (status === 'SUBSCRIBED') {
+        // Anunciar presença do usuário atual se for da equipe
+        if (user.role === 'support' || user.role === 'lawyer' || user.role === 'admin') {
+          console.log('Anunciando presença do usuário:', user.id, user.name);
+          
+          channel.track({
+            id: user.id,
+            name: user.name,
+            role: user.role,
+            online_at: new Date().toISOString(),
+          });
+        }
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('Presença: Erro no canal de presença');
+        
+        // Tentar reconectar após um pequeno atraso
+        setTimeout(() => {
+          if (isMountedRef.current && channelsRef.current.presence) {
+            channelsRef.current.presence.subscribe();
+          }
+        }, 5000);
+      }
+    });
+    
+    // Armazenar referência ao canal
+    channelsRef.current.presence = channel;
+  };
+
+  // Função para configurar um único canal de mensagens para o ticket selecionado
+  const setupMessagesChannel = (ticketId: string) => {
+    if (!ticketId || !user?.id) return;
+    
+    // Remover canal anterior se existir
+    if (channelsRef.current.messages) {
+      supabase.removeChannel(channelsRef.current.messages);
+    }
+    
+    console.log('Configurando canal de mensagens para o ticket:', ticketId);
+    
+    // Criar novo canal
+    const channel = supabase.channel(`ticket-${ticketId}`);
+    
+    // Monitorar novas mensagens
+    channel.on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'app_c009c0e4f1_chat_messages',
+      filter: `ticket_id=eq.${ticketId}`
+    }, (payload) => {
+      if (!isMountedRef.current) return;
+      
+      console.log('Mensagens: Nova mensagem recebida:', payload);
+      
+      const newMessage = {
+        id: payload.new.id,
+        ticketId: payload.new.ticket_id,
+        userId: payload.new.user_id,
+        userName: payload.new.user_name,
+        message: payload.new.message,
+        attachments: payload.new.attachments || [],
+        createdAt: payload.new.created_at,
+        read: payload.new.read
+      };
+      
+      // Verificar se a mensagem já existe no estado
+      setChatMessages(prevMessages => {
+        // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
+        const messageExists = prevMessages.some(
+          msg => msg.id === newMessage.id || 
+                (msg.isTemp && 
+                msg.userId === newMessage.userId && 
+                msg.message === newMessage.message)
+        );
+        
+        if (messageExists) {
+          // Se a mensagem já existe, apenas substituir a temporária se houver
+          return prevMessages.map(msg => 
+            (msg.isTemp && 
+            msg.userId === newMessage.userId && 
+            msg.message === newMessage.message) 
+              ? { ...newMessage, isTemp: false } 
+              : msg
+          );
+        } else {
+          // Se a mensagem não existe, adicionar ao estado
+          return [...prevMessages, newMessage];
+        }
       });
+      
+      // Marcar como lida se for de outro usuário e o chat estiver aberto
+      if (newMessage.userId !== user.id) {
+        markMessagesAsRead(ticketId);
+      }
+      
+      // Rolar para o final da conversa
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+    });
+    
+    // Monitorar atualizações de mensagens (ex: marcadas como lidas)
+    channel.on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'app_c009c0e4f1_chat_messages',
+      filter: `ticket_id=eq.${ticketId}`
+    }, (payload) => {
+      if (!isMountedRef.current) return;
+      
+      console.log('Mensagens: Mensagem atualizada:', payload);
+      
+      // Atualizar o estado das mensagens
+      setChatMessages(prevMessages => 
+        prevMessages.map(msg => 
+          msg.id === payload.new.id 
+          ? {
+              ...msg,
+              read: payload.new.read
+            }
+          : msg
+        )
+      );
+    });
+    
+    // Inscrever-se no canal
+    channel.subscribe((status) => {
+      console.log('Mensagens: Status da assinatura de mensagens:', status);
+      
+      if (status === 'CHANNEL_ERROR') {
+        console.error('Mensagens: Erro no canal de mensagens');
+        
+        // Tentar reconectar após um pequeno atraso
+        setTimeout(() => {
+          if (isMountedRef.current && channelsRef.current.messages) {
+            channelsRef.current.messages.subscribe();
+          }
+        }, 5000);
+      }
+    });
+    
+    // Armazenar referência ao canal
+    channelsRef.current.messages = channel;
+    
+    // Configurar canal de digitação junto com o canal de mensagens
+    setupTypingChannel(ticketId);
+  };
+
+  // Função para configurar um único canal para eventos de digitação
+  const setupTypingChannel = (ticketId: string) => {
+    if (!ticketId || !user?.id) return;
+    
+    // Remover canal anterior se existir
+    if (channelsRef.current.typing) {
+      supabase.removeChannel(channelsRef.current.typing);
+    }
+    
+    console.log('Configurando canal de digitação para o ticket:', ticketId);
+    
+    // Criar novo canal
+    const channel = supabase.channel(`typing-${ticketId}`);
+    
+    // Monitorar eventos de digitação
+    channel.on('broadcast', { event: 'typing' }, (payload) => {
+      if (!isMountedRef.current) return;
+      
+      // Ignorar eventos do próprio usuário
+      if (payload.payload.userId === user.id) return;
+      
+      // Adicionar usuário à lista de digitando
+      setTypingUsers(prev => ({
+        ...prev,
+        [payload.payload.userId]: payload.payload.userName
+      }));
+    });
+    
+    // Monitorar eventos de parar de digitar
+    channel.on('broadcast', { event: 'stop-typing' }, (payload) => {
+      if (!isMountedRef.current) return;
+      
+      // Remover usuário da lista de digitando
+      setTypingUsers(prev => {
+        const newTyping = { ...prev };
+        delete newTyping[payload.payload.userId];
+        return newTyping;
+      });
+    });
+    
+    // Inscrever-se no canal
+    channel.subscribe((status) => {
+      console.log('Digitação: Status da assinatura de digitação:', status);
+      
+      if (status === 'CHANNEL_ERROR') {
+        console.error('Digitação: Erro no canal de digitação');
+        
+        // Tentar reconectar após um pequeno atraso
+        setTimeout(() => {
+          if (isMountedRef.current && channelsRef.current.typing) {
+            channelsRef.current.typing.subscribe();
+          }
+        }, 5000);
+      }
+    });
+    
+    // Armazenar referência ao canal
+    channelsRef.current.typing = channel;
+  };
+
+  // Função para notificar que o usuário está digitando
+  const handleTyping = () => {
+    if (!selectedTicket?.id || !user?.id || !channelsRef.current.typing) return;
+    
+    try {
+      // Enviar evento de digitação através do canal existente
+      channelsRef.current.typing.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { userId: user.id, userName: user.name }
+      });
+      
+      // Limpar timeout anterior se existir
+      if (typingTimeout.current) {
+        clearTimeout(typingTimeout.current);
+      }
+      
+      // Definir novo timeout para parar de mostrar "digitando" após 2 segundos
+      typingTimeout.current = setTimeout(() => {
+        if (channelsRef.current.typing) {
+          channelsRef.current.typing.send({
+            type: 'broadcast',
+            event: 'stop-typing',
+            payload: { userId: user.id }
+          });
+        }
+      }, 2000);
+    } catch (error) {
+      console.error('Erro ao enviar evento de digitação:', error);
     }
   };
 
+  // Inicialização e limpeza
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    // Carregar dados iniciais
+    loadTickets();
+    loadSupportUsers();
+    
+    // Configurar canais
+    setupSystemChannel();
+    
+    // Configurar monitoramento de presença para usuários da equipe
+    if (user && (user.role === 'admin' || user.role === 'lawyer' || user.role === 'support')) {
+      setupPresenceChannel();
+    }
+    
+    // Limpar ao desmontar
+    return () => {
+      isMountedRef.current = false;
+      
+      // Limpar timeout de digitação
+      if (typingTimeout.current) {
+        clearTimeout(typingTimeout.current);
+      }
+      
+      // Remover todos os canais
+      Object.values(channelsRef.current).forEach(channel => {
+        if (channel) {
+          supabase.removeChannel(channel);
+        }
+      });
+      
+      // Limpar referência aos canais
+      channelsRef.current = {};
+    };
+  }, []);
+
+  // Configurar canal de mensagens quando o ticket selecionado mudar
   useEffect(() => {
     if (selectedTicket?.id) {
       loadMessages(selectedTicket.id);
-      setupMessageSubscription();
+      setupMessagesChannel(selectedTicket.id);
     }
   }, [selectedTicket?.id]);
-
-  // Função para fechar o chat (não afeta mais a visibilidade da lista de usuários)
-  const closeOnlineUsersList = () => {
-    if (showChat) {
-      closeChat();
-    }
-  };
 
   const loadTickets = async () => {
     try {
@@ -224,24 +492,32 @@ const Tickets = () => {
         tickets = await TicketService.getAllTickets();
       }
       
-      setTickets(tickets);
-      
-      // Carregar contagem de mensagens não lidas para cada ticket
-      if (tickets.length > 0) {
-        loadUnreadMessageCounts(tickets);
+      if (isMountedRef.current) {
+        setTickets(tickets);
+        
+        // Carregar contagem de mensagens não lidas para cada ticket
+        if (tickets.length > 0) {
+          loadUnreadMessageCounts(tickets);
+        }
       }
     } catch (error) {
       console.error('Error loading tickets:', error);
-      setError('Erro ao carregar tickets. Por favor, tente novamente.');
+      if (isMountedRef.current) {
+        setError('Erro ao carregar tickets. Por favor, tente novamente.');
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   const loadSupportUsers = async () => {
     try {
       const users = await TicketService.getSupportUsers();
-      setSupportUsers(users as SupportUser[]);
+      if (isMountedRef.current) {
+        setSupportUsers(users as SupportUser[]);
+      }
       console.log('Usuários de suporte carregados:', users);
     } catch (error) {
       console.error('Error loading support users:', error);
@@ -252,19 +528,25 @@ const Tickets = () => {
     try {
       setLoadingMessages(true);
       const messages = await TicketService.getTicketMessages(ticketId);
-      setChatMessages(messages);
+      if (isMountedRef.current) {
+        setChatMessages(messages);
+      }
     } catch (error) {
       console.error('Error loading messages:', error);
       toast.error('Erro ao carregar mensagens');
     } finally {
-      setLoadingMessages(false);
+      if (isMountedRef.current) {
+        setLoadingMessages(false);
+      }
     }
   };
 
   const loadUnreadMessageCounts = async (ticketsList: Ticket[]) => {
     try {
       const counts = await TicketService.getUnreadMessageCounts(user?.id || '');
-      setUnreadMessages(counts);
+      if (isMountedRef.current) {
+        setUnreadMessages(counts);
+      }
     } catch (error) {
       console.error('Error loading unread message counts:', error);
     }
@@ -277,80 +559,15 @@ const Tickets = () => {
       await TicketService.markMessagesAsRead(ticketId, user.id);
       
       // Atualizar o contador local
-      setUnreadMessages(prev => ({
-        ...prev,
-        [ticketId]: 0
-      }));
+      if (isMountedRef.current) {
+        setUnreadMessages(prev => ({
+          ...prev,
+          [ticketId]: 0
+        }));
+      }
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
-  };
-
-  // Função para notificar que o usuário está digitando
-  const handleTyping = () => {
-    if (!selectedTicket?.id || !user?.id) return;
-    
-    // Enviar evento de digitação
-    try {
-      supabase.channel(`typing-${selectedTicket.id}`).send({
-        type: 'broadcast',
-        event: 'typing',
-        payload: { userId: user.id, userName: user.name }
-      });
-    } catch (error) {
-      console.error('Error sending typing event:', error);
-    }
-    
-    // Limpar timeout anterior se existir
-    if (typingTimeout.current) {
-      clearTimeout(typingTimeout.current);
-    }
-    
-    // Definir novo timeout para parar de mostrar "digitando" após 2 segundos
-    typingTimeout.current = setTimeout(() => {
-      try {
-        supabase.channel(`typing-${selectedTicket.id}`).send({
-          type: 'broadcast',
-          event: 'stop-typing',
-          payload: { userId: user.id }
-        });
-      } catch (error) {
-        console.error('Error sending stop-typing event:', error);
-      }
-    }, 2000);
-  };
-
-  // Configurar assinatura para eventos de digitação
-  const setupTypingSubscription = () => {
-    if (!selectedTicket?.id || !user?.id) return;
-    
-    // Cancelar assinatura anterior se existir
-    if (typingSubscription.current) {
-      typingSubscription.current.unsubscribe();
-    }
-    
-    // Assinar a eventos de digitação
-    typingSubscription.current = supabase
-      .channel(`typing-${selectedTicket.id}`)
-      .on('broadcast', { event: 'typing' }, (payload) => {
-        // Ignorar eventos do próprio usuário
-        if (payload.payload.userId === user.id) return;
-        
-        // Adicionar usuário à lista de digitando
-        setTypingUsers(prev => ({
-          ...prev,
-          [payload.payload.userId]: payload.payload.userName
-        }));
-      })
-      .on('broadcast', { event: 'stop-typing' }, (payload) => {
-        // Remover usuário da lista de digitando
-        setTypingUsers(prev => {
-          const newTyping = { ...prev };
-          delete newTyping[payload.payload.userId];
-          return newTyping;
-        });
-      })
-      .subscribe();
   };
 
   // Enviar mensagem
@@ -423,100 +640,6 @@ const Tickets = () => {
     }
   };
 
-  // Função para configurar a assinatura do Supabase para novas mensagens
-  const setupMessageSubscription = () => {
-    if (!selectedTicket?.id || !user?.id) return;
-    
-    // Cancelar assinatura anterior se existir
-    if (messageSubscription.current) {
-      messageSubscription.current.unsubscribe();
-    }
-    
-    console.log('Setting up message subscription for ticket:', selectedTicket.id);
-    
-    // Assinar a novas mensagens para este ticket
-    messageSubscription.current = supabase
-      .channel(`ticket-messages-${selectedTicket.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
-        filter: `ticket_id=eq.${selectedTicket.id}`
-      }, (payload) => {
-        console.log('Received new message from Supabase:', payload);
-        const newMessage = {
-          id: payload.new.id,
-          ticketId: payload.new.ticket_id,
-          userId: payload.new.user_id,
-          userName: payload.new.user_name,
-          message: payload.new.message,
-          attachments: payload.new.attachments || [],
-          createdAt: payload.new.created_at,
-          read: payload.new.read
-        };
-        
-        // Verificar se a mensagem já existe no estado (para evitar duplicação)
-        setChatMessages(prevMessages => {
-          // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
-          const messageExists = prevMessages.some(
-            msg => msg.id === newMessage.id || 
-                  (msg.isTemp && 
-                  msg.userId === newMessage.userId && 
-                  msg.message === newMessage.message)
-          );
-          
-          if (messageExists) {
-            // Se a mensagem já existe, apenas substituir a temporária se houver
-            return prevMessages.map(msg => 
-              (msg.isTemp && 
-              msg.userId === newMessage.userId && 
-              msg.message === newMessage.message) 
-                ? { ...newMessage, isTemp: false } 
-                : msg
-            );
-          } else {
-            // Se a mensagem não existe, adicionar ao estado
-            return [...prevMessages, newMessage];
-          }
-        });
-        
-        // Marcar como lida se for de outro usuário e o chat estiver aberto
-        if (newMessage.userId !== user.id) {
-          markMessagesAsRead(selectedTicket.id);
-        }
-        
-        // Rolar para o final da conversa
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-          }
-        }, 100);
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'app_c009c0e4f1_chat_messages', // Use o nome correto da tabela
-        filter: `ticket_id=eq.${selectedTicket.id}`
-      }, (payload) => {
-        console.log('Message updated:', payload);
-        // Atualizar o estado das mensagens quando uma mensagem for atualizada
-        // (por exemplo, quando for marcada como lida)
-        setChatMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg.id === payload.new.id 
-            ? {
-                ...msg,
-                read: payload.new.read
-              }
-            : msg
-          )
-        );
-      })
-      .subscribe((status) => {
-        console.log('Supabase subscription status:', status);
-      });
-  };
-
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -536,7 +659,7 @@ const Tickets = () => {
         subcategory: ticketData.subcategory,
         createdBy: user.id,
         createdByName: user.name,
-        createdByDepartment: user.department, // Adicionando o departamento do usuário
+        createdByDepartment: user.department,
       });
         
       console.log('Ticket created:', newTicket);
@@ -576,23 +699,23 @@ const Tickets = () => {
     }
   };
 
-const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
-  try {
-    // Encontrar o nome do usuário de suporte pelo ID
-    const supportUser = supportUsers.find(user => user.id === supportUserId);
-    const supportUserName = supportUser ? supportUser.name : "Usuário de suporte";
-    
-    // Atualizar o ticket com o ID e o nome do usuário atribuído
-    await handleUpdateTicket(ticketId, { 
-      assignedTo: supportUserId,
-      assignedToName: supportUserName,
-      status: 'in_progress'
-    });
-  } catch (error) {
-    console.error('Error assigning ticket:', error);
-    toast.error('Erro ao atribuir ticket');
-  }
-};
+  const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
+    try {
+      // Encontrar o nome do usuário de suporte pelo ID
+      const supportUser = supportUsers.find(user => user.id === supportUserId);
+      const supportUserName = supportUser ? supportUser.name : "Usuário de suporte";
+      
+      // Atualizar o ticket com o ID e o nome do usuário atribuído
+      await handleUpdateTicket(ticketId, { 
+        assignedTo: supportUserId,
+        assignedToName: supportUserName,
+        status: 'in_progress'
+      });
+    } catch (error) {
+      console.error('Error assigning ticket:', error);
+      toast.error('Erro ao atribuir ticket');
+    }
+  };
 
   const handleDeleteTicket = async (ticketId: string) => {
     try {
@@ -722,7 +845,6 @@ const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
   };
 
   // Função para alternar entre vistas (list, board, users)
-  // Nova função que gerencia a mudança de visualização
   const handleViewChange = (newView: 'list' | 'board' | 'users') => {
     // Se estiver mudando para Kanban ou UserBoard e o chat estiver aberto, feche-o
     if (newView !== 'list' && showChat) {
@@ -746,9 +868,6 @@ const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
     if (user?.id && unreadMessages[ticket.id] > 0) {
       markMessagesAsRead(ticket.id);
     }
-    
-    // Configurar assinatura para digitação
-    setupTypingSubscription();
   };
 
   // Função para fechar o chat
@@ -758,13 +877,17 @@ const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
     setChatMessages([]);
     setNewMessage('');
     setUploadingFiles([]);
+    setTypingUsers({});
     
-    // Cancelar assinaturas
-    if (messageSubscription.current) {
-      messageSubscription.current.unsubscribe();
+    // Remover canais específicos do ticket
+    if (channelsRef.current.messages) {
+      supabase.removeChannel(channelsRef.current.messages);
+      channelsRef.current.messages = undefined;
     }
-    if (typingSubscription.current) {
-      typingSubscription.current.unsubscribe();
+    
+    if (channelsRef.current.typing) {
+      supabase.removeChannel(channelsRef.current.typing);
+      channelsRef.current.typing = undefined;
     }
   };
 
@@ -872,7 +995,6 @@ const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
 
   // Filtrar usuários online para mostrar apenas support e lawyer
   const getOnlineStaff = () => {
-    // Usar diretamente a lista onlineUsers que já foi filtrada na função setupPresenceSubscription
     return onlineUsers;
   };
 

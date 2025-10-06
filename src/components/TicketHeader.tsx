@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { 
   List, 
@@ -72,6 +72,10 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
     loading: true
   });
 
+  // Referências para controlar inscrições e evitar vazamentos de memória
+  const channelRef = useRef<any>(null);
+  const isMountedRef = useRef(true);
+
   // Filtrar usuários online com base na role do usuário atual
   const filteredOnlineUsers = React.useMemo(() => {
     // Usuários comuns veem apenas equipe de suporte e advogados
@@ -113,83 +117,152 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
     }
   };
 
-  // Buscar estatísticas dos tickets do Supabase
-  useEffect(() => {
-    async function fetchTicketStats() {
-      try {
-        if (!user?.id) return;
+  // Função para buscar estatísticas dos tickets
+  const fetchTicketStats = async () => {
+    try {
+      if (!user?.id || !isMountedRef.current) return;
+      
+      // Consultas para contar tickets por status
+      const openQuery = supabase
+        .from(TABLES.TICKETS)
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open');
         
-        let openQuery = supabase
-          .from(TABLES.TICKETS)
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'open');
-          
-        let inProgressQuery = supabase
-          .from(TABLES.TICKETS)
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'in_progress');
-          
-        let resolvedQuery = supabase
-          .from(TABLES.TICKETS)
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'resolved');
+      const inProgressQuery = supabase
+        .from(TABLES.TICKETS)
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'in_progress');
         
-        // Filtrar consultas com base no tipo de usuário
-        if (isUser) {
-          // Usuários comuns veem apenas seus próprios tickets
-          openQuery = openQuery.eq('created_by', user.id);
-          inProgressQuery = inProgressQuery.eq('created_by', user.id);
-          resolvedQuery = resolvedQuery.eq('created_by', user.id);
-        } else if (isSupport || isLawyer) {
-          // Suporte e advogados veem apenas tickets atribuídos a eles
-          openQuery = openQuery.eq('assigned_to', user.id);
-          inProgressQuery = inProgressQuery.eq('assigned_to', user.id);
-          resolvedQuery = resolvedQuery.eq('assigned_to', user.id);
-        }
-        // Admin vê todos os tickets (nenhum filtro adicional)
-        
-        // Executar as consultas
-        const [openResult, inProgressResult, resolvedResult] = await Promise.all([
-          openQuery,
-          inProgressQuery,
-          resolvedQuery
-        ]);
-        
-        if (openResult.error || inProgressResult.error || resolvedResult.error) {
-          console.error('Erro ao buscar estatísticas de tickets:', 
-            openResult.error || inProgressResult.error || resolvedResult.error);
-          return;
-        }
-        
-        setTicketStats({
-          open: openResult.count || 0,
-          inProgress: inProgressResult.count || 0,
-          resolved: resolvedResult.count || 0,
-          loading: false
-        });
-      } catch (error) {
-        console.error('Erro ao buscar estatísticas de tickets:', error);
+      const resolvedQuery = supabase
+        .from(TABLES.TICKETS)
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'resolved');
+      
+      // Filtrar consultas com base no tipo de usuário
+      if (isUser) {
+        // Usuários comuns veem apenas seus próprios tickets
+        openQuery.eq('created_by', user.id);
+        inProgressQuery.eq('created_by', user.id);
+        resolvedQuery.eq('created_by', user.id);
+      } else if (isSupport || isLawyer) {
+        // Suporte e advogados veem apenas tickets atribuídos a eles
+        openQuery.eq('assigned_to', user.id);
+        inProgressQuery.eq('assigned_to', user.id);
+        resolvedQuery.eq('assigned_to', user.id);
+      }
+      // Admin vê todos os tickets (nenhum filtro adicional)
+      
+      // Executar as consultas
+      const [openResult, inProgressResult, resolvedResult] = await Promise.all([
+        openQuery,
+        inProgressQuery,
+        resolvedQuery
+      ]);
+      
+      if (!isMountedRef.current) return;
+      
+      if (openResult.error || inProgressResult.error || resolvedResult.error) {
+        console.error('Erro ao buscar estatísticas de tickets:', 
+          openResult.error || inProgressResult.error || resolvedResult.error);
+        return;
+      }
+      
+      setTicketStats({
+        open: openResult.count || 0,
+        inProgress: inProgressResult.count || 0,
+        resolved: resolvedResult.count || 0,
+        loading: false
+      });
+    } catch (error) {
+      console.error('Erro ao buscar estatísticas de tickets:', error);
+      if (isMountedRef.current) {
         setTicketStats(prev => ({ ...prev, loading: false }));
       }
     }
+  };
+
+  // Configurar um único canal de tempo real para todas as atualizações necessárias
+  useEffect(() => {
+    isMountedRef.current = true;
     
+    // Buscar estatísticas iniciais
     fetchTicketStats();
     
-    // Configurar listener para atualizações em tempo real
-    const ticketsSubscription = supabase
-      .channel('tickets-stats-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: TABLES.TICKETS 
-      }, () => {
-        // Atualizar estatísticas quando houver mudanças
-        fetchTicketStats();
-      })
-      .subscribe();
+    // Filtros para eventos em tempo real com base no tipo de usuário
+    const filters = [];
+    
+    if (isUser && user?.id) {
+      // Usuários comuns: apenas seus próprios tickets
+      filters.push({
+        schema: 'public',
+        table: TABLES.TICKETS,
+        filter: `created_by=eq.${user.id}`
+      });
+    } else if ((isSupport || isLawyer) && user?.id) {
+      // Suporte/Advogados: tickets atribuídos a eles
+      filters.push({
+        schema: 'public',
+        table: TABLES.TICKETS,
+        filter: `assigned_to=eq.${user.id}`
+      });
+    } else if (isAdmin) {
+      // Admin: todos os tickets (sem filtro adicional)
+      filters.push({
+        schema: 'public',
+        table: TABLES.TICKETS
+      });
+    }
+    
+    // Configurar um único canal para todas as atualizações
+    if (filters.length > 0) {
+      let channel = supabase.channel('ticket-stats-channel');
       
+      // Adicionar eventos para cada filtro
+      filters.forEach(filter => {
+        // Inserções (novos tickets)
+        channel = channel.on('postgres_changes', {
+          event: 'INSERT',
+          ...filter
+        }, () => {
+          if (isMountedRef.current) fetchTicketStats();
+        });
+        
+        // Atualizações (mudanças de status)
+        channel = channel.on('postgres_changes', {
+          event: 'UPDATE',
+          ...filter
+        }, () => {
+          if (isMountedRef.current) fetchTicketStats();
+        });
+      });
+      
+      // Inscrever-se no canal
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Inscrição em tempo real para estatísticas de tickets ativa');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Erro no canal de tempo real para estatísticas de tickets');
+          // Tentar reconectar após um pequeno atraso
+          setTimeout(() => {
+            if (isMountedRef.current && channelRef.current) {
+              channelRef.current.subscribe();
+            }
+          }, 5000);
+        }
+      });
+      
+      // Armazenar referência ao canal
+      channelRef.current = channel;
+    }
+    
+    // Limpar ao desmontar
     return () => {
-      supabase.removeChannel(ticketsSubscription);
+      isMountedRef.current = false;
+      
+      // Remover canal
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
     };
   }, [isUser, isSupport, isLawyer, isAdmin, user?.id]);
 

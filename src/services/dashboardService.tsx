@@ -19,6 +19,12 @@ export interface DashboardStats {
     name: string;
     value: number;
   }>;
+  subcategoryDistribution: Array<{
+    category: string;
+    subcategory: string;
+    value: number;
+    slaHours: number;
+  }>;
   topUsers: Array<{
     name: string;
     tickets: number;
@@ -33,6 +39,7 @@ export interface DashboardStats {
     passives: number;
     detractors: number;
     total: number;
+    target: number; // Meta de NPS
   };
   serviceScores: {
     averageScore: number;
@@ -41,11 +48,13 @@ export interface DashboardStats {
     average: number;
     poor: number;
     total: number;
+    target: number; // Meta de cordialidade
   };
   requestFulfillment: {
     fulfilled: number;
     notFulfilled: number;
     percentage: number;
+    target: number; // Meta de resolução
   };
   recentFeedback: Array<{
     id: string;
@@ -55,7 +64,77 @@ export interface DashboardStats {
     requestFulfilled?: boolean;
     comment?: string;
     resolvedAt?: string;
+    ticketUrl: string; // URL para navegar para o ticket
+    assignedToName: string; // Nome do atendente
+    assignedToRole?: string; // Função do atendente (support, lawyer, etc.)
   }>;
+}
+
+// Definição de categorias, subcategorias e seus SLAs
+export const CATEGORIES_CONFIG = {
+  'protocolo': {
+    label: 'Protocolo',
+    subcategories: [
+      { value: 'pedido_urgencia', label: 'Pedido de urgência', slaHours: 2 },
+      { value: 'inconsistencia', label: 'Inconsistência', slaHours: 2 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 2 }
+    ]
+  },
+  'cadastro': {
+    label: 'Cadastro',
+    subcategories: [
+      { value: 'senhas_outros_tribunais', label: 'Senhas Outros Tribunais', slaHours: 1 },
+      { value: 'senha_tribunal_expirada', label: 'Senha Tribunal Expirada', slaHours: 1 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 24 },
+      { value: 'atualizacao_cadastro', label: 'Atualização de Cadastro', slaHours: 24 },
+      { value: 'correcao_cadastro', label: 'Correção de Cadastro', slaHours: 24 }
+    ]
+  },
+  'agendamento': {
+    label: 'Agendamento',
+    subcategories: [
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 4 }
+    ]
+  },
+  'publicacoes': {
+    label: 'Publicações',
+    subcategories: [
+      { value: 'problemas_central_publi', label: 'Problemas na central de publi', slaHours: 1 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 2 }
+    ]
+  },
+  'assinatura_digital': {
+    label: 'Assinatura Digital',
+    subcategories: [
+      { value: 'pedido_urgencia', label: 'Pedido de urgência', slaHours: 3 },
+      { value: 'duvidas', label: 'Dúvidas', slaHours: 3 }
+    ]
+  },
+  'outros': {
+    label: 'Outros',
+    subcategories: [
+      { value: 'outros', label: 'Outros', slaHours: 24 }
+    ]
+  }
+};
+
+// Metas de desempenho
+export const PERFORMANCE_TARGETS = {
+  NPS: 70, // Meta de NPS: 70%
+  RESOLUTION: 80, // Meta de resolução: 80%
+  CORDIALITY: 80 // Meta de cordialidade: 80%
+};
+
+// Função para obter SLA com base na categoria e subcategoria
+export function getSlaHours(category: string, subcategory: string): number {
+  const categoryConfig = CATEGORIES_CONFIG[category];
+  if (!categoryConfig) return 24; // Padrão: 24 horas
+  
+  const subcategoryConfig = categoryConfig.subcategories.find(
+    sub => sub.value === subcategory
+  );
+  
+  return subcategoryConfig ? subcategoryConfig.slaHours : 24;
 }
 
 // Função para obter dados do dashboard
@@ -104,19 +183,8 @@ export async function getDashboardStats(
     // Processar os dados para as estatísticas
     const stats = processTicketsData(tickets || [], days);
     
-    // Buscar dados de feedback
-    const { data: feedback, error: feedbackError } = await supabase
-      .from('app_c009c0e4f1_feedback')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    if (feedbackError) {
-      console.error('Erro ao buscar feedback:', feedbackError);
-    }
-
-    // Processar feedback
-    stats.recentFeedback = processFeedbackData(feedback || [], tickets || []);
+    // Processar feedback diretamente dos tickets (já que não existe uma tabela separada)
+    stats.recentFeedback = await processFeedbackFromTickets(tickets || []);
 
     return stats;
   } catch (error) {
@@ -157,6 +225,9 @@ function processTicketsData(tickets: any[], days: number): DashboardStats {
 
   // Gerar distribuição por categoria
   const categoryDistribution = generateCategoryDistributionData(tickets);
+  
+  // Gerar distribuição por subcategoria
+  const subcategoryDistribution = generateSubcategoryDistributionData(tickets);
 
   // Gerar dados de tempo de resposta por dia
   const responseTimeByDay = generateResponseTimeByDayData(tickets);
@@ -182,6 +253,7 @@ function processTicketsData(tickets: any[], days: number): DashboardStats {
     avgResolutionTime,
     ticketsOverTime,
     categoryDistribution,
+    subcategoryDistribution,
     responseTimeByDay,
     topUsers,
     npsScores: npsData,
@@ -212,7 +284,8 @@ function calculateNpsScores(tickets: any[]) {
     promoters,
     passives,
     detractors,
-    total
+    total,
+    target: PERFORMANCE_TARGETS.NPS // Meta de NPS: 70%
   };
 }
 
@@ -238,7 +311,8 @@ function calculateServiceScores(tickets: any[]) {
     good,
     average,
     poor,
-    total
+    total,
+    target: PERFORMANCE_TARGETS.CORDIALITY // Meta de cordialidade: 80%
   };
 }
 
@@ -260,7 +334,8 @@ function calculateRequestFulfillment(tickets: any[]) {
   return {
     fulfilled,
     notFulfilled,
-    percentage
+    percentage,
+    target: PERFORMANCE_TARGETS.RESOLUTION // Meta de resolução: 80%
   };
 }
 
@@ -300,7 +375,7 @@ function generateCategoryDistributionData(tickets: any[]) {
   const categories: Record<string, number> = {};
   
   tickets.forEach(ticket => {
-    const category = ticket.category || 'Sem categoria';
+    const category = ticket.category || 'outros';
     if (categories[category]) {
       categories[category]++;
     } else {
@@ -309,6 +384,39 @@ function generateCategoryDistributionData(tickets: any[]) {
   });
   
   return Object.entries(categories).map(([name, value]) => ({ name, value }));
+}
+
+// Função para gerar dados de distribuição por subcategoria com SLA
+function generateSubcategoryDistributionData(tickets: any[]) {
+  const subcategories: Record<string, { count: number; category: string; subcategory: string }> = {};
+  
+  tickets.forEach(ticket => {
+    const category = ticket.category || 'outros';
+    const subcategory = ticket.subcategory || 'outros';
+    const key = `${category}-${subcategory}`;
+    
+    if (subcategories[key]) {
+      subcategories[key].count++;
+    } else {
+      subcategories[key] = { 
+        count: 1, 
+        category: category,
+        subcategory: subcategory
+      };
+    }
+  });
+  
+  return Object.entries(subcategories).map(([key, data]) => {
+    const [category, subcategory] = key.split('-');
+    const slaHours = getSlaHours(category, subcategory);
+    
+    return { 
+      category, 
+      subcategory, 
+      value: data.count,
+      slaHours
+    };
+  });
 }
 
 // Função para gerar dados de tempo de resposta por dia da semana
@@ -363,22 +471,139 @@ function generateTopUsersData(tickets: any[]) {
     .slice(0, 5);
 }
 
-// Função para processar dados de feedback
-function processFeedbackData(feedback: any[], tickets: any[]) {
-  return feedback.map(item => {
-    // Encontrar o ticket correspondente
-    const ticket = tickets.find(t => t.id === item.ticket_id);
+// Função para processar dados de feedback diretamente dos tickets
+async function processFeedbackFromTickets(tickets: any[]) {
+  // Filtrar tickets que têm feedback (nps_score, service_score ou request_fulfilled)
+  const ticketsWithFeedback = tickets.filter(ticket => 
+    ticket.nps_score !== null || 
+    ticket.service_score !== null || 
+    ticket.request_fulfilled !== null ||
+    ticket.comment !== null ||
+    ticket.nps_feedback !== null
+  );
+  
+  // Ordenar por data de feedback (feedback_submitted_at) ou resolved_at, se disponível
+  const sortedTickets = ticketsWithFeedback.sort((a, b) => {
+    const dateA = a.feedback_submitted_at || a.resolved_at || a.created_at;
+    const dateB = b.feedback_submitted_at || b.resolved_at || b.created_at;
+    return new Date(dateB).getTime() - new Date(dateA).getTime(); // Ordem decrescente
+  });
+  
+  // Buscar todos os usuários de suporte e advogados
+  const { data: supportUsers } = await supabase
+    .from('app_c009c0e4f1_users')
+    .select('id, name, role')
+    .in('role', ['support', 'lawyer']);
+  
+  // Criar um mapa de usuários para referência rápida
+  const userMap = new Map();
+  if (supportUsers) {
+    supportUsers.forEach(user => {
+      userMap.set(user.id, { name: user.name, role: user.role });
+    });
+  }
+  
+  // Processar os tickets com feedback
+  const feedbackItems = sortedTickets.slice(0, 20).map(ticket => {
+    // Buscar informações do usuário atribuído no mapa de usuários
+    const assignedUser = userMap.get(ticket.assigned_to);
     
     return {
-      id: item.ticket_id,
-      title: ticket ? ticket.title : `Ticket #${item.ticket_id}`,
-      npsScore: item.nps_score,
-      serviceScore: item.service_score,
-      requestFulfilled: item.request_fulfilled,
-      comment: item.comment,
-      resolvedAt: ticket ? ticket.resolved_at : item.created_at
+      id: ticket.id,
+      title: ticket.title || `Ticket #${ticket.id.substring(0, 8)}`,
+      npsScore: ticket.nps_score,
+      serviceScore: ticket.service_score,
+      requestFulfilled: ticket.request_fulfilled,
+      comment: ticket.comment || ticket.nps_feedback, // Usar nps_feedback se comment não estiver disponível
+      resolvedAt: ticket.resolved_at,
+      ticketUrl: `/tickets/${ticket.id}`, // URL para navegar para o ticket
+      assignedToName: ticket.assigned_to_name || (assignedUser ? assignedUser.name : 'Não atribuído'),
+      assignedToRole: assignedUser ? assignedUser.role : undefined
     };
   });
+  
+// Adicionar usuários de suporte e advogados que não têm feedbacks
+if (supportUsers) {
+  const existingUserNames = new Set(feedbackItems.map(item => item.assignedToName));
+  
+  supportUsers.forEach(user => {
+    if (!existingUserNames.has(user.name)) {
+      // Adicionar um item vazio para este usuário com todas as propriedades necessárias
+      feedbackItems.push({
+        id: `empty-${user.id}`,
+        title: '',
+        npsScore: undefined,
+        serviceScore: undefined,
+        requestFulfilled: undefined,
+        comment: '',
+        resolvedAt: undefined,
+        ticketUrl: '',
+        assignedToName: user.name,
+        assignedToRole: user.role
+      });
+    }
+  });
+}
+  
+  return feedbackItems;
+}
+
+// Função para verificar se um ticket está dentro do SLA
+export function isTicketWithinSLA(ticket: any): boolean {
+  if (!ticket.created_at || !ticket.category || !ticket.subcategory) {
+    return true; // Se não tiver informações suficientes, consideramos que está no SLA
+  }
+  
+  // Obter o SLA em horas para esta categoria/subcategoria
+  const slaHours = getSlaHours(ticket.category, ticket.subcategory);
+  
+  // Converter SLA para milissegundos
+  const slaMillis = slaHours * 60 * 60 * 1000;
+  
+  // Calcular o tempo decorrido desde a criação do ticket
+  const createdAt = new Date(ticket.created_at).getTime();
+  const now = Date.now();
+  const elapsedTime = now - createdAt;
+  
+  // Se o ticket já foi resolvido, verificar se foi resolvido dentro do SLA
+  if (ticket.resolved_at) {
+    const resolvedAt = new Date(ticket.resolved_at).getTime();
+    const resolutionTime = resolvedAt - createdAt;
+    return resolutionTime <= slaMillis;
+  }
+  
+  // Se o ticket ainda não foi resolvido, verificar se ainda está dentro do SLA
+  return elapsedTime <= slaMillis;
+}
+
+// Função para obter o tempo restante do SLA em horas
+export function getRemainingSlaTIme(ticket: any): number {
+  if (!ticket.created_at || !ticket.category || !ticket.subcategory) {
+    return 24; // Valor padrão se não houver informações suficientes
+  }
+  
+  // Se o ticket já foi resolvido, retornar 0
+  if (ticket.resolved_at || ticket.status === 'resolved' || ticket.status === 'closed') {
+    return 0;
+  }
+  
+  // Obter o SLA em horas para esta categoria/subcategoria
+  const slaHours = getSlaHours(ticket.category, ticket.subcategory);
+  
+  // Calcular o tempo decorrido desde a criação do ticket em horas
+  const createdAt = new Date(ticket.created_at).getTime();
+  const now = Date.now();
+  const elapsedHours = (now - createdAt) / (1000 * 60 * 60);
+  
+  // Calcular o tempo restante (pode ser negativo se estiver atrasado)
+  const remainingHours = slaHours - elapsedHours;
+  
+  return Math.max(0, Math.round(remainingHours * 10) / 10); // Arredondar para uma casa decimal e não permitir valores negativos
+}
+
+// Função para navegar para o ticket a partir do feedback
+export function navigateToTicketFromFeedback(ticketId: string): string {
+  return `/tickets/${ticketId}`;
 }
 
 // Constantes para cores de status (para referência no frontend)
@@ -391,3 +616,13 @@ export const STATUS_COLORS = {
 
 // Constantes para cores de gráficos
 export const COLORS = ['#3b82f6', '#eab308', '#22c55e', '#6b7280', '#d946ef'];
+
+// Constantes para cores de categorias
+export const CATEGORY_COLORS = {
+  'protocolo': '#3b82f6',     // Azul
+  'cadastro': '#eab308',      // Amarelo
+  'agendamento': '#22c55e',   // Verde
+  'publicacoes': '#d946ef',   // Rosa
+  'assinatura_digital': '#f97316', // Laranja
+  'outros': '#6b7280',        // Cinza
+};
