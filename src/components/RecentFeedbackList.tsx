@@ -5,10 +5,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useAuth } from '@/contexts/AuthContext';
 import { TicketService } from '@/services/ticketService';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle } from 'lucide-react';
+import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 interface RecentFeedbackItem {
   id: string;
@@ -21,6 +22,7 @@ interface RecentFeedbackItem {
   ticketUrl: string;
   assignedToName: string; // Nome do atendente
   assignedToRole?: string; // Função do atendente (support, lawyer, etc.)
+  createdByName?: string; // Nome do solicitante
 }
 
 interface RecentFeedbackListProps {
@@ -187,8 +189,8 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
       return {
         headerBg: 'bg-indigo-50',
         headerText: 'text-indigo-700',
-        icon: <UserCircle className="h-4 w-4 text-indigo-600" />,
-        badge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+        icon: <Briefcase className="h-4 w-4 text-indigo-600" />,
+        badge: 'bg-indigo-100 text-indigo-800 border-indigo-400',
         contentBg: 'bg-indigo-50/30',
         roleText: 'Advogado'
       };
@@ -209,6 +211,29 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
         badge: 'bg-slate-200 text-slate-800 border-slate-300',
         contentBg: 'bg-slate-50/30',
         roleText: 'Atendente'
+      };
+    }
+  };
+
+  // Função para obter o ícone e a cor com base no papel do usuário
+  const getUserRoleStyles = (userRole?: string) => {
+    if (userRole === 'lawyer') {
+      return {
+        icon: <Briefcase className="h-4 w-4" />,
+        color: 'bg-indigo-600 text-blue',
+        label: 'Advogado'
+      };
+    } else if (userRole === 'support' || userRole === 'admin') {
+      return {
+        icon: <HeadphonesIcon className="h-4 w-4" />,
+        color: 'bg-[#D5B170] text-blue',
+        label: 'Suporte'
+      };
+    } else {
+      return {
+        icon: <User className="h-4 w-4" />,
+        color: 'bg-slate-700 text-blue',
+        label: 'Cliente'
       };
     }
   };
@@ -318,7 +343,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                           </div>
                         </div>
                         <Badge className={styles.badge}>
-                          {hasRealFeedbacks ? attendantFeedbacks.length : 0}
+                          {hasRealFeedbacks ? attendantFeedbacks.filter(f => f.id.indexOf('empty-') !== 0).length : 0}
                         </Badge>
                       </div>
                       
@@ -358,31 +383,82 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
           <DialogHeader>
             <DialogTitle className="text-xl">Histórico da Conversa</DialogTitle>
             <p className="text-sm text-slate-500">{selectedTicket?.title}</p>
-            {selectedTicket?.assignedToName && (
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs text-slate-500">Atendente:</span>
-                <Badge variant="outline" className="text-xs font-normal">
-                  {selectedTicket.assignedToName}
-                </Badge>
-                {selectedTicket.assignedToRole && (
-                  <Badge variant="outline" className="text-xs font-normal bg-slate-100">
-                    {selectedTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
-                     selectedTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
-                  </Badge>
-                )}
-              </div>
-            )}
+            
+            <div className="mt-3 space-y-2">
+              {/* Informações do atendente */}
+              {selectedTicket?.assignedToName && (
+                <div className="flex items-center gap-2">
+                  <div className="w-24 text-xs font-medium text-slate-500">Atendente:</div>
+                  <div className="flex items-center gap-1">
+                    <Avatar className="h-5 w-5">
+                      <AvatarFallback className={
+                        selectedTicket.assignedToRole === 'lawyer' ? 'bg-indigo-600 text-white' :
+                        selectedTicket.assignedToRole === 'support' ? 'bg-[#D5B170] text-white' :
+                        'bg-slate-600 text-white'
+                      }>
+                        {selectedTicket.assignedToRole === 'lawyer' ? <Briefcase className="h-3 w-3" /> :
+                         selectedTicket.assignedToRole === 'support' ? <HeadphonesIcon className="h-3 w-3" /> :
+                         getInitials(selectedTicket.assignedToName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm">{selectedTicket.assignedToName}</span>
+                    {selectedTicket.assignedToRole && (
+                      <Badge variant="outline" className="text-xs font-normal ml-1 bg-slate-50 border-slate-200">
+                        {selectedTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
+                         selectedTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Informações do solicitante */}
+              {selectedTicket?.createdByName && (
+                <div className="flex items-center gap-2">
+                  <div className="w-24 text-xs font-medium text-slate-500">Solicitado por:</div>
+                  <div className="flex items-center gap-1">
+                    <Avatar className="h-5 w-5">
+                      <AvatarFallback className="bg-slate-700 text-white">
+                        <User className="h-3 w-3" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm">{selectedTicket.createdByName}</span>
+                    <Badge variant="outline" className="text-xs font-normal ml-1 bg-slate-50 border-slate-200">
+                      Cliente
+                    </Badge>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <Separator className="my-3" />
           </DialogHeader>
           
           {/* Legenda para identificar os participantes */}
-          <div className="flex gap-4 mb-2 px-2">
+          <div className="flex flex-wrap gap-4 mb-3 px-2 bg-slate-50 p-2 rounded-md">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#101F2E]"></div>
-              <span className="text-xs text-slate-600">Você (Jurídico)</span>
+              <Avatar className="h-5 w-5 bg-slate-700 text-blue">
+                <AvatarFallback>
+                  <User className="h-3 w-3" />
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-xs text-slate-600">Cliente</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#D5B170]"></div>
+              <Avatar className="h-5 w-5 bg-[#D5B170] text-blue">
+                <AvatarFallback>
+                  <HeadphonesIcon className="h-3 w-3" />
+                </AvatarFallback>
+              </Avatar>
               <span className="text-xs text-slate-600">Suporte</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Avatar className="h-5 w-5 bg-indigo-600 text-blue">
+                <AvatarFallback>
+                  <Briefcase className="h-3 w-3" />
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-xs text-slate-600">Advogado</span>
             </div>
           </div>
           
@@ -409,7 +485,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
               <div className="space-y-6 p-4">
                 {chatMessages.map((message) => {
                   const isCurrentUser = message.userId === user?.id;
-                  const isSupport = message.userRole === 'support' || message.userRole === 'admin';
+                  const roleStyles = getUserRoleStyles(message.userRole);
                   
                   return (
                     <div 
@@ -418,45 +494,25 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                     >
                       <div className={`flex gap-3 max-w-[80%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
                         <div className="flex flex-col items-center mt-1">
-                          <Avatar className={`h-8 w-8 ${
-                            isCurrentUser 
-                              ? 'bg-[#101F2E] text-white' 
-                              : isSupport 
-                                ? 'bg-[#D5B170] text-white' 
-                                : 'bg-slate-200 text-slate-700'
-                          }`}>
+                          <Avatar className={`h-8 w-8 ${roleStyles.color}`}>
                             <AvatarFallback>
-                              {isCurrentUser ? (
-                                <User className="h-4 w-4" />
-                              ) : isSupport ? (
-                                <HeadphonesIcon className="h-4 w-4" />
-                              ) : (
-                                getInitials(message.userName)
-                              )}
+                              {roleStyles.icon}
                             </AvatarFallback>
                           </Avatar>
                           <span className={`text-[10px] font-medium mt-1 ${
-                            isCurrentUser 
-                              ? 'text-[#101F2E]' 
-                              : isSupport 
-                                ? 'text-[#D5B170]' 
-                                : 'text-slate-500'
+                            isCurrentUser ? 'text-indigo-600' : 
+                            message.userRole === 'support' ? 'text-[#D5B170]' : 
+                            'text-slate-700'
                           }`}>
-                            {isCurrentUser 
-                              ? 'Você' 
-                              : isSupport 
-                                ? message.userName || 'Suporte' 
-                                : getInitials(message.userName)}
+                            {isCurrentUser ? 'Você' : message.userName || roleStyles.label}
                           </span>
                         </div>
                         
                         <div>
                           <div className={`rounded-lg p-3 ${
-                            isCurrentUser 
-                              ? 'bg-[#101F2E] text-white rounded-tr-none' 
-                              : isSupport 
-                                ? 'bg-[#D5B170] text-white rounded-tl-none' 
-                                : 'bg-slate-100 text-slate-800 rounded-tl-none'
+                            isCurrentUser ? 'bg-indigo-600 text-white rounded-tr-none' : 
+                            message.userRole === 'support' ? 'bg-[#D5B170] text-white rounded-tl-none' : 
+                            'bg-slate-100 text-slate-800 rounded-tl-none'
                           }`}>
                             <p className="whitespace-pre-wrap break-words">{message.message}</p>
                           </div>

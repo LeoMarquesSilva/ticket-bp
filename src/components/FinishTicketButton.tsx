@@ -17,14 +17,14 @@ interface FinishTicketButtonProps {
   ticketId: string;
   ticketTitle: string;
   isSupport?: boolean;
-  onTicketFinished?: () => void;  // Adicione o '?' aqui
+  onTicketFinished?: () => void;
 }
 
 const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
   ticketId,
   ticketTitle,
   isSupport = false,
-  onTicketFinished = () => {},  // Adicione um valor padrão aqui
+  onTicketFinished = () => {},
 }) => {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isNPSModalOpen, setIsNPSModalOpen] = useState(false);
@@ -39,6 +39,7 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
       // Se for o usuário que está finalizando, mostrar o NPS
       if (!isSupport) {
         setIsNPSModalOpen(true);
+        // Não chame onTicketFinished aqui, só depois que o NPS for enviado
       } else {
         toast.success('Ticket finalizado com sucesso');
         onTicketFinished();
@@ -60,11 +61,20 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
     try {
       await TicketService.submitTicketFeedback(ticketId, data);
       toast.success('Avaliação enviada com sucesso. Obrigado pelo feedback!');
+      setIsNPSModalOpen(false); // Fechar o modal apenas após o envio bem-sucedido
       onTicketFinished();
     } catch (error) {
       console.error('Erro ao enviar avaliação:', error);
       toast.error('Erro ao enviar avaliação. Tente novamente.');
+      // Não fechar o modal em caso de erro, para que o usuário possa tentar novamente
     }
+  };
+
+  // Esta função não fará nada, pois o modal NPS é obrigatório
+  const handleNPSClose = () => {
+    // Não permitimos fechar o modal sem enviar o feedback
+    // Apenas para garantir que não fechará acidentalmente
+    console.log("Tentativa de fechar o modal NPS sem enviar feedback");
   };
 
   return (
@@ -94,7 +104,7 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
             <DialogDescription>
               {isSupport 
                 ? 'Tem certeza que deseja finalizar este atendimento? O ticket será marcado como resolvido.'
-                : 'Tem certeza que deseja finalizar este ticket? Isso indicará que sua solicitação foi concluída.'}
+                : 'Tem certeza que deseja finalizar este ticket? Isso indicará que sua solicitação foi concluída. Após finalizar, você deverá preencher uma avaliação obrigatória.'}
             </DialogDescription>
           </DialogHeader>
           
@@ -125,16 +135,14 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Modal de NPS (somente para usuários) */}
+      {/* Modal de NPS (somente para usuários) - com mandatory=true */}
       {!isSupport && (
         <NPSModal
           isOpen={isNPSModalOpen}
-          onClose={() => {
-            setIsNPSModalOpen(false);
-            onTicketFinished();
-          }}
+          onClose={handleNPSClose}
           onSubmit={handleNPSSubmit}
           ticketTitle={ticketTitle}
+          mandatory={true}
         />
       )}
     </>

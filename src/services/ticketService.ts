@@ -218,6 +218,33 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
   });
 }
 
+// Get a specific ticket by ID
+static async getTicket(ticketId: string): Promise<Ticket | null> {
+  try {
+    console.log('Getting ticket with ID:', ticketId);
+    
+    const { data, error } = await supabase
+      .from(TABLES.TICKETS)
+      .select('*')
+      .eq('id', ticketId)
+      .single();
+
+    if (error) {
+      console.error('Error getting ticket:', error);
+      throw error;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return mapFromDatabase(data);
+  } catch (error) {
+    console.error('Error in getTicket:', error);
+    throw error;
+  }
+}
+
   // Get all tickets (para a página de tickets)
   static async getAllTickets(): Promise<Ticket[]> {
     try {
@@ -366,6 +393,8 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
     }
   }
 
+  
+
   // Enviar feedback para um ticket
   static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedbackData): Promise<Ticket> {
     try {
@@ -404,6 +433,60 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
       throw error;
     }
   }
+
+  // Verificar se o usuário tem tickets com feedback pendente
+static async hasUnsubmittedFeedback(userId: string): Promise<boolean> {
+  try {
+    console.log('Verificando feedback pendente para usuário:', userId);
+    
+    const { data, error } = await supabase
+      .from(TABLES.TICKETS)
+      .select('id')
+      .eq('created_by', userId)
+      .eq('status', 'resolved')
+      .is('feedback_submitted_at', null)
+      .limit(1);
+
+    if (error) {
+      console.error('Erro ao verificar feedback pendente:', error);
+      throw error;
+    }
+
+    // Se encontrarmos pelo menos um ticket, significa que há feedback pendente
+    return data && data.length > 0;
+  } catch (error) {
+    console.error('Erro em hasUnsubmittedFeedback:', error);
+    // Em caso de erro, permitir a criação do ticket para não bloquear o usuário
+    return false;
+  }
+}
+
+// Obter tickets do usuário com feedback pendente
+static async getUserTicketsWithPendingFeedback(userId: string): Promise<{data: Ticket[], error: any}> {
+  try {
+    console.log('Buscando tickets com feedback pendente para usuário:', userId);
+    
+    const { data, error } = await supabase
+      .from(TABLES.TICKETS)
+      .select('*')
+      .eq('created_by', userId)
+      .eq('status', 'resolved')
+      .is('feedback_submitted_at', null)
+      .order('resolved_at', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao buscar tickets com feedback pendente:', error);
+      return { data: [], error };
+    }
+
+    // Map database fields to frontend fields
+    const tickets = data ? data.map(mapFromDatabase) : [];
+    return { data: tickets, error: null };
+  } catch (error) {
+    console.error('Erro em getUserTicketsWithPendingFeedback:', error);
+    return { data: [], error };
+  }
+}
 
   // Delete a ticket
   static async deleteTicket(ticketId: string): Promise<boolean> {
@@ -675,11 +758,17 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
     }
   }
 
- // Create a new ticket with automatic lawyer assignment
 static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
   try {
     console.log('Creating ticket with data:', ticketData);
-    console.log('Department from user:', ticketData.createdByDepartment); // Log para verificar
+    console.log('Department from user:', ticketData.createdByDepartment);
+    
+    // Verificar se o usuário tem feedback pendente
+    const hasPendingFeedback = await this.hasUnsubmittedFeedback(ticketData.createdBy);
+    
+    if (hasPendingFeedback) {
+      throw new Error('Você tem tickets finalizados que precisam de avaliação. Por favor, avalie-os antes de criar um novo ticket.');
+    }
     
     // Preparar os dados básicos do ticket
     const dbData = {
@@ -721,7 +810,6 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
     throw error;
   }
 }
-
   // Adicionar método para atribuir ticket a um advogado
   static async assignToLawyer(ticketId: string): Promise<Ticket> {
     try {

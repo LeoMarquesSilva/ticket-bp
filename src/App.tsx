@@ -12,6 +12,7 @@ import ResetPassword from '@/pages/ResetPassword';
 import { setupKeepAlive } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { InactivityDetector } from '@/components/InactivityDetector';
+import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
 
 // Componente para rotas protegidas
 const ProtectedRoute = ({ 
@@ -66,6 +67,8 @@ const ProtectedRoute = ({
       currentPage={currentPage} 
       onPageChange={handlePageChange}
     >
+      {/* Adicionar o PendingFeedbackHandler em todas as rotas protegidas */}
+      <PendingFeedbackHandler />
       {children}
     </Layout>
   );
@@ -128,6 +131,16 @@ const AppRoutes = () => {
       {/* Página de tickets para todos os usuários autenticados */}
       <Route
         path="/tickets"
+        element={
+          <ProtectedRoute>
+            <Tickets />
+          </ProtectedRoute>
+        }
+      />
+      
+      {/* Rota para tickets individuais */}
+      <Route
+        path="/tickets/:ticketId"
         element={
           <ProtectedRoute>
             <Tickets />

@@ -3,8 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Star, ThumbsUp, MessageSquare, CheckCircle, AlertCircle } from 'lucide-react';
+import { Star, ThumbsUp, MessageSquare, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface NPSModalProps {
   isOpen: boolean;
@@ -16,9 +17,16 @@ interface NPSModalProps {
     comment: string;
   }) => void;
   ticketTitle: string;
+  mandatory?: boolean; // Nova prop para indicar se o feedback é obrigatório
 }
 
-const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTitle }) => {
+const NPSModal: React.FC<NPSModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onSubmit, 
+  ticketTitle, 
+  mandatory = true // Por padrão, o feedback será obrigatório
+}) => {
   const [step, setStep] = useState<'request' | 'score' | 'comment'>('request');
   const [requestFulfilled, setRequestFulfilled] = useState<boolean | null>(null);
   const [notFulfilledReason, setNotFulfilledReason] = useState('');
@@ -30,6 +38,7 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
     serviceScore?: boolean;
     comment?: boolean;
   }>({});
+  const [showMandatoryWarning, setShowMandatoryWarning] = useState(false);
 
   const handleRequestStep = () => {
     if (requestFulfilled === null) {
@@ -69,17 +78,28 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
         serviceScore,
         comment: comment.trim()
       });
-      handleClose();
+      resetForm();
     }
   };
 
-  const handleClose = () => {
+  const resetForm = () => {
     setRequestFulfilled(null);
     setNotFulfilledReason('');
     setServiceScore(null);
     setComment('');
     setStep('request');
     setErrors({});
+    setShowMandatoryWarning(false);
+  };
+
+  const handleClose = () => {
+    if (mandatory) {
+      // Se for obrigatório, mostrar aviso e não fechar o modal
+      setShowMandatoryWarning(true);
+      return;
+    }
+    
+    resetForm();
     onClose();
   };
 
@@ -96,7 +116,7 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={mandatory ? () => setShowMandatoryWarning(true) : onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-[#101F2E]">
@@ -104,6 +124,16 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
             Avalie Nosso Atendimento
           </DialogTitle>
         </DialogHeader>
+
+        {showMandatoryWarning && (
+          <Alert className="bg-amber-50 border-amber-200">
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <AlertDescription className="text-amber-700">
+              O preenchimento deste feedback é obrigatório para continuar usando o sistema. 
+              Você não poderá criar novos tickets até que avalie este atendimento.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="space-y-6">
           <div className="text-center">
@@ -113,6 +143,11 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
             <p className="text-xs text-slate-500">
               Sua opinião nos ajuda a melhorar nosso atendimento
             </p>
+            {mandatory && (
+              <p className="text-xs text-red-500 font-medium mt-1">
+                * Avaliação obrigatória
+              </p>
+            )}
           </div>
 
           {step === 'request' && (
@@ -128,6 +163,7 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
                   onValueChange={(value) => {
                     setRequestFulfilled(value === 'yes');
                     setErrors(prev => ({ ...prev, requestFulfilled: false }));
+                    setShowMandatoryWarning(false);
                   }}
                   className="flex flex-col space-y-2"
                 >
@@ -162,6 +198,7 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
                       if (e.target.value.trim()) {
                         setErrors(prev => ({ ...prev, notFulfilledReason: false }));
                       }
+                      setShowMandatoryWarning(false);
                     }}
                     placeholder="Explique por que sua solicitação não foi atendida..."
                     className={`min-h-[80px] border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] ${
@@ -177,16 +214,18 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
               )}
 
               <div className="flex justify-between">
-                <Button
-                  variant="outline"
-                  onClick={handleClose}
-                  className="border-slate-300 text-slate-600 hover:bg-slate-50"
-                >
-                  Cancelar
-                </Button>
+                {!mandatory && (
+                  <Button
+                    variant="outline"
+                    onClick={handleClose}
+                    className="border-slate-300 text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </Button>
+                )}
                 <Button
                   onClick={handleRequestStep}
-                  className="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] hover:from-[#0a1520] hover:to-[#1f3240] text-white"
+                  className={`${!mandatory ? '' : 'w-full'} bg-gradient-to-r from-[#101F2E] to-[#2a3f52] hover:from-[#0a1520] hover:to-[#1f3240] text-white`}
                 >
                   Continuar
                 </Button>
@@ -209,6 +248,7 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
                     onClick={() => {
                       setServiceScore(i);
                       setErrors(prev => ({ ...prev, serviceScore: false }));
+                      setShowMandatoryWarning(false);
                     }}
                     className={`
                       h-10 w-full rounded-lg border-2 text-sm font-medium transition-all duration-200
@@ -280,6 +320,7 @@ const NPSModal: React.FC<NPSModalProps> = ({ isOpen, onClose, onSubmit, ticketTi
                     if (e.target.value.trim()) {
                       setErrors(prev => ({ ...prev, comment: false }));
                     }
+                    setShowMandatoryWarning(false);
                   }}
                   placeholder="Conte-nos mais sobre sua experiência..."
                   className={`min-h-[120px] border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] ${
