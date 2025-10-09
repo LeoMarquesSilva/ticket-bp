@@ -2,6 +2,7 @@ import { supabase, TABLES } from '@/lib/supabase';
 import { UserService } from './userService';
 import { executeWithRetry, isOnline } from '../utils/supabaseHelpers';
 import { saveForLater } from '../utils/offlineStorage';
+import ticketEventService from './ticketEventService';
 
 export interface Ticket {
   id: string;
@@ -45,6 +46,7 @@ export interface ChatMessage {
   attachments?: any[]; // Adicionando suporte para anexos
   read?: boolean; // Adicionando campo para controle de leitura
   isTemp?: boolean;
+   isSystem?: boolean;
 }
 
 export interface CreateTicketData {
@@ -88,6 +90,7 @@ export interface TicketFeedbackData {
   serviceScore: number;
   comment: string;
 }
+
 // Map frontend field names to database field names
 const mapToDatabase = (data: any) => {
   const mapped: any = {};
@@ -175,7 +178,8 @@ const mapMessageFromDatabase = (data: any): ChatMessage => {
     message: data.message,
     attachments: data.attachments || [],
     createdAt: data.created_at,
-    read: data.read || false
+    read: data.read || false,
+    isSystem: false
   };
 };
 
@@ -395,44 +399,40 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
 
   
 
-  // Enviar feedback para um ticket
-  static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedbackData): Promise<Ticket> {
-    try {
-      console.log('Submitting feedback for ticket:', ticketId, feedbackData);
-      
-      const now = new Date().toISOString();
-      
-      const updates = {
+static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedbackData): Promise<boolean> {
+  try {
+    console.log('Enviando feedback para ticket:', ticketId, feedbackData);
+    
+    const now = new Date().toISOString();
+    
+    // Atualizar o ticket com os dados de feedback
+    const { error } = await supabase
+      .from(TABLES.TICKETS)
+      .update({
         request_fulfilled: feedbackData.requestFulfilled,
         not_fulfilled_reason: feedbackData.notFulfilledReason || null,
         service_score: feedbackData.serviceScore,
-        comment: feedbackData.comment,
+        comment: feedbackData.comment || null,
         feedback_submitted_at: now,
-        updated_at: now,
-        // Também definimos o status como fechado após o feedback
         status: 'closed',
         closed_at: now,
-      };
+        updated_at: now
+      })
+      .eq('id', ticketId);
 
-      const { data, error } = await supabase
-        .from(TABLES.TICKETS)
-        .update(updates)
-        .eq('id', ticketId)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error submitting feedback:', error);
-        throw error;
-      }
-
-      console.log('Ticket with feedback data:', data);
-      return mapFromDatabase(data);
-    } catch (error) {
-      console.error('Error in submitTicketFeedback:', error);
+    if (error) {
+      console.error('Erro ao atualizar ticket com feedback:', error);
       throw error;
     }
+
+    // Remover completamente a parte que tenta criar uma mensagem do sistema
+    
+    return true;
+  } catch (error) {
+    console.error('Erro em submitTicketFeedback:', error);
+    return false;
   }
+}
 
   // Verificar se o usuário tem tickets com feedback pendente
 static async hasUnsubmittedFeedback(userId: string): Promise<boolean> {
@@ -462,7 +462,7 @@ static async hasUnsubmittedFeedback(userId: string): Promise<boolean> {
 }
 
 // Obter tickets do usuário com feedback pendente
-static async getUserTicketsWithPendingFeedback(userId: string): Promise<{data: Ticket[], error: any}> {
+static async getUserTicketsWithPendingFeedback(userId: string): Promise<Ticket[]> {
   try {
     console.log('Buscando tickets com feedback pendente para usuário:', userId);
     
@@ -476,15 +476,75 @@ static async getUserTicketsWithPendingFeedback(userId: string): Promise<{data: T
 
     if (error) {
       console.error('Erro ao buscar tickets com feedback pendente:', error);
-      return { data: [], error };
+      throw error;
     }
 
     // Map database fields to frontend fields
     const tickets = data ? data.map(mapFromDatabase) : [];
-    return { data: tickets, error: null };
+    return tickets;
   } catch (error) {
     console.error('Erro em getUserTicketsWithPendingFeedback:', error);
-    return { data: [], error };
+    throw error;
+  }
+}
+
+// Verificar se um ticket específico precisa de feedback
+static async checkTicketNeedsFeedback(ticketId: string): Promise<boolean> {
+  try {
+    console.log('Verificando se o ticket precisa de feedback:', ticketId);
+    
+    const { data, error } = await supabase
+      .from(TABLES.TICKETS)
+      .select('status, feedback_submitted_at')
+      .eq('id', ticketId)
+      .single();
+
+    if (error) {
+      console.error('Erro ao verificar status de feedback do ticket:', error);
+      throw error;
+    }
+
+    // O ticket precisa de feedback se estiver resolvido e não tiver feedback enviado
+    const needsFeedback = data && data.status === 'resolved' && !data.feedback_submitted_at;
+    console.log('Ticket precisa de feedback:', needsFeedback, 'Status:', data?.status, 'Feedback enviado:', !!data?.feedback_submitted_at);
+    return needsFeedback;
+  } catch (error) {
+    console.error('Erro em checkTicketNeedsFeedback:', error);
+    return false; // Em caso de erro, assumimos que não precisa de feedback
+  }
+}
+
+// Obter tickets pendentes de feedback
+static async getPendingFeedbackTickets(): Promise<Ticket[]> {
+  try {
+    // Verificar se o usuário está autenticado
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session?.user?.id) {
+      throw new Error('Usuário não autenticado');
+    }
+    
+    const userId = sessionData.session.user.id;
+    console.log('Buscando tickets com feedback pendente para usuário:', userId);
+    
+    const { data, error } = await supabase
+      .from(TABLES.TICKETS)
+      .select('*')
+      .eq('created_by', userId)
+      .eq('status', 'resolved')
+      .is('feedback_submitted_at', null)
+      .order('resolved_at', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao buscar tickets com feedback pendente:', error);
+      throw error;
+    }
+
+    // Map database fields to frontend fields
+    const tickets = data ? data.map(mapFromDatabase) : [];
+    return tickets;
+  } catch (error) {
+    console.error('Erro em getPendingFeedbackTickets:', error);
+    return [];
   }
 }
 

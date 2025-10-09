@@ -33,6 +33,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase, TABLES } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
+import ticketEventService from '@/services/ticketEventService';
 
 interface User {
   id: string;
@@ -75,6 +76,32 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   // Referências para controlar inscrições e evitar vazamentos de memória
   const channelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  // Inicializar o serviço de eventos de tickets
+  useEffect(() => {
+    ticketEventService.initialize();
+  }, []);
+
+  // Escutar o evento de feedback enviado usando o serviço
+  useEffect(() => {
+    // Registrar o callback para o evento de feedback submetido
+    const cleanup = ticketEventService.onFeedbackSubmitted(() => {
+      if (isMountedRef.current) {
+        fetchTicketStats();
+      }
+    });
+    
+    // Armazenar a função de limpeza para uso posterior
+    cleanupRef.current = cleanup;
+
+    // Limpar o ouvinte de evento ao desmontar o componente
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+      }
+    };
+  }, []);
 
   // Filtrar usuários online com base na role do usuário atual
   const filteredOnlineUsers = React.useMemo(() => {
@@ -122,6 +149,9 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
     try {
       if (!user?.id || !isMountedRef.current) return;
       
+      // Atualizar estado para mostrar carregamento
+      setTicketStats(prev => ({ ...prev, loading: true }));
+      
       // Consultas para contar tickets por status
       const openQuery = supabase
         .from(TABLES.TICKETS)
@@ -164,6 +194,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
       if (openResult.error || inProgressResult.error || resolvedResult.error) {
         console.error('Erro ao buscar estatísticas de tickets:', 
           openResult.error || inProgressResult.error || resolvedResult.error);
+        setTicketStats(prev => ({ ...prev, loading: false }));
         return;
       }
       
@@ -457,7 +488,10 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
             <div className="text-xs text-slate-500 mb-1">{getStatsTitle()}</div>
             <div className="flex items-center gap-3">
               {ticketStats.loading ? (
-                <div className="text-sm text-slate-500">Carregando...</div>
+                <div className="text-sm text-slate-500 flex items-center">
+                  <div className="h-4 w-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin mr-2"></div>
+                  Carregando...
+                </div>
               ) : (
                 <>
                   <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">

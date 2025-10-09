@@ -3,7 +3,9 @@ import { supabase, TABLES } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, RefreshCw } from 'lucide-react';
+import { Send, Loader2, RefreshCw, ThumbsUp } from 'lucide-react';
+import NPSChatFeedback from '@/components/NPSChatFeedback';
+import { TicketService } from '@/services/ticketService';
 
 interface ChatMessage {
   id: string;
@@ -16,6 +18,10 @@ interface ChatMessage {
 
 interface TicketChatProps {
   ticketId: string;
+  ticketTitle: string;
+  ticketStatus: string;
+  needsFeedback: boolean;
+  onFeedbackSubmit: () => void;
 }
 
 // Função de debounce para limitar a frequência de chamadas
@@ -27,7 +33,13 @@ const debounce = (func: Function, delay: number) => {
   };
 };
 
-const TicketChat: React.FC<TicketChatProps> = ({ ticketId }) => {
+const TicketChat: React.FC<TicketChatProps> = ({ 
+  ticketId, 
+  ticketTitle, 
+  ticketStatus, 
+  needsFeedback, 
+  onFeedbackSubmit 
+}) => {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -43,39 +55,14 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId }) => {
   const mountedRef = useRef(true);
   const lastTicketIdRef = useRef<string | null>(null);
   const subscriptionAttemptRef = useRef(0);
-
-  // Debug para verificar montagem/desmontagem
-  useEffect(() => {
-    console.log('TicketChat montado para o ticket:', ticketId);
-    
-    // Verificar se o Supabase está configurado corretamente
-    console.log('Verificando configuração do Supabase...');
-    (async () => {
-      try {
-        const response = await supabase.from(TABLES.CHAT_MESSAGES).select('count').eq('ticket_id', ticketId);
-        console.log('Teste de conexão com Supabase:', response);
-      } catch (error) {
-        console.error('Erro ao testar conexão com Supabase:', error);
-      }
-    })();
-    
-    mountedRef.current = true;
-    lastTicketIdRef.current = ticketId;
-    
-    return () => {
-      console.log('TicketChat desmontado para o ticket:', ticketId);
-      mountedRef.current = false;
-      
-      // Limpar todos os timeouts e intervalos
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, [ticketId]);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  
+  // Mostrar o formulário de NPS diretamente no chat quando o ticket estiver finalizado
+  // e o usuário precisar dar feedback e ainda não enviou o feedback
+  const showNPSForm = (ticketStatus === 'resolved' || ticketStatus === 'closed') && 
+                      needsFeedback && 
+                      !feedbackSubmitted &&
+                      user?.role === 'user';
 
   // Função para carregar mensagens do cache local
   const loadMessagesFromCache = () => {
@@ -303,34 +290,34 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId }) => {
     };
   }, [ticketId]);
 
-// Efeito para carregar mensagens e configurar inscrição
-useEffect(() => {
-  setLoading(true);
-  setError(null);
-  
-  // Tentar carregar do cache primeiro
-  const cachedLoaded = loadMessagesFromCache();
-  
-  // Sempre buscar mensagens atualizadas do servidor
-  fetchMessages();
-  
-  // Configurar inscrição em tempo real com debounce
-  const timeoutId = setTimeout(() => {
-    setupSubscription();
-  }, 500);
-  
-  return () => {
-    clearTimeout(timeoutId);
-    // Se necessário, limpe a inscrição aqui também
-    if (subscriptionRef.current) {
-      try {
-        subscriptionRef.current.unsubscribe();
-      } catch (e) {
-        console.error('Erro ao limpar inscrição:', e);
+  // Efeito para carregar mensagens e configurar inscrição
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    
+    // Tentar carregar do cache primeiro
+    const cachedLoaded = loadMessagesFromCache();
+    
+    // Sempre buscar mensagens atualizadas do servidor
+    fetchMessages();
+    
+    // Configurar inscrição em tempo real com debounce
+    const timeoutId = setTimeout(() => {
+      setupSubscription();
+    }, 500);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      // Se necessário, limpe a inscrição aqui também
+      if (subscriptionRef.current) {
+        try {
+          subscriptionRef.current.unsubscribe();
+        } catch (e) {
+          console.error('Erro ao limpar inscrição:', e);
+        }
       }
-    }
-  };
-}, [ticketId, setupSubscription]);
+    };
+  }, [ticketId, setupSubscription]);
 
   // Efeito para rolar para o final quando novas mensagens chegam
   useEffect(() => {
@@ -339,115 +326,146 @@ useEffect(() => {
     }
   }, [messages]);
 
-// Função para enviar uma nova mensagem
-const sendMessage = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!newMessage.trim() || !user) return;
-  
-  // Criar uma cópia local da mensagem para evitar problemas de estado
-  const messageContent = newMessage.trim();
-  
-  // Limpar o campo de mensagem imediatamente para melhor UX
-  setNewMessage('');
-  
-  // Configurar um timeout de segurança para resetar o estado de envio
-  const safetyTimeout = setTimeout(() => {
-    if (mountedRef.current) {
-      setSending(false);
-    }
-  }, 10000); // 10 segundos de timeout
-  
-  try {
-    setSending(true);
+  // Debug para verificar montagem/desmontagem
+  useEffect(() => {
+    console.log('TicketChat montado para o ticket:', ticketId);
     
-    const messageData = {
-      ticket_id: ticketId,
-      user_id: user.id,
-      user_name: user.name,
-      message: messageContent,
-      created_at: new Date().toISOString()
-    };
+    // Verificar se o Supabase está configurado corretamente
+    console.log('Verificando configuração do Supabase...');
+    (async () => {
+      try {
+        const response = await supabase.from(TABLES.CHAT_MESSAGES).select('count').eq('ticket_id', ticketId);
+        console.log('Teste de conexão com Supabase:', response);
+      } catch (error) {
+        console.error('Erro ao testar conexão com Supabase:', error);
+      }
+    })();
     
-    console.log('Enviando mensagem:', messageData);
+    mountedRef.current = true;
+    lastTicketIdRef.current = ticketId;
     
-    // Adicionar otimisticamente a mensagem para feedback imediato
-    const tempId = `temp-${Date.now()}`;
-    const tempMessage: ChatMessage = {
-      id: tempId,
-      ticket_id: ticketId,
-      user_id: user.id,
-      user_name: user.name,
-      message: messageContent,
-      created_at: new Date().toISOString()
-    };
-    
-        // Adicionar a mensagem temporária à lista
-        setMessages(currentMessages => {
-          const updatedMessages = [...currentMessages, tempMessage];
-          return updatedMessages;
-        });
-        
-        // Enviar para o Supabase
-        const { data, error } = await supabase
-          .from(TABLES.CHAT_MESSAGES)
-          .insert(messageData)
-          .select()
-          .single();
-        
-        if (error) {
-          console.error('Erro ao enviar mensagem:', error);
-          setError('Erro ao enviar mensagem. Por favor, tente novamente.');
-          
-          // Remover a mensagem temporária em caso de erro
-          setMessages(currentMessages => 
-            currentMessages.filter(msg => msg.id !== tempId)
-          );
-          
-          // Restaurar a mensagem no campo de entrada
-          setNewMessage(messageContent);
-          return;
-        }
-        
-        console.log('Mensagem enviada com sucesso:', data);
-        
-        if (!mountedRef.current) return;
-        
-            // Substituir a mensagem temporária pela real
-            setMessages(currentMessages => {
-              const updatedMessages = currentMessages.map(msg => 
-                msg.id === tempId ? {
-                  id: data.id,
-                  ticket_id: data.ticket_id,
-                  user_id: data.user_id,
-                  user_name: data.user_name,
-                  message: data.message,
-                  created_at: data.created_at
-                } as ChatMessage : msg
-              );
-              
-              // Atualizar o cache com os dados atualizados
-              saveMessagesToCache(updatedMessages);
-              
-              return updatedMessages;
-            });
-        
-      } catch (e) {
-        console.error('Erro ao enviar mensagem:', e);
-        setError('Erro ao enviar mensagem. Por favor, tente novamente.');
-        
-        // Restaurar a mensagem no campo de entrada em caso de erro
-        setNewMessage(messageContent);
-      } finally {
-        // Limpar o timeout de segurança
-        clearTimeout(safetyTimeout);
-        
-        if (mountedRef.current) {
-          setSending(false);
-        }
+    return () => {
+      console.log('TicketChat desmontado para o ticket:', ticketId);
+      mountedRef.current = false;
+      
+      // Limpar todos os timeouts e intervalos
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
       }
     };
+  }, [ticketId]);
 
+  // Função para enviar uma nova mensagem
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newMessage.trim() || !user) return;
+    
+    // Criar uma cópia local da mensagem para evitar problemas de estado
+    const messageContent = newMessage.trim();
+    
+    // Limpar o campo de mensagem imediatamente para melhor UX
+    setNewMessage('');
+    
+    // Configurar um timeout de segurança para resetar o estado de envio
+    const safetyTimeout = setTimeout(() => {
+      if (mountedRef.current) {
+        setSending(false);
+      }
+    }, 10000); // 10 segundos de timeout
+    
+    try {
+      setSending(true);
+      
+      const messageData = {
+        ticket_id: ticketId,
+        user_id: user.id,
+        user_name: user.name,
+        message: messageContent,
+        created_at: new Date().toISOString()
+      };
+      
+      console.log('Enviando mensagem:', messageData);
+      
+      // Adicionar otimisticamente a mensagem para feedback imediato
+      const tempId = `temp-${Date.now()}`;
+      const tempMessage: ChatMessage = {
+        id: tempId,
+        ticket_id: ticketId,
+        user_id: user.id,
+        user_name: user.name,
+        message: messageContent,
+        created_at: new Date().toISOString()
+      };
+      
+      // Adicionar a mensagem temporária à lista
+      setMessages(currentMessages => {
+        const updatedMessages = [...currentMessages, tempMessage];
+        return updatedMessages;
+      });
+      
+      // Enviar para o Supabase
+      const { data, error } = await supabase
+        .from(TABLES.CHAT_MESSAGES)
+        .insert(messageData)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Erro ao enviar mensagem:', error);
+        setError('Erro ao enviar mensagem. Por favor, tente novamente.');
+        
+        // Remover a mensagem temporária em caso de erro
+        setMessages(currentMessages => 
+          currentMessages.filter(msg => msg.id !== tempId)
+        );
+        
+        // Restaurar a mensagem no campo de entrada
+        setNewMessage(messageContent);
+        return;
+      }
+      
+      console.log('Mensagem enviada com sucesso:', data);
+      
+      if (!mountedRef.current) return;
+      
+      // Substituir a mensagem temporária pela real
+      setMessages(currentMessages => {
+        const updatedMessages = currentMessages.map(msg => 
+          msg.id === tempId ? {
+            id: data.id,
+            ticket_id: data.ticket_id,
+            user_id: data.user_id,
+            user_name: data.user_name,
+            message: data.message,
+            created_at: data.created_at
+          } as ChatMessage : msg
+        );
+        
+        // Atualizar o cache com os dados atualizados
+        saveMessagesToCache(updatedMessages);
+        
+        return updatedMessages;
+      });
+    } catch (e) {
+      console.error('Erro ao enviar mensagem:', e);
+      setError('Erro ao enviar mensagem. Por favor, tente novamente.');
+      
+      // Restaurar a mensagem no campo de entrada em caso de erro
+      setNewMessage(messageContent);
+    } finally {
+      // Limpar o timeout de segurança
+      clearTimeout(safetyTimeout);
+      
+      if (mountedRef.current) {
+        setSending(false);
+      }
+    }
+  };
 
   // Função para forçar uma atualização manual
   const handleForceRefresh = () => {
@@ -483,6 +501,40 @@ const sendMessage = async (e: React.FormEvent) => {
       });
     } catch (e) {
       return dateString;
+    }
+  };
+
+  // Função para lidar com o envio do feedback NPS
+  const handleNPSSubmit = async (feedbackData: {
+    requestFulfilled: boolean;
+    notFulfilledReason?: string;
+    serviceScore: number;
+    comment: string;
+  }) => {
+    try {
+      await TicketService.submitTicketFeedback(ticketId, feedbackData);
+      
+      // Adicionar uma mensagem do sistema informando que o feedback foi enviado
+      const systemMessage: ChatMessage = {
+        id: `system-${Date.now()}`,
+        ticket_id: ticketId,
+        user_id: 'system',
+        user_name: 'Sistema',
+        message: `✅ Feedback enviado: Avaliação ${feedbackData.serviceScore}/10. Obrigado pela sua avaliação!`,
+        created_at: new Date().toISOString()
+      };
+      
+      setMessages(currentMessages => [...currentMessages, systemMessage]);
+      
+      // Marcar o feedback como enviado para esconder o formulário
+      setFeedbackSubmitted(true);
+      
+      // Notificar o componente pai que o feedback foi enviado
+      onFeedbackSubmit();
+      
+    } catch (error) {
+      console.error('Erro ao enviar feedback:', error);
+      setError('Erro ao enviar feedback. Por favor, tente novamente.');
     }
   };
 
@@ -535,14 +587,20 @@ const sendMessage = async (e: React.FormEvent) => {
           >
             <div 
               className={`max-w-[80%] rounded-lg px-4 py-2 shadow-sm ${
-                msg.user_id === user?.id 
-                  ? 'bg-[#101F2E] text-white' 
-                  : 'bg-[#D5B170]/10 text-slate-800'
+                msg.user_id === 'system' 
+                  ? 'bg-[#D5B170]/20 text-slate-800 mx-auto' 
+                  : msg.user_id === user?.id 
+                    ? 'bg-[#101F2E] text-white' 
+                    : 'bg-[#D5B170]/10 text-slate-800'
               }`}
             >
               <div className="flex justify-between items-center mb-1">
                 <span className={`text-xs font-medium ${
-                  msg.user_id === user?.id ? 'text-[#D5B170]' : 'text-[#101F2E]'
+                  msg.user_id === 'system' 
+                    ? 'text-[#D5B170]' 
+                    : msg.user_id === user?.id 
+                      ? 'text-[#D5B170]' 
+                      : 'text-[#101F2E]'
                 }`}>
                   {msg.user_id === user?.id ? 'Você' : msg.user_name}
                 </span>
@@ -556,6 +614,33 @@ const sendMessage = async (e: React.FormEvent) => {
             </div>
           </div>
         ))}
+        
+        {/* Formulário de NPS no chat quando o ticket estiver finalizado e precisar de feedback */}
+        {showNPSForm && (
+          <div className="flex justify-center">
+            <NPSChatFeedback 
+              ticketTitle={ticketTitle}
+              onSubmit={handleNPSSubmit}
+            />
+          </div>
+        )}
+        
+        {/* Mensagem de feedback enviado quando o usuário já enviou o feedback */}
+        {(ticketStatus === 'resolved' || ticketStatus === 'closed') && 
+         !needsFeedback && 
+         user?.role === 'user' && (
+          <div className="flex justify-center">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <ThumbsUp className="h-5 w-5 text-green-500" />
+                <span className="font-medium text-green-700">Feedback enviado</span>
+              </div>
+              <p className="text-sm text-green-600">
+                Obrigado pela sua avaliação! Sua opinião é muito importante para melhorarmos nossos serviços.
+              </p>
+            </div>
+          </div>
+        )}
         
         {/* Elemento para rolar para o final */}
         <div ref={messagesEndRef} />
@@ -578,19 +663,19 @@ const sendMessage = async (e: React.FormEvent) => {
         </div>
       )}
       
-      {/* Formulário para enviar mensagem */}
+      {/* Formulário para enviar mensagem - desabilitado se estiver mostrando o formulário de NPS */}
       <form onSubmit={sendMessage} className="p-3 border-t border-[#D5B170]/20 bg-white/90 rounded-b-lg">
         <div className="flex space-x-2">
           <Textarea
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Digite sua mensagem..."
+            placeholder={showNPSForm ? "Por favor, preencha o formulário de feedback acima..." : "Digite sua mensagem..."}
             className="flex-1 resize-none min-h-[60px] max-h-[120px] bg-white"
-            disabled={sending}
+            disabled={sending || showNPSForm}
           />
           <Button 
             type="submit" 
-            disabled={sending || !newMessage.trim()}
+            disabled={sending || !newMessage.trim() || showNPSForm}
             className="bg-[#101F2E] hover:bg-[#1c3a58] text-white self-end"
           >
             {sending ? (

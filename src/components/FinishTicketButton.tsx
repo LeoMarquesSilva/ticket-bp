@@ -12,6 +12,7 @@ import {
 import { TicketService } from '@/services/ticketService';
 import { toast } from 'sonner';
 import NPSModal from './NPSModal';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface FinishTicketButtonProps {
   ticketId: string;
@@ -29,6 +30,12 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isNPSModalOpen, setIsNPSModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuth();
+  
+  // Se o usuário for do tipo "user", não renderizar o botão
+  if (user?.role === 'user') {
+    return null;
+  }
 
   const handleFinishTicket = async () => {
     try {
@@ -36,14 +43,9 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
       await TicketService.finishTicket(ticketId);
       setIsConfirmDialogOpen(false);
       
-      // Se for o usuário que está finalizando, mostrar o NPS
-      if (!isSupport) {
-        setIsNPSModalOpen(true);
-        // Não chame onTicketFinished aqui, só depois que o NPS for enviado
-      } else {
-        toast.success('Ticket finalizado com sucesso');
-        onTicketFinished();
-      }
+      // Apenas support/lawyer podem finalizar tickets agora
+      toast.success('Ticket finalizado com sucesso');
+      onTicketFinished();
     } catch (error) {
       console.error('Erro ao finalizar ticket:', error);
       toast.error('Erro ao finalizar ticket. Tente novamente.');
@@ -52,45 +54,15 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
     }
   };
 
-  const handleNPSSubmit = async (data: {
-    requestFulfilled: boolean;
-    notFulfilledReason?: string;
-    serviceScore: number;
-    comment: string;
-  }) => {
-    try {
-      await TicketService.submitTicketFeedback(ticketId, data);
-      toast.success('Avaliação enviada com sucesso. Obrigado pelo feedback!');
-      setIsNPSModalOpen(false); // Fechar o modal apenas após o envio bem-sucedido
-      onTicketFinished();
-    } catch (error) {
-      console.error('Erro ao enviar avaliação:', error);
-      toast.error('Erro ao enviar avaliação. Tente novamente.');
-      // Não fechar o modal em caso de erro, para que o usuário possa tentar novamente
-    }
-  };
-
-  // Esta função não fará nada, pois o modal NPS é obrigatório
-  const handleNPSClose = () => {
-    // Não permitimos fechar o modal sem enviar o feedback
-    // Apenas para garantir que não fechará acidentalmente
-    console.log("Tentativa de fechar o modal NPS sem enviar feedback");
-  };
-
   return (
     <>
       <Button
         onClick={() => setIsConfirmDialogOpen(true)}
-        className={`
-          ${isSupport 
-            ? 'bg-green-600 hover:bg-green-700' 
-            : 'bg-[#D5B170] hover:bg-[#c4a05f]'
-          } text-white
-        `}
+        className="bg-green-600 hover:bg-green-700 text-white"
         size="sm"
       >
         <CheckCircle className="h-4 w-4 mr-2" />
-        {isSupport ? 'Finalizar Atendimento' : 'Finalizar Ticket'}
+        Finalizar Atendimento
       </Button>
 
       {/* Diálogo de confirmação */}
@@ -98,13 +70,11 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertCircle className={`h-5 w-5 ${isSupport ? 'text-green-500' : 'text-[#D5B170]'}`} />
+              <AlertCircle className="h-5 w-5 text-green-500" />
               Confirmar Finalização
             </DialogTitle>
             <DialogDescription>
-              {isSupport 
-                ? 'Tem certeza que deseja finalizar este atendimento? O ticket será marcado como resolvido.'
-                : 'Tem certeza que deseja finalizar este ticket? Isso indicará que sua solicitação foi concluída. Após finalizar, você deverá preencher uma avaliação obrigatória.'}
+              Tem certeza que deseja finalizar este atendimento? O ticket será marcado como resolvido.
             </DialogDescription>
           </DialogHeader>
           
@@ -122,29 +92,13 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
               type="button"
               onClick={handleFinishTicket}
               disabled={isLoading}
-              className={`
-                ${isSupport 
-                  ? 'bg-green-600 hover:bg-green-700' 
-                  : 'bg-[#D5B170] hover:bg-[#c4a05f]'
-                } text-white
-              `}
+              className="bg-green-600 hover:bg-green-700 text-white"
             >
               {isLoading ? 'Finalizando...' : 'Confirmar Finalização'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Modal de NPS (somente para usuários) - com mandatory=true */}
-      {!isSupport && (
-        <NPSModal
-          isOpen={isNPSModalOpen}
-          onClose={handleNPSClose}
-          onSubmit={handleNPSSubmit}
-          ticketTitle={ticketTitle}
-          mandatory={true}
-        />
-      )}
     </>
   );
 };

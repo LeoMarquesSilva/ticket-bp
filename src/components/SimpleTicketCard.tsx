@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Lock, User, UserCheck, Clock, Building2 } from 'lucide-react';
+import { Lock, User, UserCheck, Clock, Building2, ThumbsUp, CheckCircle } from 'lucide-react';
 import { Ticket } from '@/types';
 
 interface SimpleTicketCardProps {
@@ -12,6 +12,8 @@ interface SimpleTicketCardProps {
   getPriorityColor: (priority: string) => string;
   getStatusColor: (status: string) => string;
   isTicketFinalized: (ticket: Ticket) => boolean;
+  needsFeedback?: boolean; // Indica se o ticket precisa de feedback
+  hasFeedback?: boolean; // Nova propriedade para indicar se o ticket já recebeu feedback
 }
 
 const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
@@ -21,7 +23,9 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   onClick,
   getPriorityColor,
   getStatusColor,
-  isTicketFinalized
+  isTicketFinalized,
+  needsFeedback = false,
+  hasFeedback = false // Por padrão, não tem feedback
 }) => {
   // Função para formatar a data e hora
   const formatDateTime = (dateString: string) => {
@@ -43,9 +47,13 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
           ? 'border-[#D5B170] bg-[#D5B170]/5' 
           : unreadCount > 0 
             ? 'border-blue-300 bg-blue-50' 
-            : isTicketFinalized(ticket)
-              ? 'border-slate-200 bg-slate-50'
-              : 'border-slate-200'
+            : needsFeedback
+              ? 'border-l-4 border-l-[#D5B170] border-t-slate-200 border-r-slate-200 border-b-slate-200' // Borda esquerda dourada para tickets que precisam de feedback
+              : hasFeedback
+                ? 'border-l-4 border-l-green-500 border-t-slate-200 border-r-slate-200 border-b-slate-200' // Borda esquerda verde para tickets com feedback
+                : isTicketFinalized(ticket)
+                  ? 'border-slate-200 bg-slate-50'
+                  : 'border-slate-200'
       }`}
       onClick={onClick}
     >
@@ -59,11 +67,25 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
               </span>
             )}
           </h3>
-          {unreadCount > 0 && (
-            <Badge className="bg-red-500 text-white text-xs ml-2">
-              {unreadCount}
-            </Badge>
-          )}
+          <div className="flex items-center gap-1">
+            {needsFeedback && (
+              <Badge className="bg-[#D5B170] text-white text-xs flex items-center gap-1">
+                <ThumbsUp className="h-2.5 w-2.5" />
+                Avaliar
+              </Badge>
+            )}
+            {hasFeedback && (
+              <Badge className="bg-green-500 text-white text-xs flex items-center gap-1">
+                <CheckCircle className="h-2.5 w-2.5" />
+                Avaliado
+              </Badge>
+            )}
+            {unreadCount > 0 && (
+              <Badge className="bg-red-500 text-white text-xs">
+                {unreadCount}
+              </Badge>
+            )}
+          </div>
         </div>
         
         <p className="text-xs text-slate-600 line-clamp-2 mb-2">
@@ -105,6 +127,22 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
               <span className="italic text-slate-400">Não atribuído</span>}
             </span>
           </div>
+          
+          {/* Indicador de feedback pendente */}
+          {needsFeedback && (
+            <div className="flex items-center mt-1 text-[#8B7644] bg-[#D5B170]/10 p-1 rounded-sm">
+              <ThumbsUp className="h-3 w-3 mr-1 text-[#D5B170]" />
+              <span className="font-medium">Avaliação pendente</span>
+            </div>
+          )}
+          
+          {/* Indicador de feedback respondido */}
+          {hasFeedback && (
+            <div className="flex items-center mt-1 text-green-700 bg-green-50 p-1 rounded-sm">
+              <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
+              <span className="font-medium">Avaliação enviada</span>
+            </div>
+          )}
         </div>
         
         {/* Data e hora de criação */}

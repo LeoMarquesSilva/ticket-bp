@@ -1,14 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, Star } from 'lucide-react';
 import FinishTicketButton from './FinishTicketButton';
 import { Ticket } from '@/types';
-import { ChatMessage } from '@/services/ticketService'; // Corrigir esta importação
+import { TicketService } from '@/services/ticketService';
+import NPSChatFeedback from './NPSChatFeedback';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,38 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+// Interface para mensagens de chat
+interface ChatMessage {
+  id: string;
+  ticketId: string;
+  userId: string;
+  userName: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+  attachments?: any[];
+  isTemp?: boolean;
+  isSystem?: boolean; // Propriedade para identificar mensagens do sistema
+}
+
+// Interface para dados de feedback
+interface TicketFeedbackData {
+  requestFulfilled: boolean;
+  notFulfilledReason?: string;
+  serviceScore: number;
+  comment: string;
+}
 
 interface TicketChatPanelProps {
   selectedTicket: Ticket;
@@ -39,8 +72,9 @@ interface TicketChatPanelProps {
   setShowImagePreview: (url: string | null) => void;
   typingUsers: Record<string, string>;
   handleTyping: () => void;
-  supportUsers?: any[]; // Adicionamos esta prop para listar usuários de suporte
-  handleAssignTicket?: (ticketId: string, supportUserId: string) => void; // Adicionamos esta prop para transferir o ticket
+  supportUsers?: any[]; // Para listar usuários de suporte
+  handleAssignTicket?: (ticketId: string, supportUserId: string) => void;
+  onCreateNewTicket?: () => void;
 }
 
 const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
@@ -65,9 +99,115 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   typingUsers,
   handleTyping,
   supportUsers = [],
-  handleAssignTicket
+  handleAssignTicket,
+  onCreateNewTicket
 }) => {
   const [showTicketDetails, setShowTicketDetails] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Verificar se o ticket precisa de feedback quando é selecionado
+  useEffect(() => {
+    const checkNeedsFeedback = async () => {
+      if (selectedTicket && user && user.role === 'user' && selectedTicket.createdBy === user.id) {
+        // Verificar se o parâmetro showFeedback está presente na URL
+        const showFeedbackParam = searchParams.get('showFeedback') === 'true';
+        
+        // Verificar no banco de dados se o ticket precisa de feedback
+        const needsFeedback = await TicketService.checkTicketNeedsFeedback(selectedTicket.id);
+        
+        // Mostrar feedback se o parâmetro da URL estiver presente ou se o ticket precisar de feedback
+        setShowFeedback(showFeedbackParam || needsFeedback);
+      } else {
+        setShowFeedback(false);
+      }
+    };
+
+    checkNeedsFeedback();
+  }, [selectedTicket, user, searchParams]);
+
+  // Função para lidar com o envio do feedback
+  const handleSubmitFeedback = async (feedbackData: TicketFeedbackData) => {
+  if (!selectedTicket) return;
+  
+  try {
+    setSubmittingFeedback(true);
+    
+    // Enviar feedback para o servidor
+    await TicketService.submitTicketFeedback(selectedTicket.id, feedbackData);
+    
+    // Não precisamos mais criar manualmente a mensagem do sistema aqui,
+    // pois o serviço já está fazendo isso diretamente no banco de dados
+    
+    // Atualizar o ticket localmente
+    if (handleUpdateTicket) {
+      handleUpdateTicket(selectedTicket.id, {
+        ...feedbackData,
+        feedbackSubmittedAt: new Date().toISOString(),
+        status: 'closed',
+        needsFeedback: false // Garantir que o ticket seja marcado como não precisando mais de feedback
+      });
+    }
+    
+    // Esconder o formulário de feedback
+    setShowFeedback(false);
+    setShowFeedbackModal(false);
+    
+    // Mostrar mensagem de sucesso
+    alert('Obrigado por sua avaliação!');
+    
+    // Remover apenas o parâmetro showFeedback da URL sem recarregar a página
+    if (searchParams.has('showFeedback')) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('showFeedback');
+      // Usar o método replace: true para não adicionar uma nova entrada no histórico
+      setSearchParams(newParams, { replace: true });
+    }
+    
+    // Disparar evento personalizado para notificar outros componentes
+    const feedbackEvent = new CustomEvent('ticketFeedbackSubmitted', {
+      detail: {
+        ticketId: selectedTicket.id,
+        userId: user?.id
+      }
+    });
+    window.dispatchEvent(feedbackEvent);
+    
+    // Atualizar o localStorage para refletir a mudança imediatamente
+    try {
+      // Verificar se há dados de tickets pendentes no localStorage
+      const pendingFeedbackKey = `pendingFeedback_${user?.id}`;
+      const storedPending = localStorage.getItem(pendingFeedbackKey);
+      if (storedPending) {
+        // Atualizar a lista de tickets pendentes removendo o atual
+        const pendingTickets = JSON.parse(storedPending);
+        const updatedPending = pendingTickets.filter(
+          (ticketId: string) => ticketId !== selectedTicket.id
+        );
+        // Salvar a lista atualizada ou remover a chave se estiver vazia
+        if (updatedPending.length > 0) {
+          localStorage.setItem(pendingFeedbackKey, JSON.stringify(updatedPending));
+        } else {
+          localStorage.removeItem(pendingFeedbackKey);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar localStorage:", err);
+    }
+    
+    // Fechar o chat após enviar o feedback
+    closeChat();
+    
+  } catch (error) {
+    console.error('Erro ao enviar feedback:', error);
+    alert('Ocorreu um erro ao enviar sua avaliação. Por favor, tente novamente.');
+  } finally {
+    setSubmittingFeedback(false);
+  }
+};
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('pt-BR', {
@@ -191,8 +331,38 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     }
   };
 
+  // Renderizar os ícones de NPS com estrelas
+  const renderNPSIcons = () => {
+    return (
+      <div className="flex justify-center mb-6">
+        <div className="flex items-center gap-1">
+          <div className="flex flex-col items-center">
+            <div className="p-2 rounded-full bg-red-100 mb-1">
+              <Star className="h-6 w-6 text-red-500" />
+            </div>
+            <span className="text-xs text-slate-500">Ruim</span>
+          </div>
+          <div className="w-16 h-0.5 bg-slate-200"></div>
+          <div className="flex flex-col items-center">
+            <div className="p-2 rounded-full bg-yellow-100 mb-1">
+              <Star className="h-6 w-6 text-yellow-500" />
+            </div>
+            <span className="text-xs text-slate-500">Regular</span>
+          </div>
+          <div className="w-16 h-0.5 bg-slate-200"></div>
+          <div className="flex flex-col items-center">
+            <div className="p-2 rounded-full bg-green-100 mb-1">
+              <Star className="h-6 w-6 text-green-500" />
+            </div>
+            <span className="text-xs text-slate-500">Bom</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-<div className="flex-1 flex flex-col h-full overflow-hidden border-l border-slate-200">
+    <div className="flex-1 flex flex-col h-full overflow-hidden border-l border-slate-200">
       {/* Chat Header */}
       <div className="p-3 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between">
@@ -359,22 +529,49 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       </div>
 
       {/* Chat Messages */}
-      <ScrollArea className="flex-1 p-3" style={{ maxHeight: 'calc(100vh - 240px)' }}>
-        {chatMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 p-4">
-            <MessageCircle className="h-8 w-8 text-slate-300 mb-2" />
-            <p className="text-slate-500 text-sm">Nenhuma mensagem ainda</p>
-            <p className="text-xs text-slate-400">
-              {isTicketFinalized(selectedTicket) 
-                ? 'Este ticket está finalizado e não pode receber novas mensagens.'
-                : 'Seja o primeiro a enviar uma mensagem!'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
+        <ScrollArea className="flex-1 p-3 relative" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+          {chatMessages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 p-4">
+              <MessageCircle className="h-8 w-8 text-slate-300 mb-2" />
+              <p className="text-slate-500 text-sm">Nenhuma mensagem ainda</p>
+              <p className="text-xs text-slate-400">
+                {isTicketFinalized(selectedTicket) 
+                  ? 'Este ticket está finalizado e não pode receber novas mensagens.'
+                  : 'Seja o primeiro a enviar uma mensagem!'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Mensagem de feedback enviado */}
+              {selectedTicket.feedbackSubmittedAt && (
+                <div className="flex justify-center my-2">
+                  <div className="bg-slate-100 text-slate-700 px-4 py-2 rounded-full text-xs font-medium flex items-center">
+                    <ThumbsUp className="h-3 w-3 mr-1 text-green-500" />
+                    Feedback enviado: {selectedTicket.serviceScore}/10 - {selectedTicket.requestFulfilled ? 'Solicitação atendida' : 'Solicitação não atendida'}
+                  </div>
+                </div>
+              )}
+              
               {chatMessages.map((message) => {
                 const isOwnMessage = user?.id === message.userId;
                 const isTemp = message.isTemp;
+                const isSystemMessage = message.userId === 'system' || message.isSystem;
+                
+                // Renderizar mensagem do sistema (como feedback enviado)
+                if (isSystemMessage) {
+                  return (
+                    <div key={message.id} className="flex justify-center my-2">
+                      <div className="bg-slate-100 text-slate-700 px-4 py-2 rounded-full text-xs font-medium flex items-center">
+                        {message.message.includes('Feedback enviado') ? (
+                          <ThumbsUp className="h-3 w-3 mr-1 text-green-500" />
+                        ) : (
+                          <MessageCircle className="h-3 w-3 mr-1 text-blue-500" />
+                        )}
+                        {message.message}
+                      </div>
+                    </div>
+                  );
+                }
                 
                 return (
                   <div
@@ -422,10 +619,44 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   </div>
                 );
               })}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </ScrollArea>
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+
+          {/* Botão flutuante para avaliação */}
+          {showFeedback && user && user.role === 'user' && (
+            <Dialog open={showFeedbackModal} onOpenChange={setShowFeedbackModal}>
+              <DialogTrigger asChild>
+                <Button 
+                  className="absolute bottom-4 right-4 bg-[#D5B170] hover:bg-[#c4a05f] text-white shadow-lg flex items-center gap-2"
+                  onClick={() => setShowFeedbackModal(true)}
+                >
+                  <ThumbsUp className="h-4 w-4" />
+                  Avaliar atendimento
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                  <DialogTitle>Avalie seu atendimento</DialogTitle>
+                  <DialogDescription>
+                    Sua opinião é muito importante para melhorarmos nosso atendimento.
+                    Por favor, avalie como foi sua experiência com este ticket.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  {/* Ícones de NPS com estrelas */}
+                  {renderNPSIcons()}
+                  
+                  <NPSChatFeedback
+                    ticketTitle={selectedTicket.title}
+                    onSubmit={handleSubmitFeedback}
+                    isSubmitting={submittingFeedback}
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+        </ScrollArea>
 
       {/* Chat Input */}
       <div className="p-3 border-t border-slate-200 bg-white">

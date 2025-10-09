@@ -44,46 +44,43 @@ const Login: React.FC = () => {
   }, [user, loading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!loginEmail || !loginPassword) {
-      setError('Por favor, preencha todos os campos');
-      return;
-    }
+  e.preventDefault();
+  if (!loginEmail || !loginPassword) {
+    setError('Por favor, preencha todos os campos');
+    return;
+  }
 
-    setLoginLoading(true);
-    setError('');
-    setSuccess('');
+  setLoginLoading(true);
+  setError('');
+  setSuccess('');
 
-    try {
-      console.log('Attempting login with:', loginEmail);
-      const result = await login(loginEmail, loginPassword);
+  try {
+    console.log('Attempting login with:', loginEmail);
+    const result = await login(loginEmail, loginPassword);
+    
+    if (result.error) {
+      console.error('Login error from result:', result.error);
+      setError(result.error);
+      toast.error(result.error);
+    } else {
+      // Se não houver erro, consideramos o login bem-sucedido
+      console.log('Login successful, waiting for redirect...');
+      setSuccess('Login realizado com sucesso! Redirecionando...');
+      toast.success('Login realizado com sucesso!');
       
-      if (result.user) {
-        console.log('Login successful, waiting for redirect...');
-        setSuccess('Login realizado com sucesso! Redirecionando...');
-        toast.success('Login realizado com sucesso!');
-        
-        // Give some time for the auth context to update
-        setTimeout(() => {
-          navigate('/');
-        }, 1000);
-      } else if (result.error) {
-        console.error('Login error from result:', result.error);
-        setError(result.error);
-        toast.error(result.error);
-      } else {
-        // Se não houver erro específico, então é um problema de credenciais
-        setError('Credenciais inválidas');
-        toast.error('Credenciais inválidas');
-      }
-    } catch (error: any) {
-      console.error('Login error from exception:', error);
-      setError(error.message || 'Erro ao fazer login');
-      toast.error(error.message || 'Erro ao fazer login');
-    } finally {
-      setLoginLoading(false);
+      // Give some time for the auth context to update
+      setTimeout(() => {
+        navigate('/');
+      }, 1000);
     }
-  };
+  } catch (error: any) {
+    console.error('Login error from exception:', error);
+    setError(error.message || 'Erro ao fazer login');
+    toast.error(error.message || 'Erro ao fazer login');
+  } finally {
+    setLoginLoading(false);
+  }
+};
 
   // Função para lidar com a solicitação de redefinição de senha
   const handleResetPassword = async (e: React.FormEvent) => {

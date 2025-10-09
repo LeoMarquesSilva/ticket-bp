@@ -1,24 +1,19 @@
-import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   LayoutDashboard, 
   Ticket, 
-  Settings,
   LogOut,
   Users,
   Database,
-  BarChart3,
-  FileText,
   Menu,
-  X,
-  ChevronDown
+  X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { User } from '@/types';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -28,17 +23,57 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import OnlineStatusToggle from '@/components/OnlineStatusToggle';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import ticketEventService from '@/services/ticketEventService';
 
 interface HeaderProps {
   pendingTickets?: number;
   unreadMessages?: number;
+  onPendingTicketsUpdated?: () => void;
 }
 
-export function Header({ pendingTickets = 0, unreadMessages = 0 }: HeaderProps) {
+export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicketsUpdated }: HeaderProps) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [localPendingTickets, setLocalPendingTickets] = useState(pendingTickets);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  // Inicializar o serviço de eventos de tickets
+  useEffect(() => {
+    ticketEventService.initialize();
+  }, []);
+
+  // Escutar o evento de feedback enviado usando o serviço
+  useEffect(() => {
+    // Registrar o callback para o evento de feedback submetido
+    const cleanup = ticketEventService.onFeedbackSubmitted(() => {
+      // Se temos uma função de callback, usá-la
+      if (onPendingTicketsUpdated) {
+        onPendingTicketsUpdated();
+      } else {
+        // Caso contrário, atualizar o estado local
+        if (localPendingTickets > 0) {
+          setLocalPendingTickets(prev => Math.max(0, prev - 1));
+        }
+      }
+    });
+    
+    // Armazenar a função de limpeza para uso posterior
+    cleanupRef.current = cleanup;
+
+    // Limpar o ouvinte de evento ao desmontar o componente
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+      }
+    };
+  }, [onPendingTicketsUpdated, localPendingTickets]);
+
+  // Atualizar o estado local quando a prop pendingTickets mudar
+  useEffect(() => {
+    setLocalPendingTickets(pendingTickets);
+  }, [pendingTickets]);
 
   const navItems = [
     {
@@ -53,21 +88,7 @@ export function Header({ pendingTickets = 0, unreadMessages = 0 }: HeaderProps) 
       href: "/tickets",
       icon: <Ticket className="h-5 w-5" />,
       roles: ["user", "support", "admin", "lawyer"],
-      badge: pendingTickets > 0 ? pendingTickets : null
-    },
-    {
-      name: "Relatórios",
-      href: "/reports",
-      icon: <BarChart3 className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
-    },
-    {
-      name: "Documentos",
-      href: "/documents",
-      icon: <FileText className="h-5 w-5" />,
-      roles: ["user", "support", "admin", "lawyer"],
-      badge: null
+      badge: localPendingTickets > 0 ? localPendingTickets : null
     },
     {
       name: "Gerenciar Usuários",
@@ -82,14 +103,7 @@ export function Header({ pendingTickets = 0, unreadMessages = 0 }: HeaderProps) 
       icon: <Database className="h-5 w-5" />,
       roles: ["admin"],
       badge: null
-    },
-    {
-      name: "Configurações",
-      href: "/settings",
-      icon: <Settings className="h-5 w-5" />,
-      roles: ["user", "support", "admin", "lawyer"],
-      badge: null
-    },
+    }
   ];
 
   const filteredNavItems = navItems.filter(
@@ -145,11 +159,19 @@ export function Header({ pendingTickets = 0, unreadMessages = 0 }: HeaderProps) 
 
   const isStaff = user?.role === 'support' || user?.role === 'lawyer';
 
+  // Função para navegar para a página de tickets ao clicar no logo
+  const handleLogoClick = () => {
+    navigate('/tickets');
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center">
-        {/* Logo */}
-        <div className="mr-4 flex items-center gap-2">
+        {/* Logo - Adicionado onClick para navegar para /tickets */}
+        <div 
+          className="mr-4 flex items-center gap-2 cursor-pointer" 
+          onClick={handleLogoClick}
+        >
           <div className="relative">
             <div className="absolute inset-0 bg-[#D5B170] rounded-xl blur-lg opacity-30"></div>
             <div className="relative bg-gradient-to-r from-[#101F2E] to-[#2a3f52] p-2 rounded-xl border border-[#D5B170]/30 shadow-sm">
@@ -249,12 +271,6 @@ export function Header({ pendingTickets = 0, unreadMessages = 0 }: HeaderProps) 
               )}
               
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <NavLink to="/settings">
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Configurações</span>
-                </NavLink>
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={logout} className="text-red-500 focus:text-red-500">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Sair</span>

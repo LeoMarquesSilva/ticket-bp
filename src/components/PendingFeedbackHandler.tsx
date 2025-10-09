@@ -1,133 +1,209 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { TicketService } from '@/services/ticketService';
-import NPSModal from './NPSModal';
-import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { ThumbsUp, AlertTriangle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
 
-const PendingFeedbackHandler: React.FC = () => {
-  const { ticketId } = useParams<{ ticketId: string }>();
-  const { user } = useAuth();
-  const [ticket, setTicket] = useState<any>(null);
-  const [isNPSModalOpen, setIsNPSModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const location = useLocation();
-  const navigate = useNavigate();
+interface PendingFeedbackHandlerProps {
+  onHasPendingFeedback?: (hasPending: boolean) => void;
+}
 
-  // Verificar se o ticket atual precisa de feedback
-  useEffect(() => {
-    const checkCurrentTicket = async () => {
-      if (!ticketId || !user) return;
-
-      try {
-        setIsLoading(true);
-        console.log('Verificando feedback para ticket atual:', ticketId);
-        
-        const ticket = await TicketService.getTicket(ticketId);
-        console.log('Ticket obtido:', ticket);
-        
-        // Verificar se o ticket existe, é do usuário atual, está resolvido e não tem feedback
-        if (
-          ticket && 
-          ticket.createdBy === user.id && 
-          ticket.status === 'resolved' && 
-          !ticket.feedbackSubmittedAt
-        ) {
-          console.log('Ticket com feedback pendente encontrado:', ticket);
-          setTicket(ticket);
-          setIsNPSModalOpen(true);
-        }
-      } catch (error) {
-        console.error('Erro ao verificar feedback do ticket:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkCurrentTicket();
-  }, [ticketId, user]);
-
-  // Verificar se há tickets com feedback pendente ao carregar a página
-  useEffect(() => {
-    const checkPendingFeedback = async () => {
-      if (!user) return;
-      
-      try {
-        // Verificar se o usuário tem tickets com feedback pendente
-        const hasPending = await TicketService.hasUnsubmittedFeedback(user.id);
-        
-        if (hasPending) {
-          // Buscar os tickets com feedback pendente
-          const { data: pendingTickets } = await TicketService.getUserTicketsWithPendingFeedback(user.id);
-          
-          if (pendingTickets && pendingTickets.length > 0) {
-            // Se estamos em uma página de ticket específico, não redirecionar
-            if (ticketId) return;
-            
-            // Redirecionar para o primeiro ticket com feedback pendente
-            const firstPendingTicket = pendingTickets[0];
-            toast.info('Você tem tickets que precisam de avaliação', {
-              description: 'Por favor, avalie o ticket antes de continuar.'
-            });
-            navigate(`/tickets/${firstPendingTicket.id}`);
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao verificar tickets com feedback pendente:', error);
-      }
-    };
-    
-    checkPendingFeedback();
-  }, [user, ticketId, navigate]);
-
-  const handleNPSSubmit = async (data: {
-    requestFulfilled: boolean;
-    notFulfilledReason?: string;
-    serviceScore: number;
-    comment: string;
-  }) => {
-    if (!ticketId) return;
-    
+// Função auxiliar para tentar uma operação com retry
+const retryOperation = async (
+  operation: () => Promise<any>,
+  maxRetries = 3,
+  delay = 2000
+): Promise<any> => {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      await TicketService.submitTicketFeedback(ticketId, data);
-      toast.success('Avaliação enviada com sucesso. Obrigado pelo feedback!');
-      setIsNPSModalOpen(false);
-      
-      // Atualizar o ticket localmente
-      if (ticket) {
-        setTicket({
-          ...ticket,
-          feedbackSubmittedAt: new Date().toISOString(),
-          status: 'closed'
-        });
-      }
+      return await operation();
     } catch (error) {
-      console.error('Erro ao enviar avaliação:', error);
-      toast.error('Erro ao enviar avaliação. Tente novamente.');
+      console.log(`Tentativa ${attempt + 1} falhou:`, error);
+      lastError = error;
+      
+      // Esperar antes de tentar novamente
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
+  }
+  
+  throw lastError;
+};
+
+const PendingFeedbackHandler: React.FC<PendingFeedbackHandlerProps> = ({ 
+  onHasPendingFeedback = () => {} 
+}) => {
+  const { user } = useAuth();
+  const [pendingFeedbackTickets, setPendingFeedbackTickets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const navigate = useNavigate();
+  const mountedRef = useRef(true);
+  
+  // Função para verificar feedback pendente com retry
+const checkPendingFeedback = async (withRetry = true) => {
+  if (!user || user.role !== 'user' || !mountedRef.current) {
+    if (mountedRef.current) {
+      setLoading(false);
+      setPendingFeedbackTickets([]);
+      onHasPendingFeedback(false);
+    }
+    return;
+  }
+  
+  try {
+    if (mountedRef.current) {
+      setLoading(true);
+      setError(null);
+    }
+    
+    // Função que faz a chamada real à API
+    const fetchTickets = async () => {
+      return await TicketService.getUserTicketsWithPendingFeedback(user.id);
+    };
+    
+    // Usar retry se solicitado
+    const tickets = withRetry 
+      ? await retryOperation(fetchTickets, 3, 2000)
+      : await fetchTickets();
+    
+    if (mountedRef.current) {
+      setPendingFeedbackTickets(tickets);
+      onHasPendingFeedback(tickets.length > 0);
+      setLoading(false);
+    }
+  } catch (error: any) {
+    console.error('Erro ao verificar feedback pendente:', error);
+    
+    if (mountedRef.current) {
+      setError(error.message || 'Erro ao verificar tickets pendentes');
+      setPendingFeedbackTickets([]);
+      onHasPendingFeedback(false);
+      setLoading(false);
+    }
+  }
+};
+
+  // Função para tentar novamente manualmente
+  const handleRetry = () => {
+    setRetrying(true);
+    checkPendingFeedback(true)
+      .finally(() => {
+        if (mountedRef.current) {
+          setRetrying(false);
+        }
+      });
   };
 
-  // Esta função não fará nada, pois o modal NPS é obrigatório
-  const handleNPSClose = () => {
-    // Não permitimos fechar o modal sem enviar o feedback
-    toast.warning('Por favor, avalie o ticket antes de continuar', {
-      description: 'Esta avaliação é obrigatória para tickets finalizados.'
-    });
-  };
+  useEffect(() => {
+    mountedRef.current = true;
+    
+    // Verificar imediatamente ao montar o componente
+    checkPendingFeedback();
+    
+    // Verificar periodicamente (a cada 2 minutos)
+    const intervalId = setInterval(() => {
+      if (mountedRef.current) {
+        checkPendingFeedback(false); // Sem retry automático para verificações periódicas
+      }
+    }, 2 * 60 * 1000);
+    
+    // Adicionar listener para reconectar quando a conexão de internet voltar
+    const handleOnline = () => {
+      console.log('Conexão de internet restaurada, verificando tickets pendentes...');
+      if (mountedRef.current) {
+        checkPendingFeedback();
+      }
+    };
+    
+    window.addEventListener('online', handleOnline);
+    
+    return () => {
+      mountedRef.current = false;
+      clearInterval(intervalId);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [user?.id]); // Dependência apenas no user.id para evitar loops infinitos
 
-  // Renderiza apenas o modal quando necessário
+  // Se estiver carregando, mostrar indicador de carregamento
+  if (loading) {
+    return null; // Não mostrar nada durante o carregamento inicial
+  }
+
+  // Se houver erro, mostrar mensagem de erro com botão para tentar novamente
+  if (error) {
+    return (
+      <Alert className="bg-red-50 border-red-200 mb-4">
+        <AlertTriangle className="h-4 w-4 text-red-500" />
+        <AlertTitle className="text-red-800">Erro ao verificar avaliações pendentes</AlertTitle>
+        <AlertDescription className="text-red-700">
+          <p className="mb-2">{error}</p>
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="text-xs border-red-500 text-red-500 hover:bg-red-50"
+            onClick={handleRetry}
+            disabled={retrying}
+          >
+            {retrying ? (
+              <>
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Tentando novamente...
+              </>
+            ) : (
+              'Tentar novamente'
+            )}
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  // Não mostrar nada se não houver tickets pendentes ou o usuário não for do tipo 'user'
+  if (!pendingFeedbackTickets.length || user?.role !== 'user') {
+    return null;
+  }
+
   return (
-    <>
-      {ticket && (
-        <NPSModal
-          isOpen={isNPSModalOpen}
-          onClose={handleNPSClose}
-          onSubmit={handleNPSSubmit}
-          ticketTitle={ticket.title}
-          mandatory={true}
-        />
-      )}
-    </>
+    <Alert className="bg-amber-50 border-amber-200 mb-4">
+      <AlertTriangle className="h-4 w-4 text-amber-500" />
+      <AlertTitle className="text-amber-800">Avaliação pendente</AlertTitle>
+      <AlertDescription className="text-amber-700">
+        <p className="mb-2">
+          Você tem {pendingFeedbackTickets.length} ticket(s) que precisa(m) de avaliação.
+          Você não poderá criar novos tickets até avaliar os atendimentos finalizados.
+        </p>
+        
+        <div className="space-y-2 mt-3">
+          {pendingFeedbackTickets.map(ticket => (
+            <div key={ticket.id} className="flex items-center justify-between bg-white p-2 rounded-md border border-amber-200">
+              <div className="flex items-center">
+                <ThumbsUp className="h-4 w-4 text-[#D5B170] mr-2" />
+                <span className="text-sm font-medium text-slate-700">{ticket.title}</span>
+                <Badge variant="outline" className="ml-2 text-xs bg-green-50 text-green-700 border-green-200">
+                  {ticket.status === 'resolved' ? 'Resolvido' : 'Fechado'}
+                </Badge>
+              </div>
+                    <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="text-xs border-[#D5B170] text-[#D5B170] hover:bg-[#D5B170]/10"
+                    onClick={() => navigate(`/tickets/${ticket.id}?showFeedback=true`)}
+                    >
+                    Avaliar
+                    </Button>
+            </div>
+          ))}
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 };
 

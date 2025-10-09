@@ -4,16 +4,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { 
   LayoutDashboard, 
   Ticket, 
-  Settings,
-  UserPlus,
   LogOut,
   Users,
   Menu,
   Building2,
   Database,
-  ChevronRight,
-  BarChart3,
-  FileText
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
@@ -63,21 +59,6 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
       roles: ["user", "support", "admin", "lawyer"],
       badge: pendingTickets > 0 ? pendingTickets : null
     },
-    // Removido o item "Chat" conforme solicitado
-    {
-      name: "Relatórios",
-      href: "/reports",
-      icon: <BarChart3 className="h-5 w-5" />,
-      roles: ["admin"], // Removido "lawyer" conforme solicitado
-      badge: null
-    },
-    {
-      name: "Documentos",
-      href: "/documents",
-      icon: <FileText className="h-5 w-5" />,
-      roles: ["user", "support", "admin", "lawyer"],
-      badge: null
-    },
     {
       name: "Gerenciar Usuários",
       href: "/users",
@@ -91,14 +72,7 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
       icon: <Database className="h-5 w-5" />,
       roles: ["admin"],
       badge: null
-    },
-    {
-      name: "Configurações",
-      href: "/settings",
-      icon: <Settings className="h-5 w-5" />,
-      roles: ["user", "support", "admin", "lawyer"],
-      badge: null
-    },
+    }
   ];
 
   const getRoleBadgeVariant = (role: string) => {

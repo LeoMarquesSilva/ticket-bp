@@ -44,9 +44,16 @@ export interface Ticket {
   resolvedAt?: string;
   closedAt?: string;
   category: string;
+  feedbackSubmittedAt?: string;
   subcategory?: string;
   npsScore?: number;
   npsComment?: string;
+  // Adicionando as propriedades necessárias para o feedback
+  serviceScore?: number;
+  requestFulfilled?: boolean;
+  notFulfilledReason?: string;
+  comment?: string;
+  needsFeedback?: boolean;
 }
 
 export interface ChatMessage {
