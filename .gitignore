@@ -22,7 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-<<<<<<< HEAD
 
 # Environment variables
 .env
@@ -31,5 +30,3 @@ dist-ssr
 .env.test.local
 .env.production.local
 .env.*.local
-=======
->>>>>>> b4217bf3a2af25cce0d995091ecd58cbdbddae45

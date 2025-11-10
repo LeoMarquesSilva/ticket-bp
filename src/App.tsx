@@ -9,12 +9,12 @@ import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
 import DatabaseManagement from '@/pages/DatabaseManagement';
 import ResetPassword from '@/pages/ResetPassword';
-import { setupKeepAlive } from './utils/supabaseHelpers';
+import { initializeConnectionHandlers } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { InactivityDetector } from '@/components/InactivityDetector';
 import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
+import { useTabVisibility } from '@/hooks/useTabVisibility';
 
-// Componente para rotas protegidas
 const ProtectedRoute = ({ 
   children, 
   allowedRoles = [] 
@@ -24,23 +24,23 @@ const ProtectedRoute = ({
 }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const isTabVisible = useTabVisibility();
   
-  // Determinar a página atual com base na URL
   const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'database' => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return 'dashboard';
     if (path.includes('/users')) return 'users';
     if (path.includes('/database')) return 'database';
-    return 'tickets'; // default
+    return 'tickets';
   };
   
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'database'>(getCurrentPage());
   
-  // Handler para mudança de página
   const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'database') => {
     setCurrentPage(page);
   };
 
+  // Loading mais inteligente - só mostrar se realmente necessário
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -56,18 +56,15 @@ const ProtectedRoute = ({
     return <Navigate to="/login" replace />;
   }
 
-  // Verificar se o usuário tem permissão para acessar esta rota
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return <Navigate to="/tickets" replace />;
   }
 
-  // Passando as props necessárias para o Layout
   return (
     <Layout 
       currentPage={currentPage} 
       onPageChange={handlePageChange}
     >
-      {/* Adicionar o PendingFeedbackHandler em todas as rotas protegidas */}
       <PendingFeedbackHandler />
       {children}
     </Layout>
@@ -78,10 +75,8 @@ const AppRoutes = () => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Verificar se estamos na página de redefinição de senha
   const isResetPasswordPage = location.pathname === '/reset-password';
 
-  // Permitir acesso à página de redefinição de senha mesmo sem autenticação
   if (isResetPasswordPage) {
     return (
       <Routes>
@@ -90,7 +85,6 @@ const AppRoutes = () => {
     );
   }
 
-  // Mostrar página de login se não houver usuário e não estiver carregando
   if (!loading && !user) {
     return (
       <Routes>
@@ -101,7 +95,6 @@ const AppRoutes = () => {
     );
   }
 
-  // Mostrar carregamento se ainda estiver carregando
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -113,12 +106,10 @@ const AppRoutes = () => {
     );
   }
 
-  // Mostrar o aplicativo principal se o usuário estiver logado
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/tickets" replace />} />
       
-      {/* Dashboard apenas para administradores */}
       <Route
         path="/dashboard"
         element={
@@ -128,7 +119,6 @@ const AppRoutes = () => {
         }
       />
       
-      {/* Página de tickets para todos os usuários autenticados */}
       <Route
         path="/tickets"
         element={
@@ -138,7 +128,6 @@ const AppRoutes = () => {
         }
       />
       
-      {/* Rota para tickets individuais */}
       <Route
         path="/tickets/:ticketId"
         element={
@@ -148,7 +137,6 @@ const AppRoutes = () => {
         }
       />
       
-      {/* Página de gerenciamento de usuários apenas para administradores */}
       <Route
         path="/users"
         element={
@@ -158,7 +146,6 @@ const AppRoutes = () => {
         }
       />
       
-      {/* Página de gerenciamento de banco de dados apenas para administradores */}
       <Route
         path="/database"
         element={
@@ -168,7 +155,6 @@ const AppRoutes = () => {
         }
       />
       
-      {/* Redirecionar todas as outras rotas com base na função do usuário */}
       <Route 
         path="/" 
         element={
@@ -188,17 +174,14 @@ const AppRoutes = () => {
 
 const App = () => {
   useEffect(() => {
-    // Configurar o keep-alive para manter a conexão com o Supabase
-    const keepAliveInterval = setupKeepAlive();
-    
-    // Limpar o intervalo quando o componente for desmontado
-    return () => clearInterval(keepAliveInterval);
+    // Inicializar handlers simples
+    const cleanup = initializeConnectionHandlers();
+    return cleanup;
   }, []);
 
   return (
     <AuthProvider>
       <Router>
-        {/* Adicionar os novos componentes para melhorar a robustez da aplicação */}
         <ConnectionStatus />
         <InactivityDetector />
         

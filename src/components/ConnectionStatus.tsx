@@ -1,70 +1,79 @@
-import { useState, useEffect } from 'react';
-import { connectionManager } from '@/utils/connectionManager';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { WifiOff, RefreshCw } from 'lucide-react';
 
+type ConnectionStatus = 'connected' | 'disconnected' | 'connecting';
+
 export const ConnectionStatus = () => {
-  const [status, setStatus] = useState(connectionManager.getStatus());
+  const [status, setStatus] = useState<ConnectionStatus>('connected');
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
-    const handleStatusChange = () => {
-      setStatus(connectionManager.getStatus());
+    const handleOnline = () => {
+      console.log('🌐 Rede online');
+      setStatus('connected');
     };
-    
-    connectionManager.addListener(handleStatusChange);
-    
+
+    const handleOffline = () => {
+      console.log('📵 Rede offline');
+      setStatus('disconnected');
+    };
+
+    // Verificar status inicial
+    setStatus(navigator.onLine ? 'connected' : 'disconnected');
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     return () => {
-      connectionManager.removeListener(handleStatusChange);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
   const handleReconnect = async () => {
     setIsReconnecting(true);
-    connectionManager.reconnect();
+    setStatus('connecting');
     
-    // Resetar o estado após um tempo
+    // Simular tentativa de reconexão
     setTimeout(() => {
+      if (navigator.onLine) {
+        setStatus('connected');
+      } else {
+        setStatus('disconnected');
+      }
       setIsReconnecting(false);
-    }, 3000);
+    }, 2000);
   };
 
-  if (status === 'connected') return null;
+  if (status === 'connected') {
+    return null; // Não mostrar nada quando conectado
+  }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 p-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-5" 
-         style={{ 
-           backgroundColor: status === 'connecting' ? '#f59e0b' : '#ef4444',
-           color: 'white'
-         }}>
-      {status === 'disconnected' ? (
-        <WifiOff size={18} />
-      ) : (
-        <RefreshCw size={18} className="animate-spin" />
-      )}
-      
-      <span className="text-sm font-medium">
-        {status === 'disconnected' ? 'Conexão perdida' : 'Reconectando...'}
-      </span>
-      
-      {status === 'disconnected' && (
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="ml-2 bg-white/20 hover:bg-white/30 text-white border-white/30"
-          onClick={handleReconnect}
-          disabled={isReconnecting}
-        >
-          {isReconnecting ? (
-            <RefreshCw size={14} className="animate-spin mr-1" />
-          ) : (
-            <RefreshCw size={14} className="mr-1" />
-          )}
-          Reconectar
-        </Button>
-      )}
+    <div className="fixed top-0 left-0 right-0 bg-red-500 text-white p-2 text-center z-50">
+      <div className="flex items-center justify-center gap-2">
+        <WifiOff className="h-4 w-4" />
+        <span>
+          {status === 'disconnected' && 'Sem conexão com a internet'}
+          {status === 'connecting' && 'Reconectando...'}
+        </span>
+        {status === 'disconnected' && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleReconnect}
+            disabled={isReconnecting}
+            className="ml-2"
+          >
+            {isReconnecting ? (
+              <RefreshCw className="h-3 w-3 animate-spin" />
+            ) : (
+              'Tentar novamente'
+            )}
+          </Button>
+        )}
+      </div>
     </div>
   );
 };
-
-export default ConnectionStatus;
