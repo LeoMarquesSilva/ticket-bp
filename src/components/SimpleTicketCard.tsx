@@ -1,154 +1,183 @@
 import React from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Lock, User, UserCheck, Clock, Building2, ThumbsUp, CheckCircle } from 'lucide-react';
-import { Ticket } from '@/types';
+import { Clock, User, Calendar, AlertCircle, CheckCircle, UserCheck, MessageSquare } from 'lucide-react';
+import { Ticket, TicketStatus, TicketPriority } from '@/types';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface SimpleTicketCardProps {
   ticket: Ticket;
   selectedTicketId?: string;
   unreadCount?: number;
-  onClick: () => void;
-  getPriorityColor: (priority: string) => string;
-  getStatusColor: (status: string) => string;
-  isTicketFinalized: (ticket: Ticket) => boolean;
-  needsFeedback?: boolean; // Indica se o ticket precisa de feedback
-  hasFeedback?: boolean; // Nova propriedade para indicar se o ticket já recebeu feedback
+  onClick?: () => void;
+  getPriorityColor?: (priority: string) => string;
+  getStatusColor?: (status: string) => string;
+  isTicketFinalized?: (ticket: Ticket) => boolean;
 }
 
-const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
-  ticket,
+const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({ 
+  ticket, 
   selectedTicketId,
   unreadCount = 0,
   onClick,
   getPriorityColor,
   getStatusColor,
-  isTicketFinalized,
-  needsFeedback = false,
-  hasFeedback = false // Por padrão, não tem feedback
+  isTicketFinalized
 }) => {
-  // Função para formatar a data e hora
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const defaultGetPriorityColor = (priority: TicketPriority) => {
+    switch (priority) {
+      case 'urgent':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'high':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low':
+        return 'bg-green-100 text-green-800 border-green-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
   };
+
+  const defaultGetStatusColor = (status: TicketStatus) => {
+    switch (status) {
+      case 'open':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'assigned':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'in_progress':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'resolved':
+        return 'bg-green-100 text-green-800 border-green-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getStatusIcon = (status: TicketStatus) => {
+    switch (status) {
+      case 'open':
+        return <AlertCircle className="h-4 w-4" />;
+      case 'assigned':
+        return <UserCheck className="h-4 w-4" />;
+      case 'in_progress':
+        return <Clock className="h-4 w-4" />;
+      case 'resolved':
+        return <CheckCircle className="h-4 w-4" />;
+      default:
+        return <AlertCircle className="h-4 w-4" />;
+    }
+  };
+
+  const getPriorityLabel = (priority: TicketPriority) => {
+    switch (priority) {
+      case 'urgent':
+        return 'Urgente';
+      case 'high':
+        return 'Alta';
+      case 'medium':
+        return 'Média';
+      case 'low':
+        return 'Baixa';
+      default:
+        return priority;
+    }
+  };
+
+  const getStatusLabel = (status: TicketStatus) => {
+    switch (status) {
+      case 'open':
+        return 'Aberto';
+      case 'assigned':
+        return 'Atribuído';
+      case 'in_progress':
+        return 'Em Progresso';
+      case 'resolved':
+        return 'Resolvido';
+      default:
+        return status;
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
+    } catch (error) {
+      return 'Data inválida';
+    }
+  };
+
+  const isSelected = selectedTicketId === ticket.id;
+  const isFinalized = isTicketFinalized ? isTicketFinalized(ticket) : false;
+
+  // Usar as funções passadas como props ou as padrão
+  const priorityColor = getPriorityColor ? getPriorityColor(ticket.priority) : defaultGetPriorityColor(ticket.priority);
+  const statusColor = getStatusColor ? getStatusColor(ticket.status) : defaultGetStatusColor(ticket.status);
 
   return (
     <Card 
-      key={ticket.id} 
-      className={`cursor-pointer transition-all hover:shadow-md ${
-        selectedTicketId === ticket.id 
-          ? 'border-[#D5B170] bg-[#D5B170]/5' 
-          : unreadCount > 0 
-            ? 'border-blue-300 bg-blue-50' 
-            : needsFeedback
-              ? 'border-l-4 border-l-[#D5B170] border-t-slate-200 border-r-slate-200 border-b-slate-200' // Borda esquerda dourada para tickets que precisam de feedback
-              : hasFeedback
-                ? 'border-l-4 border-l-green-500 border-t-slate-200 border-r-slate-200 border-b-slate-200' // Borda esquerda verde para tickets com feedback
-                : isTicketFinalized(ticket)
-                  ? 'border-slate-200 bg-slate-50'
-                  : 'border-slate-200'
+      className={`hover:shadow-md transition-all duration-200 cursor-pointer border-slate-200 ${
+        onClick ? 'hover:border-slate-300' : ''
+      } ${
+        isSelected ? 'ring-2 ring-[#D5B170] border-[#D5B170] shadow-md' : ''
+      } ${
+        isFinalized ? 'opacity-75' : ''
       }`}
       onClick={onClick}
     >
-      <CardContent className="p-3">
-        <div className="flex items-start justify-between mb-2">
-          <h3 className="font-semibold text-sm text-[#101F2E] line-clamp-1">
-            {ticket.title}
-            {isTicketFinalized(ticket) && (
-              <span className="ml-2 inline-flex">
-                <Lock className="h-3 w-3 text-slate-400" />
-              </span>
-            )}
-          </h3>
-          <div className="flex items-center gap-1">
-            {needsFeedback && (
-              <Badge className="bg-[#D5B170] text-white text-xs flex items-center gap-1">
-                <ThumbsUp className="h-2.5 w-2.5" />
-                Avaliar
-              </Badge>
-            )}
-            {hasFeedback && (
-              <Badge className="bg-green-500 text-white text-xs flex items-center gap-1">
-                <CheckCircle className="h-2.5 w-2.5" />
-                Avaliado
-              </Badge>
-            )}
-            {unreadCount > 0 && (
-              <Badge className="bg-red-500 text-white text-xs">
-                {unreadCount}
-              </Badge>
-            )}
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2 flex-1">
+            {getStatusIcon(ticket.status)}
+            <h4 className="font-medium text-[#101F2E] line-clamp-1 text-sm">
+              {ticket.title}
+            </h4>
           </div>
-        </div>
-        
-        <p className="text-xs text-slate-600 line-clamp-2 mb-2">
-          {ticket.description}
-        </p>
-        
-        <div className="flex flex-wrap gap-1 mb-2">
-          <Badge className={`${getStatusColor(ticket.status)} border text-xs`}>
-            {ticket.status === 'open' ? 'Aberto' : 
-             ticket.status === 'in_progress' ? 'Em Andamento' : 
-             ticket.status === 'resolved' ? 'Resolvido' : 'Fechado'}
-          </Badge>
-          <Badge className={`${getPriorityColor(ticket.priority)} border text-xs`}>
-            {ticket.priority === 'urgent' ? 'Urgente' : 
-             ticket.priority === 'high' ? 'Alta' : 
-             ticket.priority === 'medium' ? 'Média' : 'Baixa'}
-          </Badge>
-        </div>
-        
-        {/* Informações de solicitante e atribuição */}
-        <div className="flex flex-col gap-1 mb-2 text-xs">
-          <div className="flex items-center text-slate-600">
-            <User className="h-3 w-3 mr-1" />
-            <span>Solicitante: <span className="font-medium">{ticket.createdByName}</span></span>
-          </div>
-          
-          {/* Adicionando o departamento do solicitante */}
-          {ticket.createdByDepartment && (
-            <div className="flex items-center text-slate-600">
-              <Building2 className="h-3 w-3 mr-1" />
-              <span>Departamento: <span className="font-medium">{ticket.createdByDepartment}</span></span>
-            </div>
-          )}
-          
-          <div className="flex items-center text-slate-600">
-            <UserCheck className="h-3 w-3 mr-1" />
-            <span>Atribuído: {ticket.assignedToName ? 
-              <span className="font-medium">{ticket.assignedToName}</span> : 
-              <span className="italic text-slate-400">Não atribuído</span>}
-            </span>
-          </div>
-          
-          {/* Indicador de feedback pendente */}
-          {needsFeedback && (
-            <div className="flex items-center mt-1 text-[#8B7644] bg-[#D5B170]/10 p-1 rounded-sm">
-              <ThumbsUp className="h-3 w-3 mr-1 text-[#D5B170]" />
-              <span className="font-medium">Avaliação pendente</span>
-            </div>
-          )}
-          
-          {/* Indicador de feedback respondido */}
-          {hasFeedback && (
-            <div className="flex items-center mt-1 text-green-700 bg-green-50 p-1 rounded-sm">
-              <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
-              <span className="font-medium">Avaliação enviada</span>
+          {unreadCount > 0 && (
+            <div className="flex items-center gap-1">
+              <MessageSquare className="h-3 w-3 text-[#D5B170]" />
+              <Badge className="bg-[#D5B170] text-white text-xs px-1.5 py-0.5 min-w-[1.25rem] h-5 flex items-center justify-center">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Badge>
             </div>
           )}
         </div>
-        
-        {/* Data e hora de criação */}
-        <div className="flex items-center justify-end text-xs text-slate-500">
-          <Clock className="h-3 w-3 mr-1" />
-          <span>{formatDateTime(ticket.createdAt)}</span>
+      </CardHeader>
+
+      <CardContent className="pt-0">
+        <div className="space-y-2">
+          <p className="text-slate-600 text-xs line-clamp-2">
+            {ticket.description}
+          </p>
+          
+          <div className="flex flex-wrap gap-1">
+            <Badge className={`${statusColor} border text-xs`}>
+              {getStatusLabel(ticket.status)}
+            </Badge>
+            <Badge className={`${priorityColor} border text-xs`}>
+              {getPriorityLabel(ticket.priority)}
+            </Badge>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+            <div className="flex items-center gap-1">
+              <User className="h-3 w-3" />
+              <span>{ticket.createdByName}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              <span>{formatDate(ticket.createdAt)}</span>
+            </div>
+          </div>
+
+          {ticket.assignedToName && (
+            <div className="flex items-center gap-1 text-xs text-slate-500 pt-1">
+              <UserCheck className="h-3 w-3" />
+              <span>Atribuído para: {ticket.assignedToName}</span>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

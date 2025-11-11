@@ -12,7 +12,6 @@ import ResetPassword from '@/pages/ResetPassword';
 import { initializeConnectionHandlers } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { InactivityDetector } from '@/components/InactivityDetector';
-import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
 import { useTabVisibility } from '@/hooks/useTabVisibility';
 
 const ProtectedRoute = ({ 
@@ -65,7 +64,6 @@ const ProtectedRoute = ({
       currentPage={currentPage} 
       onPageChange={handlePageChange}
     >
-      <PendingFeedbackHandler />
       {children}
     </Layout>
   );

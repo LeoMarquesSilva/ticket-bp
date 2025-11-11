@@ -47,6 +47,7 @@ const TicketChat: React.FC<TicketChatProps> = ({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [subscriptionEstablished, setSubscriptionEstablished] = useState(false);
   const subscriptionRef = useRef<any>(null);
   const [reconnecting, setReconnecting] = useState(false);
@@ -56,13 +57,52 @@ const TicketChat: React.FC<TicketChatProps> = ({
   const lastTicketIdRef = useRef<string | null>(null);
   const subscriptionAttemptRef = useRef(0);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const focusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Mostrar o formulário de NPS diretamente no chat quando o ticket estiver finalizado
   // e o usuário precisar dar feedback e ainda não enviou o feedback
-  const showNPSForm = (ticketStatus === 'resolved' || ticketStatus === 'closed') && 
+  const showNPSForm = ticketStatus === 'resolved' && 
                       needsFeedback && 
                       !feedbackSubmitted &&
                       user?.role === 'user';
+
+  // Função melhorada para focar no textarea
+  const focusTextarea = useCallback(() => {
+    if (!textareaRef.current || showNPSForm || sending) return;
+    
+    // Limpar timeout anterior se existir
+    if (focusTimeoutRef.current) {
+      clearTimeout(focusTimeoutRef.current);
+    }
+    
+    // Usar múltiplas tentativas de foco com diferentes delays
+    const attemptFocus = (attempt: number = 0) => {
+      if (attempt > 3) return; // Máximo 4 tentativas
+      
+      focusTimeoutRef.current = setTimeout(() => {
+        if (textareaRef.current && !showNPSForm && !sending && mountedRef.current) {
+          try {
+            textareaRef.current.focus();
+            // Verificar se o foco foi realmente aplicado
+            if (document.activeElement !== textareaRef.current && attempt < 3) {
+              attemptFocus(attempt + 1);
+            }
+          } catch (e) {
+            console.error('Erro ao focar no textarea:', e);
+          }
+        }
+      }, attempt === 0 ? 50 : 100 * attempt); // Delays progressivos: 50ms, 100ms, 200ms, 300ms
+    };
+    
+    attemptFocus();
+  }, [showNPSForm, sending]);
+
+  // Focar no textarea quando o componente montar ou quando o NPS form for escondido
+  useEffect(() => {
+    if (!showNPSForm && !loading) {
+      focusTextarea();
+    }
+  }, [showNPSForm, loading, focusTextarea]);
 
   // Função para carregar mensagens do cache local
   const loadMessagesFromCache = () => {
@@ -136,6 +176,8 @@ const TicketChat: React.FC<TicketChatProps> = ({
     } finally {
       if (mountedRef.current) {
         setLoading(false);
+        // Focar após carregar as mensagens
+        setTimeout(() => focusTextarea(), 200);
       }
     }
   };
@@ -356,6 +398,10 @@ const TicketChat: React.FC<TicketChatProps> = ({
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
+      
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+      }
     };
   }, [ticketId]);
 
@@ -375,6 +421,8 @@ const TicketChat: React.FC<TicketChatProps> = ({
     const safetyTimeout = setTimeout(() => {
       if (mountedRef.current) {
         setSending(false);
+        // Focar após timeout de segurança
+        focusTextarea();
       }
     }, 10000); // 10 segundos de timeout
     
@@ -464,6 +512,13 @@ const TicketChat: React.FC<TicketChatProps> = ({
       if (mountedRef.current) {
         setSending(false);
       }
+      
+      // Focar no textarea após o envio (com delay para garantir que o estado foi atualizado)
+      setTimeout(() => {
+        if (mountedRef.current) {
+          focusTextarea();
+        }
+      }, 100);
     }
   };
 
@@ -532,9 +587,23 @@ const TicketChat: React.FC<TicketChatProps> = ({
       // Notificar o componente pai que o feedback foi enviado
       onFeedbackSubmit();
       
+      // Focar no textarea após o feedback ser enviado (com delay maior)
+      setTimeout(() => {
+        if (mountedRef.current) {
+          focusTextarea();
+        }
+      }, 300);
+      
     } catch (error) {
       console.error('Erro ao enviar feedback:', error);
       setError('Erro ao enviar feedback. Por favor, tente novamente.');
+    }
+  };
+
+  // Função para lidar com cliques na área do chat (focar no textarea)
+  const handleChatAreaClick = () => {
+    if (!showNPSForm && !sending) {
+      focusTextarea();
     }
   };
 
@@ -566,8 +635,11 @@ const TicketChat: React.FC<TicketChatProps> = ({
         </div>
       </div>
       
-      {/* Área de mensagens */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Área de mensagens - clicável para focar no textarea */}
+      <div 
+        className="flex-1 overflow-y-auto p-4 space-y-4 cursor-text"
+        onClick={handleChatAreaClick}
+      >
         {loading && messages.length === 0 && (
           <div className="flex justify-center items-center h-full">
             <Loader2 className="h-8 w-8 text-[#D5B170] animate-spin" />
@@ -626,7 +698,7 @@ const TicketChat: React.FC<TicketChatProps> = ({
         )}
         
         {/* Mensagem de feedback enviado quando o usuário já enviou o feedback */}
-        {(ticketStatus === 'resolved' || ticketStatus === 'closed') && 
+        {ticketStatus === 'resolved' && 
          !needsFeedback && 
          user?.role === 'user' && (
           <div className="flex justify-center">
@@ -667,16 +739,38 @@ const TicketChat: React.FC<TicketChatProps> = ({
       <form onSubmit={sendMessage} className="p-3 border-t border-[#D5B170]/20 bg-white/90 rounded-b-lg">
         <div className="flex space-x-2">
           <Textarea
+            ref={textareaRef}
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder={showNPSForm ? "Por favor, preencha o formulário de feedback acima..." : "Digite sua mensagem..."}
             className="flex-1 resize-none min-h-[60px] max-h-[120px] bg-white"
             disabled={sending || showNPSForm}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(e);
+              }
+            }}
+            onFocus={() => {
+              // Garantir que o textarea permaneça focado
+              console.log('Textarea focado');
+            }}
+            onBlur={() => {
+              // Tentar refocar se não estiver enviando ou mostrando NPS
+              if (!sending && !showNPSForm) {
+                setTimeout(() => focusTextarea(), 50);
+              }
+            }}
           />
           <Button 
             type="submit" 
             disabled={sending || !newMessage.trim() || showNPSForm}
             className="bg-[#101F2E] hover:bg-[#1c3a58] text-white self-end"
+            onClick={(e) => {
+              // Prevenir que o clique no botão tire o foco do textarea
+              e.preventDefault();
+              sendMessage(e);
+            }}
           >
             {sending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

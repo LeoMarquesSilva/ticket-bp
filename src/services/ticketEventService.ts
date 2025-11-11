@@ -1,59 +1,36 @@
 import { supabase, TABLES } from '@/lib/supabase';
 
-// Tipo de evento para feedback de tickets
 export type TicketFeedbackEvent = {
   ticketId: string;
-  status: 'resolved' | 'closed';
+  status: 'resolved';
   userId: string;
 };
 
-// Interface para os callbacks de eventos
-type EventCallback = (event: TicketFeedbackEvent) => void;
-
 class TicketEventService {
-  private static instance: TicketEventService;
-  private feedbackSubmittedListeners: EventCallback[] = [];
-  private ticketStatusChangedListeners: EventCallback[] = [];
-  private isInitialized = false;
+  private listeners: Set<(event: TicketFeedbackEvent) => void> = new Set();
 
-  // Singleton pattern
-  public static getInstance(): TicketEventService {
-    if (!TicketEventService.instance) {
-      TicketEventService.instance = new TicketEventService();
-    }
-    return TicketEventService.instance;
-  }
-
-  // Inicializar o serviço e configurar os listeners de eventos
-  public initialize(): void {
-    if (this.isInitialized) return;
-    
-    // Configurar o listener para eventos personalizados
-    window.addEventListener('ticketFeedbackSubmitted', ((event: CustomEvent) => {
-      this.notifyFeedbackSubmitted(event.detail);
-    }) as EventListener);
-    
-    // Configurar o canal Realtime para mudanças de status de tickets
+  constructor() {
     this.setupRealtimeSubscription();
-    
-    this.isInitialized = true;
-    console.log('TicketEventService initialized');
   }
 
-  // Configurar a assinatura em tempo real para mudanças de status de tickets
-  private setupRealtimeSubscription(): void {
-    const channel = supabase.channel('ticket-status-changes');
-    
-    channel
+  // Método de inicialização (compatibilidade com código existente)
+  public initialize(): void {
+    // O serviço já é inicializado no constructor
+    console.log('🔧 TicketEventService já inicializado');
+  }
+
+  private setupRealtimeSubscription() {
+    supabase
+      .channel('ticket-feedback-events')
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: TABLES.TICKETS,
-        filter: "status=in.(resolved,closed)"
+        filter: "status=eq.resolved"
       }, (payload) => {
         const newData = payload.new as any;
         
-        if (newData && (newData.status === 'resolved' || newData.status === 'closed')) {
+        if (newData && newData.status === 'resolved') {
           this.notifyTicketStatusChanged({
             ticketId: newData.id,
             status: newData.status,
@@ -61,82 +38,44 @@ class TicketEventService {
           });
         }
       })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('Subscribed to ticket status changes');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('Failed to subscribe to ticket status changes');
-          
-          // Tentar reconectar após um atraso
-          setTimeout(() => this.setupRealtimeSubscription(), 5000);
-        }
-      });
+      .subscribe();
+  }
+
+  // Adicionar listener para eventos de feedback
+  public onTicketStatusChanged(callback: (event: TicketFeedbackEvent) => void): () => void {
+    this.listeners.add(callback);
+    
+    // Retornar função para remover o listener
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  // Método para compatibilidade com código existente
+  public onFeedbackSubmitted(callback: (event: TicketFeedbackEvent) => void): () => void {
+    return this.onTicketStatusChanged(callback);
+  }
+
+  // Notificar todos os listeners sobre mudança de status
+  private notifyTicketStatusChanged(event: TicketFeedbackEvent): void {
+    this.listeners.forEach(callback => {
+      try {
+        callback(event);
+      } catch (error) {
+        console.error('Erro ao executar callback de evento de ticket:', error);
+      }
+    });
   }
 
   // Disparar evento de feedback submetido
-  public emitFeedbackSubmitted(ticketId: string, status: 'resolved' | 'closed', userId: string): void {
+  public emitFeedbackSubmitted(ticketId: string, status: 'resolved', userId: string): void {
     const event = new CustomEvent('ticketFeedbackSubmitted', {
       detail: { ticketId, status, userId }
     });
-    
     window.dispatchEvent(event);
-  }
-
-  // Notificar ouvintes sobre feedback submetido
-  private notifyFeedbackSubmitted(event: TicketFeedbackEvent): void {
-    this.feedbackSubmittedListeners.forEach(listener => {
-      try {
-        listener(event);
-      } catch (error) {
-        console.error('Error in feedback submitted listener:', error);
-      }
-    });
-  }
-
-  // Notificar ouvintes sobre mudança de status de ticket
-  private notifyTicketStatusChanged(event: TicketFeedbackEvent): void {
-    this.ticketStatusChangedListeners.forEach(listener => {
-      try {
-        listener(event);
-      } catch (error) {
-        console.error('Error in ticket status changed listener:', error);
-      }
-    });
-  }
-
-  // Adicionar ouvinte para evento de feedback submetido
-  public onFeedbackSubmitted(callback: EventCallback): () => void {
-    this.feedbackSubmittedListeners.push(callback);
-    
-    // Retornar função para remover o listener
-    return () => {
-      this.feedbackSubmittedListeners = this.feedbackSubmittedListeners.filter(
-        listener => listener !== callback
-      );
-    };
-  }
-
-  // Adicionar ouvinte para evento de mudança de status de ticket
-  public onTicketStatusChanged(callback: EventCallback): () => void {
-    this.ticketStatusChangedListeners.push(callback);
-    
-    // Retornar função para remover o listener
-    return () => {
-      this.ticketStatusChangedListeners = this.ticketStatusChangedListeners.filter(
-        listener => listener !== callback
-      );
-    };
-  }
-
-  // Limpar todos os ouvintes
-  public cleanup(): void {
-    this.feedbackSubmittedListeners = [];
-    this.ticketStatusChangedListeners = [];
-    window.removeEventListener('ticketFeedbackSubmitted', ((event: CustomEvent) => {
-      this.notifyFeedbackSubmitted(event.detail);
-    }) as EventListener);
   }
 }
 
-export const ticketEventService = TicketEventService.getInstance();
+// Exportar instância singleton
+const ticketEventService = new TicketEventService();
 export default ticketEventService;

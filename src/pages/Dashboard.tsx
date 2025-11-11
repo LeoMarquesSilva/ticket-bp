@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  Activity, AlertTriangle, ArrowDown, ArrowUp, BarChart, BarChart3, Calendar, CheckCircle, ChevronRight, Clock,
-  Layers, LineChart as LineChartIcon, MessageSquare, PieChart, RefreshCw, Star, ThumbsDown, ThumbsUp, TrendingUp,
-  User, Users
-} from 'lucide-react';
 import { getDashboardStats, STATUS_COLORS, COLORS } from '@/services/dashboardService';
-import { 
+import {
+  BarChart3, LineChart as LineChartIcon, PieChart, Users, Clock, CheckCircle, 
+  TrendingUp, Star, MessageSquare, ThumbsUp, ThumbsDown, User, Activity,
+  RefreshCw, Calendar, AlertTriangle, ArrowUp, ArrowDown, BarChart, Layers,
+  ChevronRight
+} from 'lucide-react';
+import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart as RechartsPieChart, Pie, Cell, BarChart as RechartsBarChart, Bar, LineChart,
   Line
@@ -31,9 +32,9 @@ const Dashboard = () => {
   const [stats, setStats] = useState<any>({
     totalTickets: 0,
     openTickets: 0,
+    assignedTickets: 0,
     inProgressTickets: 0,
     resolvedTickets: 0,
-    closedTickets: 0,
     avgResolutionTime: 0,
     ticketsOverTime: [],
     categoryDistribution: [],
@@ -160,12 +161,12 @@ const Dashboard = () => {
     switch (status) {
       case 'open':
         return 'bg-blue-100 text-blue-800';
+      case 'assigned':
+        return 'bg-amber-100 text-amber-800';
       case 'in_progress':
         return 'bg-yellow-100 text-yellow-800';
       case 'resolved':
         return 'bg-green-100 text-green-800';
-      case 'closed':
-        return 'bg-gray-100 text-gray-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -347,10 +348,10 @@ const Dashboard = () => {
         
         <StatCard 
           title="Em Andamento" 
-          value={stats.openTickets + stats.inProgressTickets} 
+          value={stats.openTickets + stats.assignedTickets + stats.inProgressTickets} 
           icon={<Clock className="h-4 w-4" />} 
           color="yellow"
-          description="Abertos + Em progresso"
+          description="Abertos + Atribuídos + Em progresso"
         />
         
         <StatCard 
@@ -441,6 +442,15 @@ const Dashboard = () => {
                       />
                       <Area 
                         type="monotone" 
+                        dataKey="assigned" 
+                        name="Atribuídos" 
+                        stackId="1"
+                        stroke={STATUS_COLORS.assigned} 
+                        fill={STATUS_COLORS.assigned} 
+                        fillOpacity={0.6}
+                      />
+                      <Area 
+                        type="monotone" 
                         dataKey="inProgress" 
                         name="Em Progresso" 
                         stackId="1"
@@ -455,15 +465,6 @@ const Dashboard = () => {
                         stackId="1"
                         stroke={STATUS_COLORS.resolved} 
                         fill={STATUS_COLORS.resolved} 
-                        fillOpacity={0.6}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="closed" 
-                        name="Fechados" 
-                        stackId="1"
-                        stroke={STATUS_COLORS.closed} 
-                        fill={STATUS_COLORS.closed} 
                         fillOpacity={0.6}
                       />
                     </AreaChart>
@@ -489,9 +490,9 @@ const Dashboard = () => {
                         <Pie
                           data={[
                             { name: 'Abertos', value: stats.openTickets },
+                            { name: 'Atribuídos', value: stats.assignedTickets },
                             { name: 'Em Progresso', value: stats.inProgressTickets },
-                            { name: 'Resolvidos', value: stats.resolvedTickets },
-                            { name: 'Fechados', value: stats.closedTickets }
+                            { name: 'Resolvidos', value: stats.resolvedTickets }
                           ]}
                           cx="50%"
                           cy="50%"
@@ -502,9 +503,9 @@ const Dashboard = () => {
                           label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                         >
                           <Cell key="open" fill={STATUS_COLORS.open} />
+                          <Cell key="assigned" fill={STATUS_COLORS.assigned} />
                           <Cell key="in_progress" fill={STATUS_COLORS.in_progress} />
                           <Cell key="resolved" fill={STATUS_COLORS.resolved} />
-                          <Cell key="closed" fill={STATUS_COLORS.closed} />
                         </Pie>
                         <Tooltip 
                           formatter={(value) => [`${value} tickets`, '']}
@@ -519,16 +520,16 @@ const Dashboard = () => {
                       <span className="text-sm">Abertos</span>
                     </div>
                     <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-amber-500 mr-2"></div>
+                      <span className="text-sm">Atribuídos</span>
+                    </div>
+                    <div className="flex items-center">
                       <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
                       <span className="text-sm">Em Progresso</span>
                     </div>
                     <div className="flex items-center">
                       <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
                       <span className="text-sm">Resolvidos</span>
-                    </div>
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 rounded-full bg-gray-500 mr-2"></div>
-                      <span className="text-sm">Fechados</span>
                     </div>
                   </div>
                 </CardContent>
@@ -771,18 +772,29 @@ const Dashboard = () => {
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-medium text-blue-700">Abertos</h3>
                       <div className="bg-blue-100 text-blue-700 rounded-full w-8 h-8 flex items-center justify-center">
-                        {Math.round((stats.openTickets / stats.totalTickets) * 100)}%
+                        {stats.totalTickets > 0 ? Math.round((stats.openTickets / stats.totalTickets) * 100) : 0}%
                       </div>
                     </div>
                     <p className="text-2xl font-bold">{stats.openTickets}</p>
                     <p className="text-sm text-blue-600 mt-1">Aguardando atendimento</p>
                   </div>
                   
+                  <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-amber-700">Atribuídos</h3>
+                      <div className="bg-amber-100 text-amber-700 rounded-full w-8 h-8 flex items-center justify-center">
+                        {stats.totalTickets > 0 ? Math.round((stats.assignedTickets / stats.totalTickets) * 100) : 0}%
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold">{stats.assignedTickets}</p>
+                    <p className="text-sm text-amber-600 mt-1">Atribuídos para atendimento</p>
+                  </div>
+                  
                   <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-100">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-medium text-yellow-700">Em Progresso</h3>
                       <div className="bg-yellow-100 text-yellow-700 rounded-full w-8 h-8 flex items-center justify-center">
-                        {Math.round((stats.inProgressTickets / stats.totalTickets) * 100)}%
+                        {stats.totalTickets > 0 ? Math.round((stats.inProgressTickets / stats.totalTickets) * 100) : 0}%
                       </div>
                     </div>
                     <p className="text-2xl font-bold">{stats.inProgressTickets}</p>
@@ -793,22 +805,11 @@ const Dashboard = () => {
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-medium text-green-700">Resolvidos</h3>
                       <div className="bg-green-100 text-green-700 rounded-full w-8 h-8 flex items-center justify-center">
-                        {Math.round((stats.resolvedTickets / stats.totalTickets) * 100)}%
+                        {stats.totalTickets > 0 ? Math.round((stats.resolvedTickets / stats.totalTickets) * 100) : 0}%
                       </div>
                     </div>
                     <p className="text-2xl font-bold">{stats.resolvedTickets}</p>
                     <p className="text-sm text-green-600 mt-1">Solucionados</p>
-                  </div>
-                  
-                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-medium text-slate-700">Fechados</h3>
-                      <div className="bg-slate-100 text-slate-700 rounded-full w-8 h-8 flex items-center justify-center">
-                        {Math.round((stats.closedTickets / stats.totalTickets) * 100)}%
-                      </div>
-                    </div>
-                    <p className="text-2xl font-bold">{stats.closedTickets}</p>
-                    <p className="text-sm text-slate-600 mt-1">Finalizados</p>
                   </div>
                 </div>
               </CardContent>
@@ -1038,72 +1039,72 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
           
-{/* Tab de Feedback */}
-<TabsContent value="feedback" className="space-y-6">
-  {/* Feedback Recente usando o componente RecentFeedbackList */}
-  <RecentFeedbackList feedbackItems={stats.recentFeedback} />
+          {/* Tab de Feedback */}
+          <TabsContent value="feedback" className="space-y-6">
+            {/* Feedback Recente usando o componente RecentFeedbackList */}
+            <RecentFeedbackList feedbackItems={stats.recentFeedback} />
 
-  {/* Comentários dos Usuários */}
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2 text-lg">
-        <Activity className="h-5 w-5 text-[#D5B170]" />
-        Comentários dos Usuários
-      </CardTitle>
-      <CardDescription>
-        Feedback textual fornecido pelos usuários
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <ScrollArea className="h-[300px] w-full pr-4">
-        {stats.recentFeedback.filter(f => f.comment).length === 0 ? (
-          <div className="text-center py-8 text-slate-500">
-            Nenhum comentário disponível
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {stats.recentFeedback
-              .filter(f => f.comment)
-              .map((feedback) => (
-                <Card key={feedback.id} className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between mb-2">
-                      <div className="font-medium">{feedback.title}</div>
-                      <div className="text-sm text-slate-500">{formatDate(feedback.resolvedAt)}</div>
+            {/* Comentários dos Usuários */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Activity className="h-5 w-5 text-[#D5B170]" />
+                  Comentários dos Usuários
+                </CardTitle>
+                <CardDescription>
+                  Feedback textual fornecido pelos usuários
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[300px] w-full pr-4">
+                  {stats.recentFeedback.filter(f => f.comment).length === 0 ? (
+                    <div className="text-center py-8 text-slate-500">
+                      Nenhum comentário disponível
                     </div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className={getNpsScoreColor(feedback.npsScore)} variant="outline">
-                        NPS: {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
-                      </Badge>
-                      <Badge className={getNpsScoreColor(feedback.serviceScore)} variant="outline">
-                        Serviço: {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
-                      </Badge>
-                      {feedback.requestFulfilled !== undefined && (
-                        feedback.requestFulfilled ? 
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            <ThumbsUp className="h-3 w-3 mr-1" /> Atendido
-                          </Badge> :
-                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                            <ThumbsDown className="h-3 w-3 mr-1" /> Não atendido
-                          </Badge>
-                      )}
+                  ) : (
+                    <div className="space-y-4">
+                      {stats.recentFeedback
+                        .filter(f => f.comment)
+                        .map((feedback) => (
+                          <Card key={feedback.id} className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => window.location.href = `/tickets?id=${feedback.id}`}>
+                            <CardContent className="p-4">
+                              <div className="flex justify-between mb-2">
+                                <div className="font-medium">{feedback.title}</div>
+                                <div className="text-sm text-slate-500">{formatDate(feedback.resolvedAt)}</div>
+                              </div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge className={getNpsScoreColor(feedback.npsScore)} variant="outline">
+                                  NPS: {feedback.npsScore !== undefined ? feedback.npsScore : 'N/A'}
+                                </Badge>
+                                <Badge className={getNpsScoreColor(feedback.serviceScore)} variant="outline">
+                                  Serviço: {feedback.serviceScore !== undefined ? feedback.serviceScore : 'N/A'}
+                                </Badge>
+                                {feedback.requestFulfilled !== undefined && (
+                                  feedback.requestFulfilled ? 
+                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                      <ThumbsUp className="h-3 w-3 mr-1" /> Atendido
+                                    </Badge> :
+                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                      <ThumbsDown className="h-3 w-3 mr-1" /> Não atendido
+                                    </Badge>
+                                )}
+                              </div>
+                              <p className="text-slate-700 text-sm">{feedback.comment}</p>
+                              <div className="mt-2 flex justify-end">
+                                <Button variant="ghost" size="sm" className="text-xs text-slate-500 hover:text-slate-800">
+                                  Ver detalhes <ChevronRight className="h-3 w-3 ml-1" />
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))
+                      }
                     </div>
-                    <p className="text-slate-700 text-sm">{feedback.comment}</p>
-                    <div className="mt-2 flex justify-end">
-                      <Button variant="ghost" size="sm" className="text-xs text-slate-500 hover:text-slate-800">
-                        Ver detalhes <ChevronRight className="h-3 w-3 ml-1" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            }
-          </div>
-        )}
-      </ScrollArea>
-    </CardContent>
-  </Card>
-</TabsContent>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       )}
 

@@ -1,19 +1,19 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, TABLES } from '@/lib/supabase';
 
 // Interface para os dados de estatísticas
 export interface DashboardStats {
   totalTickets: number;
   openTickets: number;
+  assignedTickets: number;
   inProgressTickets: number;
   resolvedTickets: number;
-  closedTickets: number;
   avgResolutionTime: number;
   ticketsOverTime: Array<{
     date: string;
     open: number;
+    assigned: number;
     inProgress: number;
     resolved: number;
-    closed: number;
   }>;
   categoryDistribution: Array<{
     name: string;
@@ -159,7 +159,7 @@ export async function getDashboardStats(
 
     // Consulta base para tickets
     let query = supabase
-      .from('app_c009c0e4f1_tickets')
+      .from(TABLES.TICKETS)
       .select('*')
       .gte('created_at', queryStartDate);
 
@@ -197,9 +197,9 @@ export async function getDashboardStats(
 function processTicketsData(tickets: any[], days: number): DashboardStats {
   // Contadores de status
   const openTickets = tickets.filter(t => t.status === 'open').length;
+  const assignedTickets = tickets.filter(t => t.status === 'assigned').length;
   const inProgressTickets = tickets.filter(t => t.status === 'in_progress').length;
   const resolvedTickets = tickets.filter(t => t.status === 'resolved').length;
-  const closedTickets = tickets.filter(t => t.status === 'closed').length;
   const totalTickets = tickets.length;
 
   // Calcular tempo médio de resolução
@@ -247,9 +247,9 @@ function processTicketsData(tickets: any[], days: number): DashboardStats {
   return {
     totalTickets,
     openTickets,
+    assignedTickets,
     inProgressTickets,
     resolvedTickets,
-    closedTickets,
     avgResolutionTime,
     ticketsOverTime,
     categoryDistribution,
@@ -361,9 +361,9 @@ function generateTicketsOverTimeData(tickets: any[], days: number) {
     result.push({
       date: dateStr,
       open: dayTickets.filter(t => t.status === 'open').length,
+      assigned: dayTickets.filter(t => t.status === 'assigned').length,
       inProgress: dayTickets.filter(t => t.status === 'in_progress').length,
-      resolved: dayTickets.filter(t => t.status === 'resolved').length,
-      closed: dayTickets.filter(t => t.status === 'closed').length
+      resolved: dayTickets.filter(t => t.status === 'resolved').length
     });
   }
   
@@ -491,7 +491,7 @@ async function processFeedbackFromTickets(tickets: any[]) {
   
   // Buscar todos os usuários de suporte e advogados
   const { data: supportUsers } = await supabase
-    .from('app_c009c0e4f1_users')
+    .from(TABLES.USERS)
     .select('id, name, role')
     .in('role', ['support', 'lawyer']);
   
@@ -522,28 +522,28 @@ async function processFeedbackFromTickets(tickets: any[]) {
     };
   });
   
-// Adicionar usuários de suporte e advogados que não têm feedbacks
-if (supportUsers) {
-  const existingUserNames = new Set(feedbackItems.map(item => item.assignedToName));
-  
-  supportUsers.forEach(user => {
-    if (!existingUserNames.has(user.name)) {
-      // Adicionar um item vazio para este usuário com todas as propriedades necessárias
-      feedbackItems.push({
-        id: `empty-${user.id}`,
-        title: '',
-        npsScore: undefined,
-        serviceScore: undefined,
-        requestFulfilled: undefined,
-        comment: '',
-        resolvedAt: undefined,
-        ticketUrl: '',
-        assignedToName: user.name,
-        assignedToRole: user.role
-      });
-    }
-  });
-}
+  // Adicionar usuários de suporte e advogados que não têm feedbacks
+  if (supportUsers) {
+    const existingUserNames = new Set(feedbackItems.map(item => item.assignedToName));
+    
+    supportUsers.forEach(user => {
+      if (!existingUserNames.has(user.name)) {
+        // Adicionar um item vazio para este usuário com todas as propriedades necessárias
+        feedbackItems.push({
+          id: `empty-${user.id}`,
+          title: '',
+          npsScore: undefined,
+          serviceScore: undefined,
+          requestFulfilled: undefined,
+          comment: '',
+          resolvedAt: undefined,
+          ticketUrl: '',
+          assignedToName: user.name,
+          assignedToRole: user.role
+        });
+      }
+    });
+  }
   
   return feedbackItems;
 }
@@ -583,7 +583,7 @@ export function getRemainingSlaTIme(ticket: any): number {
   }
   
   // Se o ticket já foi resolvido, retornar 0
-  if (ticket.resolved_at || ticket.status === 'resolved' || ticket.status === 'closed') {
+  if (ticket.resolved_at || ticket.status === 'resolved') {
     return 0;
   }
   
@@ -609,9 +609,9 @@ export function navigateToTicketFromFeedback(ticketId: string): string {
 // Constantes para cores de status (para referência no frontend)
 export const STATUS_COLORS = {
   open: '#3b82f6', // blue-500
+  assigned: '#f59e0b', // amber-500
   in_progress: '#eab308', // yellow-500
   resolved: '#22c55e', // green-500
-  closed: '#6b7280', // gray-500
 };
 
 // Constantes para cores de gráficos

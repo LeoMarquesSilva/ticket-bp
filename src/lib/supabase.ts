@@ -37,7 +37,7 @@ export interface DatabaseTicket {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   category: string;
   subcategory?: string;
-  status: 'open' | 'assigned' | 'in_progress' | 'resolved' | 'closed';
+  status: 'open' | 'assigned' | 'in_progress' | 'resolved'; // Removido 'closed'
   created_by: string;
   created_by_name: string;
   assigned_to?: string;
@@ -46,7 +46,7 @@ export interface DatabaseTicket {
   assigned_at?: string;
   started_at?: string;
   resolved_at?: string;
-  closed_at?: string;
+  // Removido closed_at?: string;
   reopened_at?: string;
   nps_score?: number;
   nps_feedback?: string;

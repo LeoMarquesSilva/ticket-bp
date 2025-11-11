@@ -39,15 +39,10 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
   const [localPendingTickets, setLocalPendingTickets] = useState(pendingTickets);
   const cleanupRef = useRef<(() => void) | null>(null);
 
-  // Inicializar o serviço de eventos de tickets
+  // Escutar mudanças de status de tickets usando o serviço
   useEffect(() => {
-    ticketEventService.initialize();
-  }, []);
-
-  // Escutar o evento de feedback enviado usando o serviço
-  useEffect(() => {
-    // Registrar o callback para o evento de feedback submetido
-    const cleanup = ticketEventService.onFeedbackSubmitted(() => {
+    // Registrar o callback para mudanças de status de tickets
+    const cleanup = ticketEventService.onTicketStatusChanged(() => {
       // Se temos uma função de callback, usá-la
       if (onPendingTicketsUpdated) {
         onPendingTicketsUpdated();

@@ -22,7 +22,7 @@ export interface User {
   lastActiveAt?: string;
 }
 
-export type TicketStatus = 'open' | 'assigned' | 'in_progress' | 'resolved' | 'closed';
+export type TicketStatus = 'open' | 'assigned' | 'in_progress' | 'resolved'; // Removido 'closed'
 
 export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
 
@@ -42,7 +42,7 @@ export interface Ticket {
   assignedAt?: string;
   startedAt?: string;
   resolvedAt?: string;
-  closedAt?: string;
+  // Removido closedAt?: string;
   category: string;
   feedbackSubmittedAt?: string;
   subcategory?: string;
@@ -59,11 +59,14 @@ export interface Ticket {
 export interface ChatMessage {
   id: string;
   ticketId: string;
-  senderId: string;
-  senderName: string;
-  senderRole: UserRole;
+  userId: string;
+  userName: string;
   message: string;
   createdAt: string;
+  attachments?: any[];
+  read?: boolean;
+  isTemp?: boolean;
+  isSystem?: boolean;
 }
 
 export interface TicketStats {
@@ -72,7 +75,7 @@ export interface TicketStats {
   assigned: number;
   inProgress: number;
   resolved: number;
-  closed: number;
+  // Removido closed: number;
   byPriority: {
     low: number;
     medium: number;

@@ -24,6 +24,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null); // Adicionar referência ao input
   const [subscriptionEstablished, setSubscriptionEstablished] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const mountedRef = useRef(true);
@@ -41,7 +42,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
   
   // Verificar se o ticket está ativo (não resolvido ou fechado)
 // Verificar se o ticket está ativo (não resolvido ou fechado)
-const isTicketActive = ticket.status !== 'resolved' && ticket.status !== 'closed';
+const isTicketActive = ticket.status !== 'resolved';
 console.log('Ticket status:', ticket.status, 'isTicketActive:', isTicketActive);
   // Log para debug
   console.log('Ticket status:', ticket.status);
@@ -54,6 +55,16 @@ console.log('Ticket status:', ticket.status, 'isTicketActive:', isTicketActive);
       setter(value);
     }
   }, []);
+
+  // Função para focar no input
+  const focusInput = useCallback(() => {
+    if (inputRef.current && isTicketActive) {
+      // Usar setTimeout para garantir que o foco aconteça após a renderização
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isTicketActive]);
 
   // Função para rolar para o final da conversa
   const scrollToBottom = useCallback(() => {
@@ -69,6 +80,13 @@ console.log('Ticket status:', ticket.status, 'isTicketActive:', isTicketActive);
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Focar no input quando o modal abrir
+  useEffect(() => {
+    if (isOpen && isTicketActive) {
+      focusInput();
+    }
+  }, [isOpen, isTicketActive, focusInput]);
 
   // Carregar mensagens do cache local
   const loadMessagesFromCache = useCallback(() => {
@@ -512,6 +530,9 @@ console.log('Ticket status:', ticket.status, 'isTicketActive:', isTicketActive);
     // Limpar o campo de mensagem imediatamente para melhor UX
     safeSetState(setNewMessage, '');
     
+    // Focar no input após limpar a mensagem
+    focusInput();
+    
     // Marcar como enviando para evitar múltiplos envios
     isSubmittingRef.current = true;
     safeSetState(setSending, true);
@@ -612,8 +633,11 @@ console.log('Ticket status:', ticket.status, 'isTicketActive:', isTicketActive);
         safeSetState(setSending, false);
         isSubmittingRef.current = false;
       }
+      
+      // Focar no input novamente após o envio
+      focusInput();
     }
-  }, [newMessage, user, sending, ticket?.id, processMessageQueue, safeSetState]);
+  }, [newMessage, user, sending, ticket?.id, processMessageQueue, safeSetState, focusInput]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -740,113 +764,115 @@ console.log('Ticket status:', ticket.status, 'isTicketActive:', isTicketActive);
                         <span className="text-xs text-slate-600 font-medium">
                           {date}
                         </span>
+                      
                       </div>
                     </div>
+                <div className="space-y-4">
+                  {dayMessages.map((message) => {
+                    const isOwnMessage = user?.id === message.userId;
+                    const isTemporary = message.id.startsWith('temp-');
                     
-                    <div className="space-y-4">
-                      {dayMessages.map((message) => {
-                        const isOwnMessage = user?.id === message.userId;
-                        const isTemporary = message.id.startsWith('temp-');
+                    return (
+                      <div
+                        key={message.id}
+                        className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
+                      >
+                        <Avatar className="h-8 w-8 flex-shrink-0">
+                          <AvatarFallback className="text-xs bg-[#D5B170] text-white">
+                            {message.userName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
                         
-                        return (
-                          <div
-                            key={message.id}
-                            className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
-                          >
-                            <Avatar className="h-8 w-8 flex-shrink-0">
-                              <AvatarFallback className="text-xs bg-[#D5B170] text-white">
-                                {message.userName.charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            
-                            <div className={`flex flex-col max-w-[70%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-medium text-slate-700">
-                                  {message.userName}
-                                </span>
-                                <span className="text-xs text-slate-500">
-                                  {formatTime(message.createdAt)}
-                                </span>
-                                {isTemporary && (
-                                  <span className="text-xs text-amber-500 flex items-center">
-                                    <span className="animate-pulse mr-1">⏳</span>
-                                    enviando...
-                                  </span>
-                                )}
-                              </div>
-                              
-                              <div
-                                className={`px-4 py-2 rounded-2xl ${
-                                  isOwnMessage
-                                    ? `bg-[#D5B170] text-white ${isTemporary ? 'opacity-70' : ''}`
-                                    : 'bg-slate-100 text-slate-900'
-                                } transition-opacity duration-200`}
-                              >
-                                <p className="text-sm whitespace-pre-wrap">
-                                  {message.message}
-                                </p>
-                              </div>
-                            </div>
+                        <div className={`flex flex-col max-w-[70%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium text-slate-700">
+                              {message.userName}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              {formatTime(message.createdAt)}
+                            </span>
+                            {isTemporary && (
+                              <span className="text-xs text-amber-500 flex items-center">
+                                <span className="animate-pulse mr-1">⏳</span>
+                                enviando...
+                              </span>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
+                          
+                          <div
+                            className={`px-4 py-2 rounded-2xl ${
+                              isOwnMessage
+                                ? `bg-[#D5B170] text-white ${isTemporary ? 'opacity-70' : ''}`
+                                : 'bg-slate-100 text-slate-900'
+                            } transition-opacity duration-200`}
+                          >
+                            <p className="text-sm whitespace-pre-wrap">
+                              {message.message}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            )}
-          </ScrollArea>
-
-          <div className="p-6 border-t bg-white">
-            <div className="flex gap-3">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Digite sua mensagem..."
-                disabled={sending || !isTicketActive}
-                className="flex-1"
-              />
-              <Button
-                onClick={sendMessage}
-                disabled={!newMessage.trim() || sending || !isTicketActive}
-                className={`${
-                  sending 
-                    ? 'bg-gray-400 hover:bg-gray-400' 
-                    : 'bg-[#D5B170] hover:bg-[#c4a05f]'
-                } text-white px-4 transition-colors duration-200`}
-              >
-                {sending ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    <span 
-                      className="text-xs cursor-pointer underline" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        safeSetState(setSending, false);
-                        isSubmittingRef.current = false;
-                        handleForceRefresh();
-                      }}
-                    >
-                      Cancelar
-                    </span>
-                  </div>
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-            {!isTicketActive && (
-              <p className="text-xs text-slate-500 mt-2 text-center">
-                Este ticket foi finalizado. Não é possível enviar novas mensagens.
-              </p>
-            )}
+            ))}
+            <div ref={messagesEndRef} />
           </div>
+        )}
+      </ScrollArea>
+
+      <div className="p-6 border-t bg-white">
+        <div className="flex gap-3">
+          <Input
+            ref={inputRef}
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Digite sua mensagem..."
+            disabled={sending || !isTicketActive}
+            className="flex-1"
+          />
+          <Button
+            onClick={sendMessage}
+            disabled={!newMessage.trim() || sending || !isTicketActive}
+            className={`${
+              sending 
+                ? 'bg-gray-400 hover:bg-gray-400' 
+                : 'bg-[#D5B170] hover:bg-[#c4a05f]'
+            } text-white px-4 transition-colors duration-200`}
+          >
+            {sending ? (
+              <div className="flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                <span 
+                  className="text-xs cursor-pointer underline" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    safeSetState(setSending, false);
+                    isSubmittingRef.current = false;
+                    handleForceRefresh();
+                  }}
+                >
+                  Cancelar
+                </span>
+              </div>
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
         </div>
-      </DialogContent>
-    </Dialog>
-  );
+        {!isTicketActive && (
+          <p className="text-xs text-slate-500 mt-2 text-center">
+            Este ticket foi finalizado. Não é possível enviar novas mensagens.
+          </p>
+        )}
+      </div>
+    </div>
+  </DialogContent>
+</Dialog>
+); 
+
 };
 
 export default ChatModal;

@@ -1,7 +1,7 @@
 # Contexto do Sistema - Help Desk
 
 ## Visão Geral
-Sistema de Help Desk desenvolvido em React/TypeScript com Supabase, focado em atendimento jurídico e suporte técnico. O sistema oferece gestão completa de tickets, chat em tempo real, dashboard analítico e sistema de feedback.
+Sistema de Help Desk desenvolvido em React/TypeScript com Supabase, focado em atendimento jurídico e suporte técnico. O sistema oferece gestão completa de tickets, chat em tempo real, dashboard analítico e sistema de feedback obrigatório.
 
 ## Arquitetura Técnica
 
@@ -13,15 +13,17 @@ Sistema de Help Desk desenvolvido em React/TypeScript com Supabase, focado em at
 - **Ícones**: Lucide React
 - **Gerenciamento de Estado**: Context API + Hooks
 - **Build Tool**: Vite
+- **Notificações**: Sonner (toast notifications)
 
 ### Backend
 - **Database**: Supabase (PostgreSQL)
 - **Autenticação**: Supabase Auth
 - **Storage**: Supabase Storage (para anexos)
-- **Real-time**: Supabase Realtime (para chat)
+- **Real-time**: Supabase Realtime (para chat e atualizações)
 
 ### Estrutura de Pastas
-src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Componentes base (shadcn/ui) │ ├── chat/ # Componentes do sistema de chat │ └── layout/ # Componentes de layout ├── pages/ # Páginas da aplicação ├── services/ # Serviços e APIs ├── contexts/ # Context providers ├── hooks/ # Custom hooks ├── lib/ # Utilitários e configurações └── types/ # Definições de tipos TypeScript
+src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Componentes base (shadcn/ui) │ ├── PendingFeedbackHandler.tsx # Aviso de feedback pendente │ ├── NPSChatFeedback.tsx # Modal de feedback NPS │ ├── TicketChatPanel.tsx # Painel de chat dos tickets │ └── ... # Outros componentes ├── pages/ # Páginas da aplicação ├── services/ # Serviços e APIs │ ├── ticketService.ts # Serviço principal de tickets │ └── ticketEventService.ts # Eventos de feedback ├── contexts/ # Context providers ├── hooks/ # Custom hooks ├── lib/ # Utilitários e configurações └── types/ # Definições de tipos TypeScript
+
 
 
 ## Funcionalidades Principais
@@ -32,7 +34,7 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - **Sessão**: Gerenciamento automático via Supabase Auth
 
 ### 2. Gestão de Tickets
-- **Status**: open, in_progress, resolved, closed
+- **Status**: open, in_progress, resolved *(removido "closed")*
 - **Prioridades**: low, medium, high, urgent
 - **Categorias**: protocolo, cadastro, agendamento, publicacoes, assinatura_digital, outros
 - **Subcategorias**: Específicas por categoria com SLA definido
@@ -40,24 +42,33 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - **Anexos**: Upload de arquivos via Supabase Storage
 - **Histórico**: Log completo de alterações
 
-### 3. Sistema de Chat
+### 3. Sistema de Chat em Tempo Real
 - **Real-time**: Mensagens instantâneas via Supabase Realtime
 - **Anexos**: Suporte a imagens e documentos
 - **Participantes**: Usuário criador + atendentes atribuídos
 - **Status**: Indicadores de mensagem lida/não lida
+- **Typing Indicators**: Mostra quando usuários estão digitando
+- **Presença**: Status online/offline dos atendentes
 
-### 4. Dashboard Analítico
+### 4. Sistema de Feedback Obrigatório
+- **Aviso Compacto**: Barra horizontal no topo para tickets pendentes de avaliação
+- **Bloqueio**: Usuários não podem criar novos tickets sem avaliar os resolvidos
+- **Modal Integrado**: Feedback acessível diretamente no chat do ticket
+- **Componentes**:
+  - `PendingFeedbackHandler`: Aviso compacto de feedback pendente
+  - `NPSChatFeedback`: Modal de avaliação integrado ao chat
+- **Métricas Coletadas**:
+  - **Request Fulfilled**: Se a solicitação foi atendida (Sim/Não)
+  - **Service Score**: Avaliação da qualidade do atendimento (1-10)
+  - **Comment**: Feedback textual obrigatório
+  - **Timestamp**: Data/hora da submissão
+
+### 5. Dashboard Analítico
 - **Métricas Gerais**: Total de tickets, distribuição por status
 - **Performance**: Tempo médio de resolução, taxa de resolução
-- **Satisfação**: NPS, avaliação de serviço, cumprimento de solicitações
+- **Satisfação**: Avaliação de serviço, cumprimento de solicitações
 - **Gráficos**: Tickets ao longo do tempo, distribuição por categoria
 - **Filtros**: Por período, usuário, categoria
-
-### 5. Sistema de Feedback
-- **NPS Score**: Escala 0-10 para recomendação
-- **Service Score**: Avaliação da qualidade do atendimento
-- **Request Fulfilled**: Se a solicitação foi atendida
-- **Comentários**: Feedback textual opcional
 
 ### 6. Sistema de SLA
 - **Definição por Categoria/Subcategoria**:
@@ -83,11 +94,12 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - created_at: timestamp
 - updated_at: timestamp
 
-#### app_c009c0e4f1_tickets
+app_c009c0e4f1_tickets
+
 - id: uuid (PK)
 - title: text
 - description: text
-- status: text (open|in_progress|resolved|closed)
+- status: text (open|in_progress|resolved) -- Removido 'closed'
 - priority: text (low|medium|high|urgent)
 - category: text
 - subcategory: text
@@ -100,26 +112,25 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - resolved_at: timestamp
 - first_response_at: timestamp
 - attachments: jsonb
-- nps_score: integer
-- service_score: integer
+- -- Campos de Feedback
+- service_score: integer (1-10)
 - request_fulfilled: boolean
+- not_fulfilled_reason: text
 - comment: text
-- nps_feedback: text
 - feedback_submitted_at: timestamp
 
-#### app_c009c0e4f1_chat_messages
+app_c009c0e4f1_chat_messages
+
 - id: uuid (PK)
 - ticket_id: uuid (FK tickets)
-- sender_id: uuid (FK users)
-- sender_name: text
-- sender_role: text
+- user_id: uuid (FK users)
+- user_name: text
 - message: text
 - attachments: jsonb
 - created_at: timestamp
-- read_by: jsonb
+- read: boolean
 
-#### app_c009c0e4f1_ticket_history
-
+app_c009c0e4f1_ticket_history
 - id: uuid (PK)
 - ticket_id: uuid (FK tickets)
 - action: text
@@ -129,10 +140,11 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - changed_by_name: text
 - created_at: timestamp
 
-
 Fluxo de Trabalho
 1. Criação de Ticket
 Usuário preenche formulário (título, descrição, categoria, prioridade)
+Validação: Sistema verifica se há tickets resolvidos sem feedback
+Bloqueio: Se houver feedback pendente, exibe aviso e impede criação
 Sistema atribui automaticamente ou permite seleção manual
 Ticket criado com status 'open'
 Notificação enviada ao atendente (se atribuído)
@@ -142,47 +154,51 @@ Pode alterar status para 'in_progress'
 Comunicação via chat em tempo real
 Upload de anexos quando necessário
 Resolução com status 'resolved'
-3. Feedback
-Após resolução, usuário recebe solicitação de feedback
-Avaliação via NPS, qualidade do serviço e cumprimento
-Comentários opcionais
+3. Feedback Obrigatório
+Após resolução, usuário vê aviso compacto no topo da tela
+PendingFeedbackHandler mostra quantidade de tickets pendentes
+Botão "Avaliar Agora" abre diretamente o primeiro ticket
+No chat do ticket, botão flutuante "Avaliar atendimento"
+Modal NPSChatFeedback coleta:
+Solicitação atendida? (Sim/Não + motivo se não)
+Qualidade do atendimento (1-10 estrelas)
+Comentário obrigatório
+Após submissão, ticket sai da lista de pendentes
+Usuário pode criar novos tickets apenas após avaliar todos
+4. Finalização
+Ticket permanece com status 'resolved' após feedback
 Dados integrados ao dashboard para análise
-4. Fechamento
-Ticket pode ser fechado automaticamente após feedback
-Ou manualmente pelo atendente/admin
-Status final: 'closed'
+Histórico completo mantido para auditoria
 Configurações de SLA
 Mapeamento Categoria → Subcategoria → SLA
 const CATEGORIES_CONFIG = {
   'protocolo': {
-    'pedido_urgencia': 2h,
-    'inconsistencia': 2h,
-    'duvidas': 2h
+    'pedido_urgencia': '2h',
+    'inconsistencia': '2h',
+    'duvidas': '2h'
   },
   'cadastro': {
-    'senhas_outros_tribunais': 1h,
-    'senha_tribunal_expirada': 1h,
-    'duvidas': 24h,
-    'atualizacao_cadastro': 24h,
-    'correcao_cadastro': 24h
+    'senhas_outros_tribunais': '1h',
+    'senha_tribunal_expirada': '1h',
+    'duvidas': '24h',
+    'atualizacao_cadastro': '24h',
+    'correcao_cadastro': '24h'
   },
   'agendamento': {
-    'duvidas': 4h
+    'duvidas': '4h'
   },
   'publicacoes': {
-    'problemas_central_publi': 1h,
-    'duvidas': 2h
+    'problemas_central_publi': '1h',
+    'duvidas': '2h'
   },
   'assinatura_digital': {
-    'pedido_urgencia': 3h,
-    'duvidas': 3h
+    'pedido_urgencia': '3h',
+    'duvidas': '3h'
   },
   'outros': {
-    'outros': 24h
+    'outros': '24h'
   }
 }
-
-
 Métricas e KPIs
 Performance
 Tempo Médio de Resolução: Média em dias para resolver tickets
@@ -190,29 +206,50 @@ Taxa de Resolução: % de tickets resolvidos vs total
 Primeiro Tempo de Resposta: Tempo até primeira resposta do atendente
 Cumprimento de SLA: % de tickets resolvidos dentro do prazo
 Satisfação
-NPS (Net Promoter Score): Baseado em escala 0-10
-Promotores: 9-10
-Neutros: 7-8
-Detratores: 0-6
 Qualidade do Serviço: Média das avaliações 1-10
 Taxa de Atendimento: % de solicitações efetivamente atendidas
+Taxa de Feedback: % de tickets resolvidos com feedback submetido
+Motivos de Não Atendimento: Análise dos motivos mais frequentes
 Operacionais
 Volume de Tickets: Total por período
-Distribuição por Status: Abertos, em progresso, resolvidos, fechados
+Distribuição por Status: Abertos, em progresso, resolvidos
 Distribuição por Categoria: Análise dos tipos de solicitação
 Carga de Trabalho: Tickets por atendente
+Componentes de Feedback
+PendingFeedbackHandler
+// Aviso compacto no topo da tela
+interface PendingFeedbackHandlerProps {
+  tickets: Ticket[];
+  onFeedbackSubmitted: () => void;
+  onOpenTicket?: (ticket: Ticket) => void;
+}
+Design: Barra horizontal compacta (~60px altura)
+Funcionalidade: Mostra quantidade de tickets pendentes
+Ação: Botão "Avaliar Agora" abre primeiro ticket da lista
+Visibilidade: Apenas para usuários com role 'user'
+NPSChatFeedback
+// Modal de feedback integrado ao chat
+interface NPSChatFeedbackProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (feedback: TicketFeedbackData) => void;
+  ticket: Ticket;
+}
+Design: Modal centralizado com formulário estruturado
+Campos: Atendimento (Sim/Não), Qualidade (1-10), Comentário
+Validação: Todos os campos obrigatórios
+Integração: Acessível via botão flutuante no chat
 Integrações
 Supabase Services
 Database: PostgreSQL para persistência
 Auth: Autenticação e autorização
 Storage: Armazenamento de anexos
-Realtime: Chat em tempo real
-Edge Functions: Processamento serverless (se necessário)
-External Services (Futuro)
-Email: Notificações por email
-SMS: Alertas críticos
-Webhooks: Integrações com sistemas externos
-API REST: Exposição de dados para terceiros
+Realtime: Chat em tempo real + eventos de feedback
+Real-time Events
+Mensagens: Notificação instantânea de novas mensagens
+Feedback: Atualização automática quando feedback é submetido
+Presença: Status online/offline dos usuários
+Typing: Indicadores de digitação
 Segurança
 Autenticação
 JWT tokens via Supabase Auth
@@ -245,10 +282,26 @@ Erros: Error boundaries + logging
 Uptime: Monitoramento de disponibilidade
 Database: Query performance no Supabase
 Métricas de Negócio
-Satisfação do Cliente: NPS tracking
+Satisfação do Cliente: Tracking de avaliações
 Eficiência Operacional: SLA compliance
 Volume de Atendimento: Tickets por período
-Qualidade: Feedback scores
+Qualidade: Feedback scores e comentários
+Mudanças Recentes
+Remoção do Status "Closed"
+Antes: open → in_progress → resolved → closed
+Agora: open → in_progress → resolved
+Motivo: Simplificação do fluxo, feedback obrigatório antes do fechamento
+Impacto: Tickets permanecem "resolved" após feedback
+Sistema de Feedback Obrigatório
+Implementação: PendingFeedbackHandler + NPSChatFeedback
+Bloqueio: Usuários não podem criar tickets sem avaliar resolvidos
+UX: Aviso compacto + acesso direto ao primeiro ticket pendente
+Dados: Coleta estruturada de satisfação e motivos
+Melhorias de UI/UX
+Chat Responsivo: Otimização do espaço quando feedback está pendente
+Aviso Compacto: Redução de ~300px para ~60px de altura
+Navegação Direta: Botão leva direto ao ticket para avaliação
+Feedback Integrado: Modal acessível diretamente no chat
 Roadmap Futuro
 Funcionalidades Planejadas
 Notificações Push: Alertas em tempo real
@@ -264,3 +317,36 @@ Microservices: Separação de responsabilidades
 GraphQL: API mais flexível
 Testing: Cobertura de testes automatizados
 CI/CD: Pipeline de deployment automatizado
+
+--------------------------------------------------
+
+Principais atualizações feitas no documento:
+
+## ✅ **Mudanças Implementadas:**
+
+1. **Remoção do Status "Closed"**
+   - Atualizado fluxo: open → in_progress → resolved
+   - Removido "closed" de todas as referências
+   - Tickets ficam "resolved" após feedback
+
+2. **Sistema de Feedback Obrigatório**
+   - Documentado `PendingFeedbackHandler` compacto
+   - Documentado `NPSChatFeedback` integrado
+   - Explicado bloqueio para criação de novos tickets
+
+3. **Melhorias de UX**
+   - Aviso compacto (60px vs 300px)
+   - Navegação direta ao primeiro ticket
+   - Chat otimizado para espaço
+
+4. **Estrutura de Dados Atualizada**
+   - Campos de feedback no banco
+   - Remoção de campos relacionados a "closed"
+   - Novos componentes documentados
+
+5. **Fluxo de Trabalho Atualizado**
+   - Validação de feedback pendente
+   - Processo de avaliação obrigatória
+   - Integração com chat em tempo real
+
+O documento agora reflete fielmente o estado atual do sistema! 🎯

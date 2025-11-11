@@ -10,18 +10,18 @@ export interface Ticket {
   description: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   category: string;
-  subcategory?: string; // Adicionando a propriedade subcategory como opcional
-  status: 'open' | 'assigned' | 'in_progress' | 'resolved' | 'closed';
+  subcategory?: string;
+  status: 'open' | 'assigned' | 'in_progress' | 'resolved'; // Removido 'closed'
   createdBy: string;
   createdByName: string;
-  createdByDepartment?: string; // Adicionando o departamento do criador como opcional
+  createdByDepartment?: string;
   assignedTo?: string;
-  assignedToName?: string; // Adicionando assignedToName que também está sendo usado
+  assignedToName?: string;
   assignedBy?: string;
   assignedAt?: string;
   startedAt?: string;
   resolvedAt?: string;
-  closedAt?: string;
+  // Removido closedAt?: string;
   reopenedAt?: string;
   npsScore?: number;
   npsFeedback?: string;
@@ -32,7 +32,7 @@ export interface Ticket {
   comment?: string;
   feedbackSubmittedAt?: string;
   createdAt: string;
-  attachments?: any[]; // Adicionando suporte para anexos
+  attachments?: any[];
   updatedAt: string;
 }
 
@@ -43,8 +43,8 @@ export interface ChatMessage {
   userName: string;
   message: string;
   createdAt: string;
-  attachments?: any[]; // Adicionando suporte para anexos
-  read?: boolean; // Adicionando campo para controle de leitura
+  attachments?: any[];
+  read?: boolean;
   isTemp?: boolean;
    isSystem?: boolean;
 }
@@ -65,14 +65,14 @@ export interface UpdateTicketData {
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   category?: string;
   subcategory?: string;
-  status?: 'open' | 'assigned' | 'in_progress' | 'resolved' | 'closed';
+  status?: 'open' | 'assigned' | 'in_progress' | 'resolved'; // Removido 'closed'
   assignedTo?: string;
   assignedBy?: string;
   assignedToName?: string;
   assignedAt?: string;
   startedAt?: string;
   resolvedAt?: string;
-  closedAt?: string;
+  // Removido closedAt?: string;
   reopenedAt?: string;
   npsScore?: number;
   npsFeedback?: string;
@@ -106,14 +106,14 @@ const mapToDatabase = (data: any) => {
   // Field name mappings
   if (data.createdBy !== undefined) mapped.created_by = data.createdBy;
   if (data.createdByName !== undefined) mapped.created_by_name = data.createdByName;
-  if (data.createdByDepartment !== undefined) mapped.created_by_department = data.createdByDepartment; // Corrigido: com "n"
+  if (data.createdByDepartment !== undefined) mapped.created_by_department = data.createdByDepartment;
   if (data.assignedTo !== undefined) mapped.assigned_to = data.assignedTo;
   if (data.assignedBy !== undefined) mapped.assigned_by = data.assignedBy;
   if (data.assignedToName !== undefined) mapped.assigned_to_name = data.assignedToName;
   if (data.assignedAt !== undefined) mapped.assigned_at = data.assignedAt;
   if (data.startedAt !== undefined) mapped.started_at = data.startedAt;
   if (data.resolvedAt !== undefined) mapped.resolved_at = data.resolvedAt;
-  if (data.closedAt !== undefined) mapped.closed_at = data.closedAt;
+  // Removido mapeamento de closedAt
   if (data.reopenedAt !== undefined) mapped.reopened_at = data.reopenedAt;
   if (data.npsScore !== undefined) mapped.nps_score = data.npsScore;
   if (data.npsFeedback !== undefined) mapped.nps_feedback = data.npsFeedback;
@@ -130,10 +130,9 @@ const mapToDatabase = (data: any) => {
 };
 
 const mapFromDatabase = (data: any): Ticket => {
-  // Adicionando log para depuração
   console.log('Dados do ticket do banco:', {
     id: data.id,
-    department_field: data.created_by_department, // Corrigido: com "n"
+    department_field: data.created_by_department,
   });
 
   return {
@@ -146,14 +145,14 @@ const mapFromDatabase = (data: any): Ticket => {
     status: data.status,
     createdBy: data.created_by,
     createdByName: data.created_by_name,
-    createdByDepartment: data.created_by_department, // Corrigido: com "n"
+    createdByDepartment: data.created_by_department,
     assignedTo: data.assigned_to,
     assignedToName: data.assigned_to_name,
     assignedBy: data.assigned_by,
     assignedAt: data.assigned_at,
     startedAt: data.started_at,
     resolvedAt: data.resolved_at,
-    closedAt: data.closed_at,
+    // Removido closedAt: data.closed_at,
     reopenedAt: data.reopened_at,
     npsScore: data.nps_score,
     npsFeedback: data.nps_feedback,
@@ -306,7 +305,7 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
         assigned: tickets.filter(t => t && t.status === 'assigned').length,
         in_progress: tickets.filter(t => t && t.status === 'in_progress').length,
         resolved: tickets.filter(t => t && t.status === 'resolved').length,
-        closed: tickets.filter(t => t && t.status === 'closed').length,
+        // Removido closed
         total: tickets.length,
       };
 
@@ -333,9 +332,8 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
         dbUpdates.started_at = new Date().toISOString();
       } else if (updates.status === 'resolved' && !updates.resolvedAt) {
         dbUpdates.resolved_at = new Date().toISOString();
-      } else if (updates.status === 'closed' && !updates.closedAt) {
-        dbUpdates.closed_at = new Date().toISOString();
       }
+      // Removido tratamento para status 'closed'
       
       // Adicionar timestamp de atribuição se for atribuído
       if (updates.assignedTo && !updates.assignedAt) {
@@ -397,15 +395,13 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
     }
   }
 
-  
-
 static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedbackData): Promise<boolean> {
   try {
     console.log('Enviando feedback para ticket:', ticketId, feedbackData);
     
     const now = new Date().toISOString();
     
-    // Atualizar o ticket com os dados de feedback
+    // Atualizar o ticket com os dados de feedback - mantém status como 'resolved'
     const { error } = await supabase
       .from(TABLES.TICKETS)
       .update({
@@ -414,8 +410,7 @@ static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedback
         service_score: feedbackData.serviceScore,
         comment: feedbackData.comment || null,
         feedback_submitted_at: now,
-        status: 'closed',
-        closed_at: now,
+        // Removido: status: 'closed' e closed_at: now
         updated_at: now
       })
       .eq('id', ticketId);
@@ -425,8 +420,6 @@ static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedback
       throw error;
     }
 
-    // Remover completamente a parte que tenta criar uma mensagem do sistema
-    
     return true;
   } catch (error) {
     console.error('Erro em submitTicketFeedback:', error);
@@ -870,6 +863,7 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
     throw error;
   }
 }
+
   // Adicionar método para atribuir ticket a um advogado
   static async assignToLawyer(ticketId: string): Promise<Ticket> {
     try {
@@ -885,8 +879,6 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
       const updates = {
         status: 'assigned',
         assigned_to: availableLawyer.id,
-        // Remover esta linha se a coluna assigned_to_name não existir no banco de dados
-        // Se a coluna existe, mantenha esta linha
         assigned_to_name: availableLawyer.name,
         assigned_at: now,
         updated_at: now,

@@ -25,7 +25,7 @@ const Index: React.FC = () => {
     assigned: 0,
     in_progress: 0,
     resolved: 0,
-    closed: 0,
+    // Removido closed: 0,
     inProgress: 0,
     byPriority: {
       urgent: 0,
@@ -66,7 +66,7 @@ const Index: React.FC = () => {
         in_progress: ticketStats?.in_progress || 0,
         inProgress: ticketStats?.in_progress || 0, // Alias for compatibility
         resolved: ticketStats?.resolved || 0,
-        closed: ticketStats?.closed || 0,
+        // Removido closed: ticketStats?.closed || 0,
         byPriority: {
           urgent: 0,
           high: 0,
@@ -94,7 +94,7 @@ const Index: React.FC = () => {
         in_progress: 0,
         inProgress: 0,
         resolved: 0,
-        closed: 0,
+        // Removido closed: 0,
         byPriority: {
           urgent: 0,
           high: 0,
@@ -117,7 +117,7 @@ const Index: React.FC = () => {
       case 'assigned': return 'text-purple-600 bg-purple-50';
       case 'in_progress': return 'text-yellow-600 bg-yellow-50';
       case 'resolved': return 'text-green-600 bg-green-50';
-      case 'closed': return 'text-gray-600 bg-gray-50';
+      // Removido case 'closed': return 'text-gray-600 bg-gray-50';
       default: return 'text-gray-600 bg-gray-50';
     }
   };
@@ -128,7 +128,7 @@ const Index: React.FC = () => {
       case 'assigned': return <Users className="h-5 w-5" />;
       case 'in_progress': return <Clock className="h-5 w-5" />;
       case 'resolved': return <CheckCircle2 className="h-5 w-5" />;
-      case 'closed': return <AlertCircle className="h-5 w-5" />;
+      // Removido case 'closed': return <AlertCircle className="h-5 w-5" />;
       default: return <TicketIcon className="h-5 w-5" />;
     }
   };
@@ -139,7 +139,7 @@ const Index: React.FC = () => {
       case 'assigned': return 'Atribuídos';
       case 'in_progress': return 'Em Andamento';
       case 'resolved': return 'Resolvidos';
-      case 'closed': return 'Fechados';
+      // Removido case 'closed': return 'Fechados';
       default: return status;
     }
   };
@@ -245,9 +245,9 @@ const Index: React.FC = () => {
       </Card>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {Object.entries(stats).filter(([key]) => 
-          ['open', 'assigned', 'in_progress', 'resolved', 'closed'].includes(key)
+          ['open', 'assigned', 'in_progress', 'resolved'].includes(key) // Removido 'closed'
         ).map(([status, count]) => (
           <Card key={status} className="hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -323,7 +323,7 @@ const Index: React.FC = () => {
                 <span className="text-sm text-slate-600">Taxa de Resolução</span>
                 <span className="font-semibold text-green-600">
                   {stats.total > 0 
-                    ? `${Math.round(((stats.resolved + stats.closed) / stats.total) * 100)}%`
+                    ? `${Math.round((stats.resolved / stats.total) * 100)}%` // Removido stats.closed
                     : '0%'
                   }
                 </span>

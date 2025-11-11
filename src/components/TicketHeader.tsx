@@ -78,15 +78,10 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   const isMountedRef = useRef(true);
   const cleanupRef = useRef<(() => void) | null>(null);
 
-  // Inicializar o serviço de eventos de tickets
+  // Escutar mudanças de status de tickets usando o serviço
   useEffect(() => {
-    ticketEventService.initialize();
-  }, []);
-
-  // Escutar o evento de feedback enviado usando o serviço
-  useEffect(() => {
-    // Registrar o callback para o evento de feedback submetido
-    const cleanup = ticketEventService.onFeedbackSubmitted(() => {
+    // Registrar o callback para mudanças de status de tickets
+    const cleanup = ticketEventService.onTicketStatusChanged(() => {
       if (isMountedRef.current) {
         fetchTicketStats();
       }
@@ -432,7 +427,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                     variant={view === 'list' ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setView('list')}
-                    className={view === 'list' ? 'bg-[#101F2E] hover:bg-[#1c3651] text-white' : ''}
+                                    className={view === 'list' ? 'bg-[#101F2E] hover:bg-[#1c3651] text-white' : ''}
                   >
                     <List className="h-4 w-4" />
                   </Button>
