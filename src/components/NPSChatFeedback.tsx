@@ -182,7 +182,7 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
               Como você avalia nosso atendimento?
             </Label>
             <p className="text-sm text-slate-600">
-              Dê uma nota de 1 a 10 para a cordialidade e profissionalismo
+              Dê uma nota de 1 a 10 para a cordialidade e profissionalismo do atendente.
             </p>
           </div>
 

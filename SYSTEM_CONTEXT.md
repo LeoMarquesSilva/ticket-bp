@@ -36,7 +36,7 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 ### 2. Gestão de Tickets
 - **Status**: open, in_progress, resolved *(removido "closed")*
 - **Prioridades**: low, medium, high, urgent
-- **Categorias**: protocolo, cadastro, agendamento, publicacoes, assinatura_digital, outros
+- **Categorias**: Protocolo, Cadastro, Agendamento, Publicacoes, Assinatura Digital, Outros
 - **Subcategorias**: Específicas por categoria com SLA definido
 - **Atribuição**: Manual ou automática para suporte/advogados
 - **Anexos**: Upload de arquivos via Supabase Storage

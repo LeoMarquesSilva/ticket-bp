@@ -570,7 +570,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <div className="flex justify-center my-2">
                 <div className="bg-slate-100 text-slate-700 px-4 py-2 rounded-full text-xs font-medium flex items-center">
                   <ThumbsUp className="h-3 w-3 mr-1 text-green-500" />
-                  Feedback enviado: {selectedTicket.serviceScore}/10 - {selectedTicket.requestFulfilled ? 'Solicitação atendida' : 'Solicitação não atendida'}
+                  Avaliação realizada
                 </div>
               </div>
             )}
@@ -585,12 +585,12 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 return (
                   <div key={message.id} className="flex justify-center my-2">
                     <div className="bg-slate-100 text-slate-700 px-4 py-2 rounded-full text-xs font-medium flex items-center">
-                      {message.message.includes('Feedback enviado') ? (
+                      {message.message.includes('Feedback enviado') || message.message.includes('Avaliação realizada') ? (
                         <ThumbsUp className="h-3 w-3 mr-1 text-green-500" />
                       ) : (
                         <MessageCircle className="h-3 w-3 mr-1 text-blue-500" />
                       )}
-                      {message.message}
+                      {message.message.includes('Feedback enviado') ? 'Avaliação realizada' : message.message}
                     </div>
                   </div>
                 );

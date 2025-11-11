@@ -575,7 +575,7 @@ const TicketChat: React.FC<TicketChatProps> = ({
         ticket_id: ticketId,
         user_id: 'system',
         user_name: 'Sistema',
-        message: `✅ Feedback enviado: Avaliação ${feedbackData.serviceScore}/10. Obrigado pela sua avaliação!`,
+        message: `✅ Avaliação realizada. Obrigado pela sua avaliação!`,
         created_at: new Date().toISOString()
       };
       
@@ -705,7 +705,7 @@ const TicketChat: React.FC<TicketChatProps> = ({
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
               <div className="flex items-center justify-center gap-2 mb-2">
                 <ThumbsUp className="h-5 w-5 text-green-500" />
-                <span className="font-medium text-green-700">Feedback enviado</span>
+                <span className="font-medium text-green-700">Avaliação realizada</span>
               </div>
               <p className="text-sm text-green-600">
                 Obrigado pela sua avaliação! Sua opinião é muito importante para melhorarmos nossos serviços.

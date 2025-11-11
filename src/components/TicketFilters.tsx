@@ -9,8 +9,8 @@ interface TicketFiltersProps {
   onSearchChange: (value: string) => void;
   statusFilter: string;
   onStatusFilterChange: (value: string) => void;
-  priorityFilter: string;
-  onPriorityFilterChange: (value: string) => void;
+  categoryFilter: string;
+  onCategoryFilterChange: (value: string) => void;
   assignedFilter: string;
   onAssignedFilterChange: (value: string) => void;
   userFilter: string;
@@ -24,8 +24,8 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
-  priorityFilter,
-  onPriorityFilterChange,
+  categoryFilter,
+  onCategoryFilterChange,
   assignedFilter,
   onAssignedFilterChange,
   userFilter,
@@ -33,13 +33,13 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
   supportUsers,
   isSupport,
 }) => {
-  const hasActiveFilters = searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || 
+  const hasActiveFilters = searchTerm || statusFilter !== 'all' || categoryFilter !== 'all' || 
                           assignedFilter !== 'all' || userFilter !== 'all';
 
   const clearFilters = () => {
     onSearchChange('');
     onStatusFilterChange('all');
-    onPriorityFilterChange('all');
+    onCategoryFilterChange('all');
     onAssignedFilterChange('all');
     onUserFilterChange('all');
   };
@@ -66,39 +66,26 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
           <SelectContent>
             <SelectItem value="all">Todos os Status</SelectItem>
             <SelectItem value="open">Aberto</SelectItem>
-            <SelectItem value="assigned">Atribuído</SelectItem>
             <SelectItem value="in_progress">Em Progresso</SelectItem>
             <SelectItem value="resolved">Resolvido</SelectItem>
           </SelectContent>
         </Select>
 
-        {/* Priority Filter */}
-        <Select value={priorityFilter} onValueChange={onPriorityFilterChange}>
+        {/* Category Filter */}
+        <Select value={categoryFilter} onValueChange={onCategoryFilterChange}>
           <SelectTrigger>
-            <SelectValue placeholder="Prioridade" />
+            <SelectValue placeholder="Categoria" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas as Prioridades</SelectItem>
-            <SelectItem value="urgent">Urgente</SelectItem>
-            <SelectItem value="high">Alta</SelectItem>
-            <SelectItem value="medium">Média</SelectItem>
-            <SelectItem value="low">Baixa</SelectItem>
+            <SelectItem value="all">Todas as Categorias</SelectItem>
+            <SelectItem value="Protocolo">Protocolo</SelectItem>
+            <SelectItem value="Cadastro">Cadastro</SelectItem>
+            <SelectItem value="Agendamento">Agendamento</SelectItem>
+            <SelectItem value="Publicacoes">Publicações</SelectItem>
+            <SelectItem value="Assinatura Digital">Assinatura Digital</SelectItem>
+            <SelectItem value="Outros">Outros</SelectItem>
           </SelectContent>
         </Select>
-
-        {/* Assigned Filter - apenas para equipe de suporte */}
-        {isSupport && (
-          <Select value={assignedFilter} onValueChange={onAssignedFilterChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Atribuição" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="assigned">Atribuídos</SelectItem>
-              <SelectItem value="unassigned">Não atribuídos</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
 
         {/* User Filter - apenas para equipe de suporte */}
         {isSupport && (

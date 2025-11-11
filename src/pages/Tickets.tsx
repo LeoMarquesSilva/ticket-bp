@@ -57,7 +57,7 @@ const Tickets = () => {
   const [view, setView] = useState<'list' | 'board' | 'users'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [assignedFilter, setAssignedFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
@@ -1253,8 +1253,8 @@ const getFilteredTickets = () => {
     // Filtro de status
     const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
     
-    // Filtro de prioridade
-    const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
+    // Filtro de categorias
+    const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
     
     // Filtro de atribuição
     const matchesAssigned = assignedFilter === 'all' || 
@@ -1266,7 +1266,7 @@ const getFilteredTickets = () => {
       (userFilter === 'mine' && ticket.assignedTo === user?.id) ||
       (userFilter !== 'mine' && userFilter !== 'all' && ticket.assignedTo === userFilter);
     
-    return matchesSearch && matchesStatus && matchesPriority && matchesAssigned && matchesUser;
+    return matchesSearch && matchesStatus && matchesCategory && matchesAssigned && matchesUser;
   });
 };
 
@@ -1378,8 +1378,8 @@ return (
           onSearchChange={setSearchTerm}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
-          priorityFilter={priorityFilter}
-          onPriorityFilterChange={setPriorityFilter}
+          categoryFilter={categoryFilter}
+          onCategoryFilterChange={setCategoryFilter}
           assignedFilter={assignedFilter}
           onAssignedFilterChange={setAssignedFilter}
           userFilter={userFilter}

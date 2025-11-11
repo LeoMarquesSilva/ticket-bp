@@ -175,7 +175,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 <div className="text-sm text-blue-700">
                   <p className="font-medium mb-1">Como avaliar seus tickets:</p>
                   <ol className="list-decimal list-inside space-y-1 text-xs">
-                    <li>Feche este modal clicando em "Entendi"</li>
+                    <li>Feche esta janela clicando em "Entendi"</li>
                     <li>Procure pela seção "Feedback Pendente" na parte superior da tela</li>
                     <li>Avalie cada ticket respondendo às perguntas sobre o atendimento</li>
                     <li>Após avaliar todos, você poderá criar novos tickets</li>
