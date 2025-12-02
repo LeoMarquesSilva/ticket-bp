@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { ConnectionStatus } from './ConnectionStatus';
+import { useNotificationSound } from '@/hooks/useNotificationSound';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,16 +17,11 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { playNotificationSound } = useNotificationSound();
   
   // Efeito para configurar as notificações em tempo real
   useEffect(() => {
     if (!user) return;
-    
-    // Função para reproduzir som de notificação
-    const playNotificationSound = () => {
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(err => console.error('Erro ao reproduzir som:', err));
-    };
     
     // Inscrever para notificações de novos tickets (para suporte e advogados)
     let ticketSubscription: any;
@@ -38,7 +34,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           table: 'app_c009c0e4f1_tickets' 
         }, (payload) => {
           console.log('Novo ticket criado:', payload);
+          
+          // Para novos tickets, sempre reproduz som (não tem chat específico aberto ainda)
           playNotificationSound();
+          
           toast.info('Novo ticket criado!', {
             action: {
               label: 'Ver',
@@ -60,7 +59,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         // Verificar se a mensagem não é do usuário atual
         if (payload.new && payload.new.user_id !== user.id) {
           console.log('Nova mensagem recebida:', payload);
-          playNotificationSound();
+          
+          // Passa o ticket_id para verificar se o chat específico está aberto
+          playNotificationSound(payload.new.ticket_id);
+          
           toast.info('Nova mensagem recebida!', {
             action: {
               label: 'Ver',
@@ -84,7 +86,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       }
       supabase.removeChannel(messageSubscription);
     };
-  }, [user, navigate]);
+  }, [user, navigate, playNotificationSound]);
   
   return (
     <div className="flex flex-col min-h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">

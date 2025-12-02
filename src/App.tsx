@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { ChatProvider } from '@/contexts/ChatContext';
 import { Toaster } from '@/components/ui/sonner';
 import Layout from '@/components/Layout';
 import Login from '@/pages/Login';
@@ -179,23 +180,25 @@ const App = () => {
 
   return (
     <AuthProvider>
-      <Router>
-        <ConnectionStatus />
-        <InactivityDetector />
-        
-        <AppRoutes />
-        <Toaster 
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: 'white',
-              color: '#1e293b',
-              border: '1px solid #e2e8f0',
-            },
-          }}
-        />
-      </Router>
+      <ChatProvider>
+        <Router>
+          <ConnectionStatus />
+          <InactivityDetector />
+          
+          <AppRoutes />
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: 'white',
+                color: '#1e293b',
+                border: '1px solid #e2e8f0',
+              },
+            }}
+          />
+        </Router>
+      </ChatProvider>
     </AuthProvider>
   );
 };
