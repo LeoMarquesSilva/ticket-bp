@@ -12,20 +12,20 @@ import DatabaseManagement from '@/pages/DatabaseManagement';
 import ResetPassword from '@/pages/ResetPassword';
 import { initializeConnectionHandlers } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
-import { InactivityDetector } from '@/components/InactivityDetector';
+// import { InactivityDetector } from '@/components/InactivityDetector'; // ← REMOVIDO para permitir login persistente
 import { useTabVisibility } from '@/hooks/useTabVisibility';
 
-const ProtectedRoute = ({ 
-  children, 
-  allowedRoles = [] 
-}: { 
-  children: React.ReactNode; 
+const ProtectedRoute = ({
+  children,
+  allowedRoles = []
+}: {
+  children: React.ReactNode;
   allowedRoles?: string[];
 }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
   const isTabVisible = useTabVisibility();
-  
+
   const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'database' => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return 'dashboard';
@@ -33,9 +33,9 @@ const ProtectedRoute = ({
     if (path.includes('/database')) return 'database';
     return 'tickets';
   };
-  
+
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'database'>(getCurrentPage());
-  
+
   const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'database') => {
     setCurrentPage(page);
   };
@@ -61,8 +61,8 @@ const ProtectedRoute = ({
   }
 
   return (
-    <Layout 
-      currentPage={currentPage} 
+    <Layout
+      currentPage={currentPage}
       onPageChange={handlePageChange}
     >
       {children}
@@ -73,7 +73,6 @@ const ProtectedRoute = ({
 const AppRoutes = () => {
   const { user, loading } = useAuth();
   const location = useLocation();
-
   const isResetPasswordPage = location.pathname === '/reset-password';
 
   if (isResetPasswordPage) {
@@ -108,7 +107,6 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/tickets" replace />} />
-      
       <Route
         path="/dashboard"
         element={
@@ -117,7 +115,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      
       <Route
         path="/tickets"
         element={
@@ -126,7 +123,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      
       <Route
         path="/tickets/:ticketId"
         element={
@@ -135,7 +131,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      
       <Route
         path="/users"
         element={
@@ -144,7 +139,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      
       <Route
         path="/database"
         element={
@@ -153,19 +147,17 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      
-      <Route 
-        path="/" 
+      <Route
+        path="/"
         element={
           <Navigate to={user?.role === 'admin' ? "/dashboard" : "/tickets"} replace />
-        } 
+        }
       />
-      
-      <Route 
-        path="*" 
+      <Route
+        path="*"
         element={
           <Navigate to={user?.role === 'admin' ? "/dashboard" : "/tickets"} replace />
-        } 
+        }
       />
     </Routes>
   );
@@ -183,10 +175,15 @@ const App = () => {
       <ChatProvider>
         <Router>
           <ConnectionStatus />
-          <InactivityDetector />
+          {/* 
+            InactivityDetector DESABILITADO para sistema de helpdesk
+            Motivo: Usuários da equipe precisam manter login ativo para receber 
+            notificações sonoras mesmo quando não estão interagindo com o sistema
+          */}
+          {/* <InactivityDetector /> */}
           
           <AppRoutes />
-          <Toaster 
+          <Toaster
             position="top-right"
             toastOptions={{
               duration: 4000,
