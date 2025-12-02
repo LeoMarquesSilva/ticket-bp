@@ -16,6 +16,7 @@ import SimpleTicketCard from '@/components/SimpleTicketCard';
 import TicketFilters from '@/components/TicketFilters';
 import CreateTicketModal from '@/components/CreateTicketModal';
 import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
+import { useChatContext } from '@/contexts/ChatContext';
 
 interface SupportUser {
   id: string;
@@ -67,6 +68,7 @@ const Tickets = () => {
   const [connectionStatus, setConnectionStatus] = useState<string>('connecting');
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
   const [onlineUsers, setOnlineUsers] = useState<SupportUser[]>([]);
+  const { setActiveChatId } = useChatContext();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -1208,6 +1210,7 @@ const openChat = (ticket: Ticket) => {
   
   setSelectedTicket(ticket);
   setShowChat(true);
+  setActiveChatId(ticket.id); // 🎯 NOVA LINHA
   
   // Marcar mensagens como lidas quando abrir o chat
   if (user?.id && unreadMessages[ticket.id] > 0) {
@@ -1215,7 +1218,6 @@ const openChat = (ticket: Ticket) => {
   }
 };
 
-// Função para fechar o chat
 const closeChat = () => {
   setShowChat(false);
   setSelectedTicket(null);
@@ -1223,6 +1225,7 @@ const closeChat = () => {
   setNewMessage('');
   setUploadingFiles([]);
   setTypingUsers({});
+  setActiveChatId(null); // 🎯 NOVA LINHA
   
   // Remover canais específicos do ticket
   if (channelsRef.current.messages) {
