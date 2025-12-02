@@ -7,19 +7,22 @@ export const useNotificationSound = () => {
   const { activeChatId } = useChatContext();
   
   const playNotificationSound = useCallback((ticketId?: string) => {
-    // Só reproduz o som se:
-    // 1. A aba não estiver visível OU
-    // 2. A aba estiver visível mas o chat específico não estiver aberto
-    const shouldPlaySound = !isTabVisible || (ticketId && activeChatId !== ticketId);
-    
-    if (shouldPlaySound) {
-      console.log(`🔊 Reproduzindo som - Aba visível: ${isTabVisible}, Chat ativo: ${activeChatId}, Ticket da mensagem: ${ticketId}`);
-      const audio = new Audio('/notification.mp3');
-      audio.volume = 0.5; // Volume mais baixo para ser menos intrusivo
-      audio.play().catch(err => console.error('Erro ao reproduzir som:', err));
-    } else {
-      console.log(`🔇 Som suprimido - Aba visível: ${isTabVisible}, Chat ativo: ${activeChatId}, Ticket da mensagem: ${ticketId}`);
-    }
+    // Pequeno delay para garantir que o contexto seja atualizado
+    setTimeout(() => {
+      // Só reproduz o som se:
+      // 1. A aba não estiver visível OU
+      // 2. A aba estiver visível mas o chat específico não estiver aberto
+      const shouldPlaySound = !isTabVisible || (ticketId && activeChatId !== ticketId);
+      
+      if (shouldPlaySound) {
+        console.log(`🔊 Reproduzindo som - Aba visível: ${isTabVisible}, Chat ativo: ${activeChatId}, Ticket da mensagem: ${ticketId}`);
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.5; // Volume mais baixo para ser menos intrusivo
+        audio.play().catch(err => console.error('Erro ao reproduzir som:', err));
+      } else {
+        console.log(`🔇 Som suprimido - Aba visível: ${isTabVisible}, Chat ativo: ${activeChatId}, Ticket da mensagem: ${ticketId}`);
+      }
+    }, 100); // 100ms de delay
   }, [isTabVisible, activeChatId]);
   
   return { 
