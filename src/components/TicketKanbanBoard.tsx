@@ -1,12 +1,11 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Clock, UserCheck, CheckCircle } from 'lucide-react';
+import { AlertCircle, Clock, CheckCircle } from 'lucide-react';
 import { Ticket } from '@/types';
 
 interface TicketKanbanBoardProps {
   ticketsByStatus: {
     open: Ticket[];
-    assigned: Ticket[];
     in_progress: Ticket[];
     resolved: Ticket[];
   };
@@ -21,8 +20,8 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
     <div className="h-full w-full flex flex-col">
       {/* Container principal com rolagem horizontal */}
       <div className="flex-1 overflow-x-auto">
-        {/* Este div define a largura mínima do conteúdo para garantir que as colunas não fiquem muito apertadas */}
-        <div className="flex p-4 gap-4 h-full min-w-[1400px]">
+        {/* Largura mínima reduzida para 3 colunas */}
+        <div className="flex p-4 gap-4 h-full min-w-[1050px]">
           {/* Coluna: Abertos */}
           <div className="flex-shrink-0 flex flex-col h-full w-[350px]">
             <div className="bg-blue-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
@@ -42,30 +41,6 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
                   </div>
                 ) : (
                   ticketsByStatus.open.map(ticket => renderTicketCard(ticket))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Coluna: Atribuídos */}
-          <div className="flex-shrink-0 flex flex-col h-full w-[350px]">
-            <div className="bg-amber-50 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-              <div className="flex items-center gap-1">
-                <UserCheck className="h-4 w-4 text-amber-600" />
-                <h3 className="font-medium text-amber-700">Atribuídos</h3>
-              </div>
-              <Badge className="bg-amber-100 text-amber-800 border-amber-200">
-                {ticketsByStatus.assigned.length}
-              </Badge>
-            </div>
-            <div className="flex-1 bg-amber-50/30 rounded-b-md p-2 overflow-y-auto">
-              <div className="space-y-2 pb-1">
-                {ticketsByStatus.assigned.length === 0 ? (
-                  <div className="text-center py-8 text-sm text-slate-500">
-                    Nenhum ticket atribuído
-                  </div>
-                ) : (
-                  ticketsByStatus.assigned.map(ticket => renderTicketCard(ticket))
                 )}
               </div>
             </div>

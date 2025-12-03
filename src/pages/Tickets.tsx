@@ -1292,7 +1292,6 @@ const getTicketsByStatus = () => {
   
   return {
     open: filteredTickets.filter(ticket => ticket.status === 'open'),
-    assigned: filteredTickets.filter(ticket => ticket.status === 'assigned'),
     in_progress: filteredTickets.filter(ticket => ticket.status === 'in_progress'),
     resolved: filteredTickets.filter(ticket => ticket.status === 'resolved')
   };
