@@ -1083,7 +1083,7 @@ const handleDeleteTicket = async (ticketId: string) => {
   }
 };
 
-// Função para upload de arquivos
+// Função para upload de arquivos - VERSÃO DEFINITIVA com 300MB
 const handleFileUpload = async (files: FileList) => {
   if (!files || files.length === 0 || !selectedTicket?.id) return;
   
@@ -1093,14 +1093,14 @@ const handleFileUpload = async (files: FileList) => {
     return;
   }
   
-  // Verificar tamanho total (limite de 10MB por arquivo)
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  // Limite aumentado para 300MB
+  const MAX_FILE_SIZE = 300 * 1024 * 1024; // 300MB em bytes
   
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     
     if (file.size > MAX_FILE_SIZE) {
-      toast.error(`O arquivo ${file.name} excede o limite de 10MB`);
+      toast.error(`O arquivo ${file.name} excede o limite de 300MB (atual: ${(file.size / 1024 / 1024).toFixed(1)}MB)`);
       continue;
     }
     
@@ -1120,6 +1120,8 @@ const handleFileUpload = async (files: FileList) => {
     setUploadingFiles(prev => [...prev, newFile]);
     
     try {
+      console.log('🚀 Iniciando upload:', file.name, `(${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+      
       // Atualizar progresso para simular início do upload
       setUploadingFiles(prev => 
         prev.map(f => f.id === fileId ? { ...f, progress: 10 } : f)
@@ -1129,6 +1131,8 @@ const handleFileUpload = async (files: FileList) => {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       const filePath = `tickets/${selectedTicket.id}/${fileName}`;
+      
+      console.log('📂 Caminho do arquivo:', filePath);
       
       // Simular progresso antes do upload
       setUploadingFiles(prev => 
@@ -1143,17 +1147,24 @@ const handleFileUpload = async (files: FileList) => {
           upsert: false
         });
       
+      if (error) {
+        console.error('❌ Erro detalhado do Supabase:', error);
+        throw error;
+      }
+      
+      console.log('✅ Upload realizado com sucesso:', data);
+      
       // Simular progresso após upload
       setUploadingFiles(prev => 
         prev.map(f => f.id === fileId ? { ...f, progress: 70 } : f)
       );
-        
-      if (error) throw error;
       
       // Obter URL pública do arquivo
       const { data: { publicUrl } } = supabase.storage
         .from('attachments')
         .getPublicUrl(filePath);
+      
+      console.log('🔗 URL pública:', publicUrl);
       
       // Atualizar arquivo na lista com URL e progresso completo
       setUploadingFiles(prev => 
@@ -1164,19 +1175,21 @@ const handleFileUpload = async (files: FileList) => {
         } : f)
       );
       
+      console.log('🎉 Upload finalizado com sucesso!');
+      
     } catch (error) {
-      console.error('Erro ao fazer upload:', error);
+      console.error('❌ Erro ao fazer upload:', error);
       
       // Atualizar arquivo na lista com erro
       setUploadingFiles(prev => 
         prev.map(f => f.id === fileId ? { 
           ...f, 
-          error: 'Erro ao fazer upload', 
+          error: `Erro: ${error.message || 'Desconhecido'}`, 
           progress: 0 
         } : f)
       );
       
-      toast.error(`Erro ao fazer upload de ${file.name}`);
+      toast.error(`Erro ao fazer upload de ${file.name}: ${error.message || 'Erro desconhecido'}`);
     }
   }
 };

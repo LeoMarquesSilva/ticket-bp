@@ -60,7 +60,7 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - **Métricas Coletadas**:
   - **Request Fulfilled**: Se a solicitação foi atendida (Sim/Não)
   - **Service Score**: Avaliação da qualidade do atendimento (1-10)
-  - **Comment**: Feedback textual obrigatório
+  - **Comment**: Feedback textual - **OBRIGATÓRIO apenas para notas 1-6, OPCIONAL para notas 7-10**
   - **Timestamp**: Data/hora da submissão
 
 ### 5. Dashboard Analítico
@@ -116,7 +116,7 @@ app_c009c0e4f1_tickets
 - service_score: integer (1-10)
 - request_fulfilled: boolean
 - not_fulfilled_reason: text
-- comment: text
+- comment: text -- Opcional para notas 7-10, obrigatório para 1-6
 - feedback_submitted_at: timestamp
 
 app_c009c0e4f1_chat_messages
@@ -162,7 +162,7 @@ No chat do ticket, botão flutuante "Avaliar atendimento"
 Modal NPSChatFeedback coleta:
 Solicitação atendida? (Sim/Não + motivo se não)
 Qualidade do atendimento (1-10 estrelas)
-Comentário obrigatório
+Comentário - REGRA NOVA: Obrigatório apenas para notas 1-6, opcional para 7-10
 Após submissão, ticket sai da lista de pendentes
 Usuário pode criar novos tickets apenas após avaliar todos
 4. Finalização
@@ -236,8 +236,8 @@ interface NPSChatFeedbackProps {
   ticket: Ticket;
 }
 Design: Modal centralizado com formulário estruturado
-Campos: Atendimento (Sim/Não), Qualidade (1-10), Comentário
-Validação: Todos os campos obrigatórios
+Campos: Atendimento (Sim/Não), Qualidade (1-10), Comentário (condicional)
+Validação: Comentário obrigatório apenas para notas 1-6
 Integração: Acessível via botão flutuante no chat
 Integrações
 Supabase Services
@@ -279,74 +279,66 @@ Monitoramento
 Métricas Técnicas
 Performance: Core Web Vitals
 Erros: Error boundaries + logging
-Uptime: Monitoramento de disponibilidade
-Database: Query performance no Supabase
-Métricas de Negócio
-Satisfação do Cliente: Tracking de avaliações
-Eficiência Operacional: SLA compliance
-Volume de Atendimento: Tickets por período
-Qualidade: Feedback scores e comentários
-Mudanças Recentes
-Remoção do Status "Closed"
-Antes: open → in_progress → resolved → closed
-Agora: open → in_progress → resolved
-Motivo: Simplificação do fluxo, feedback obrigatório antes do fechamento
-Impacto: Tickets permanecem "resolved" após feedback
-Sistema de Feedback Obrigatório
-Implementação: PendingFeedbackHandler + NPSChatFeedback
-Bloqueio: Usuários não podem criar tickets sem avaliar resolvidos
-UX: Aviso compacto + acesso direto ao primeiro ticket pendente
-Dados: Coleta estruturada de satisfação e motivos
-Melhorias de UI/UX
-Chat Responsivo: Otimização do espaço quando feedback está pendente
-Aviso Compacto: Redução de ~300px para ~60px de altura
-Navegação Direta: Botão leva direto ao ticket para avaliação
-Feedback Integrado: Modal acessível diretamente no chat
-Roadmap Futuro
-Funcionalidades Planejadas
-Notificações Push: Alertas em tempo real
-Mobile App: Versão nativa para iOS/Android
-Automação: Chatbots para triagem inicial
-Relatórios Avançados: Exportação PDF/Excel
-API Pública: Integrações com terceiros
-Multi-tenancy: Suporte a múltiplas organizações
-Melhorias Técnicas
-Cache: Redis para performance
-Queue System: Processamento assíncrono
-Microservices: Separação de responsabilidades
-GraphQL: API mais flexível
-Testing: Cobertura de testes automatizados
-CI/CD: Pipeline de deployment automatizado
 
---------------------------------------------------
+Uptime: Monitoramento de disponibilidade Database: Query performance no Supabase Métricas de Negócio Satisfação do Cliente: Tracking de avaliações Eficiência Operacional: SLA compliance Volume de Atendimento: Tickets por período Qualidade: Feedback scores e comentários Mudanças Recentes Remoção do Status "Closed" Antes: open → in_progress → resolved → closed Agora: open → in_progress → resolved Motivo: Simplificação do fluxo, feedback obrigatório antes do fechamento Impacto: Tickets permanecem "resolved" após feedback Sistema de Feedback Obrigatório Implementação: PendingFeedbackHandler + NPSChatFeedback Bloqueio: Usuários não podem criar tickets sem avaliar resolvidos UX: Aviso compacto + acesso direto ao primeiro ticket pendente Dados: Coleta estruturada de satisfação e motivos NOVA REGRA - Comentário Condicional (Dezembro 2024)
 
-Principais atualizações feitas no documento:
+Notas 1-6: Comentário OBRIGATÓRIO (para entender problemas)
+Notas 7-10: Comentário OPCIONAL (satisfação alta)
+Validação: isCommentRequired() = serviceScore < 7
+UX: Indicadores visuais claros sobre obrigatoriedade
+Componentes Atualizados: NPSChatFeedback + NPSModal Melhorias de UI/UX Chat Responsivo: Otimização do espaço quando feedback está pendente Aviso Compacto: Redução de ~300px para ~60px de altura Navegação Direta: Botão leva direto ao ticket para avaliação Feedback Integrado: Modal acessível diretamente no chat Comentário Inteligente: Obrigatório apenas quando necessário (notas baixas) Roadmap Futuro Funcionalidades Planejadas Notificações Push: Alertas em tempo real Mobile App: Versão nativa para iOS/Android Automação: Chatbots para triagem inicial Relatórios Avançados: Exportação PDF/Excel API Pública: Integrações com terceiros Multi-tenancy: Suporte a múltiplas organizações Melhorias Técnicas Cache: Redis para performance Queue System: Processamento assíncrono Microservices: Separação de responsabilidades GraphQL: API mais flexível Testing: Cobertura de testes automatizados CI/CD: Pipeline de deployment automatizado
+Regras de Negócio - Feedback
+Validação de Comentário por Nota
+// Função implementada nos componentes NPSChatFeedback e NPSModal
+const isCommentRequired = () => {
+  return serviceScore !== null && serviceScore < 7;
+};
 
-## ✅ **Mudanças Implementadas:**
+// Lógica de validação no submit
+const handleSubmit = () => {
+  if (isCommentRequired() && !comment.trim()) {
+    setErrors(prev => ({ ...prev, comment: true }));
+    return;
+  }
+  // ... resto da lógica
+};
+Indicadores Visuais
+Título do Campo: Muda dinamicamente entre "Deixe seu comentário" e "Deixe seu comentário (opcional)"
+Placeholder: Texto específico para cada caso
+Aviso Verde: Para notas 7-10, mostra "Como sua avaliação foi boa (7-10), o comentário é opcional!"
+Resumo: Mostra "Obrigatório" ou "Opcional" no resumo da avaliação
+Botão Submit: Desabilitado apenas se comentário obrigatório estiver vazio
+Benefícios da Implementação
+Redução de Friction: Usuários satisfeitos (7-10) podem finalizar mais rapidamente
+Foco em Melhorias: Comentários obrigatórios apenas quando há problemas (1-6)
+Dados Qualitativos: Mantém qualidade dos feedbacks para análise
+UX Melhorada: Interface mais inteligente e responsiva às avaliações
+✅ Implementação Concluída:
+Mudanças Realizadas:
+NPSChatFeedback.tsx
 
-1. **Remoção do Status "Closed"**
-   - Atualizado fluxo: open → in_progress → resolved
-   - Removido "closed" de todas as referências
-   - Tickets ficam "resolved" após feedback
+✅ Adicionada função isCommentRequired()
+✅ Validação condicional no handleSubmit()
+✅ Títulos e placeholders dinâmicos
+✅ Aviso visual para notas altas
+✅ Resumo com status de obrigatoriedade
+✅ Botão desabilitado condicionalmente
+NPSModal.tsx
 
-2. **Sistema de Feedback Obrigatório**
-   - Documentado `PendingFeedbackHandler` compacto
-   - Documentado `NPSChatFeedback` integrado
-   - Explicado bloqueio para criação de novos tickets
+✅ Mesma lógica implementada
+✅ Consistência entre componentes
+✅ Validação condicional
+✅ Indicadores visuais
+SYSTEM_CONTEXT.md
 
-3. **Melhorias de UX**
-   - Aviso compacto (60px vs 300px)
-   - Navegação direta ao primeiro ticket
-   - Chat otimizado para espaço
+✅ Documentação atualizada
+✅ Nova regra de negócio documentada
+✅ Benefícios explicados
+✅ Código de exemplo incluído
+Regra Implementada:
+"Quando o chamado é avaliado com nota 7 até 10, o campo de observações não é obrigatório"
 
-4. **Estrutura de Dados Atualizada**
-   - Campos de feedback no banco
-   - Remoção de campos relacionados a "closed"
-   - Novos componentes documentados
-
-5. **Fluxo de Trabalho Atualizado**
-   - Validação de feedback pendente
-   - Processo de avaliação obrigatória
-   - Integração com chat em tempo real
-
-O documento agora reflete fielmente o estado atual do sistema! 🎯
+Notas 1-6: Comentário obrigatório
+Notas 7-10: Comentário opcional
+UX: Indicadores visuais claros
+Validação: Condicional baseada na nota

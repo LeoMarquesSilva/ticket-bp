@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp } from 'lucide-react';
 import FinishTicketButton from './FinishTicketButton';
-import { Ticket, ChatMessage } from '@/types'; // Importar ChatMessage dos types globais
+import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
 import NPSChatFeedback from './NPSChatFeedback';
 import { 
@@ -27,8 +27,9 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
-
-// Remover a definição local de ChatMessage - usar apenas a dos types globais
+import { supabase } from '@/lib/supabase';
+import { usePasteImage } from '@/hooks/usePasteImage';
+import PastedImagePreview from '@/components/PastedImagePreview';
 
 // Interface para dados de feedback
 interface TicketFeedbackData {
@@ -49,7 +50,7 @@ interface TicketChatPanelProps {
   handleFileUpload: (files: FileList) => void;
   removeUploadingFile: (fileId: string) => void;
   sendMessage: () => void;
-  handleKeyPress: (e: React.KeyboardEvent) => void; // Mantemos a prop mas não usamos
+  handleKeyPress: (e: React.KeyboardEvent) => void;
   closeChat: () => void;
   handleDeleteTicket?: (ticketId: string) => void;
   handleUpdateTicket?: (ticketId: string, updates: any) => void;
@@ -75,7 +76,6 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   handleFileUpload,
   removeUploadingFile,
   sendMessage,
-  // handleKeyPress - removemos o uso desta prop
   closeChat,
   handleDeleteTicket,
   handleUpdateTicket,
@@ -93,10 +93,30 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   const [showFeedback, setShowFeedback] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [pastedImages, setPastedImages] = useState<File[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Referência para o input de mensagem
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Hook para colar imagens com limite de 300MB
+  const { attachPasteListener } = usePasteImage({
+    onImagePaste: (file: File) => {
+      // Verificar tamanho do arquivo (300MB = 314572800 bytes)
+      const maxSize = 300 * 1024 * 1024; // 300MB em bytes
+      if (file.size > maxSize) {
+        setImageError(`Arquivo muito grande. Tamanho máximo: 300MB. Arquivo atual: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+        return;
+      }
+      
+      setPastedImages(prev => [...prev, file]);
+      setImageError(null);
+    },
+    onError: (error: string) => {
+      setImageError(error);
+    }
+  });
 
   // Função para focar no input de forma robusta
   const focusInput = () => {
@@ -144,15 +164,65 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedTicket.id]); // Dependência no ID do ticket para refocar quando mudar
+  }, [selectedTicket.id]);
+
+  // useEffect para anexar listener de paste
+  useEffect(() => {
+    // Anexar listener ao documento (mais estável)
+    const cleanup = attachPasteListener(document.body);
+    
+    return cleanup;
+  }, [selectedTicket.id]); // Só recriar quando mudar de ticket
+
+  // Função DEFINITIVA para fazer upload das imagens coladas
+  const handlePastedImagesUpload = async () => {
+    if (!selectedTicket?.id || pastedImages.length === 0) return;
+    
+    try {
+      console.log('🖼️ Processando imagens coladas:', pastedImages.length);
+      
+      // Converter File[] para FileList usando DataTransfer
+      const dataTransfer = new DataTransfer();
+      pastedImages.forEach((file, index) => {
+        console.log(`📎 Adicionando arquivo ${index + 1}:`, file.name, file.type, file.size);
+        dataTransfer.items.add(file);
+      });
+      
+      console.log('📤 Enviando via handleFileUpload...');
+      
+      // Usar a função handleFileUpload existente que JÁ FUNCIONA
+      handleFileUpload(dataTransfer.files);
+      
+      console.log('✅ Imagens coladas processadas com sucesso');
+      
+    } catch (error) {
+      console.error('❌ Erro ao processar imagens coladas:', error);
+      setImageError('Erro ao processar imagens coladas');
+    }
+  };
+
+  // Função para remover imagem colada
+  const removePastedImage = (index: number) => {
+    setPastedImages(prev => prev.filter((_, i) => i !== index));
+  };
 
   // Função local para lidar com Enter que mantém o foco
-  const handleLocalKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleLocalKeyPress = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       
+      // Se há imagens coladas, processar primeiro
+      if (pastedImages.length > 0) {
+        console.log('🖼️ Processando imagens coladas via Enter...');
+        await handlePastedImagesUpload();
+      }
+      
       // Chamar a função sendMessage
       sendMessage();
+
+      // Limpar imagens coladas após envio
+      setPastedImages([]);
+      setImageError(null);
       
       // Focar novamente após o envio com múltiplas tentativas
       setTimeout(() => focusInput(), 0);
@@ -386,7 +456,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden border-l border-slate-200">
+    <div className="flex-1 flex flex-col h-full overflow-hidden border-l border-slate-200 chat-container">
       {/* Chat Header */}
       <div className="p-3 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between">
@@ -596,7 +666,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 );
               }
               
-                            return (
+              return (
                 <div
                   key={message.id}
                   className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
@@ -610,168 +680,236 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   <div className={`flex flex-col max-w-[75%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-medium text-slate-700">
-                        {message.userName || 'Usuário'}
+                        {message.userName}
                       </span>
                       <span className="text-xs text-slate-500">
                         {formatTime(message.createdAt)}
                       </span>
                       {isTemp && (
-                        <span className="text-xs text-slate-400">
-                          <Clock className="h-3 w-3 inline" /> enviando...
-                        </span>
-                      )}
-                      {/* Adicionar indicador de mensagem não lida se necessário */}
-                      {!isOwnMessage && message.read === false && (
-                        <span className="text-xs text-blue-500 font-medium">
-                          Nova
-                        </span>
+                        <Clock className="h-3 w-3 text-slate-400" />
                       )}
                     </div>
                     
                     <div
-                      className={`px-3 py-2 rounded-2xl text-sm ${
-                        isOwnMessage
-                          ? isTemp 
-                            ? 'bg-[#D5B170]/70 text-white' 
-                            : 'bg-[#D5B170] text-white'
-                          : 'bg-slate-100 text-slate-900'
-                      }`}
+                      className={`
+                        px-3 py-2 rounded-lg text-sm break-words
+                        ${isOwnMessage 
+                          ? 'bg-[#D5B170] text-white' 
+                          : 'bg-slate-100 text-slate-800'
+                        }
+                        ${isTemp ? 'opacity-70' : ''}
+                      `}
                     >
-                      <p className="whitespace-pre-wrap">
-                        {message.message}
-                      </p>
-                      
-                      {/* Renderizar anexos se houver */}
-                      {message.attachments && message.attachments.length > 0 && renderAttachments(message.attachments)}
+                      {message.message && (
+                        <div className="whitespace-pre-wrap">{message.message}</div>
+                      )}
+                      {renderAttachments(message.attachments)}
                     </div>
                   </div>
                 </div>
               );
             })}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-
-        {/* Botão flutuante para avaliação */}
-        {showFeedback && user && user.role === 'user' && (
-          <Dialog open={showFeedbackModal} onOpenChange={setShowFeedbackModal}>
-            <DialogTrigger asChild>
-              <Button 
-                className="absolute bottom-4 right-4 bg-[#D5B170] hover:bg-[#c4a05f] text-white shadow-lg flex items-center gap-2"
-                onClick={() => setShowFeedbackModal(true)}
-              >
-                <ThumbsUp className="h-4 w-4" />
-                Avaliar atendimento
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Avalie seu atendimento</DialogTitle>
-                <DialogDescription>
-                  Sua opinião é muito importante para melhorarmos nosso atendimento.
-                  Por favor, avalie como foi sua experiência com este ticket.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <NPSChatFeedback
-                  ticketTitle={selectedTicket.title}
-                  onSubmit={handleSubmitFeedback}
-                  isSubmitting={submittingFeedback}
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </ScrollArea>
-
-      {/* Chat Input */}
-      <div className="p-3 border-t border-slate-200 bg-white">
-        {selectedTicket.status === 'resolved' ? (
-          <div className="flex items-center justify-center py-2 bg-slate-50 rounded-md border border-slate-200">
-            <Lock className="h-4 w-4 text-slate-400 mr-2" />
-            <p className="text-sm text-slate-500">Este ticket está finalizado e não pode receber novas mensagens</p>
-          </div>
-        ) : (
-          <>
-            {/* Lista de arquivos sendo carregados */}
-            {uploadingFiles.length > 0 && (
-              <div className="mb-2 p-2 bg-slate-50 rounded-md border border-slate-200">
-                <div className="text-xs font-medium mb-1 text-slate-500">Anexos:</div>
-                <div className="flex flex-wrap gap-2">
-                  {uploadingFiles.map(file => (
-                    <div 
-                      key={file.id}
-                      className="flex items-center gap-1 p-1 bg-white rounded border border-slate-200 text-xs"
-                    >
-                      {file.progress < 100 ? (
-                        <>
-                          <div className="w-3 h-3 rounded-full border-2 border-t-transparent border-blue-500 animate-spin"></div>
-                          <span className="text-slate-600">{file.name.substring(0, 10)}... ({file.progress}%)</span>
-                                                  </>
-                      ) : (
-                        <>
-                          <span className="text-green-600">{file.name.substring(0, 10)}...</span>
-                          <button 
-                            onClick={() => removeUploadingFile(file.id)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ))}
+            
+            {/* Indicador de usuários digitando */}
+            {Object.keys(typingUsers).length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-slate-500 italic">
+                <div className="flex space-x-1">
+                  <div className="w-1 h-1 bg-slate-400 rounded-full animate-bounce"></div>
+                  <div className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                  <div className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                 </div>
+                <span>
+                  {Object.values(typingUsers).join(', ')} está digitando...
+                </span>
               </div>
             )}
             
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  ref={inputRef}
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleLocalKeyPress}
-                  onInput={handleTyping}
-                  placeholder={Object.keys(typingUsers).length > 0 
-                    ? `${Object.values(typingUsers).join(', ')} está digitando...` 
-                    : "Digite sua mensagem..."}
-                  disabled={sending}
-                  className="flex-1 pr-10"
-                />
-                <label 
-                  htmlFor="file-upload" 
-                  className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-slate-400 hover:text-slate-600"
-                >
-                  <Paperclip className="h-5 w-5" />
-                </label>
-                <input 
-                  id="file-upload"
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </ScrollArea>
+
+      {/* Input de mensagem */}
+      {!isTicketFinalized(selectedTicket) ? (
+        <div className="p-3 border-t border-slate-200 bg-white">
+          {/* Lista de arquivos sendo carregados */}
+          {uploadingFiles.length > 0 && (
+            <div className="mb-2 p-2 bg-slate-50 rounded-md border border-slate-200">
+              <div className="text-xs font-medium mb-1 text-slate-500">Anexos:</div>
+              <div className="flex flex-wrap gap-2">
+                {uploadingFiles.map(file => (
+                  <div 
+                    key={file.id} 
+                    className="relative group bg-white rounded-md border border-slate-300 p-2 flex items-center gap-2 max-w-xs"
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {file.type?.startsWith('image/') ? (
+                        <Image className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                      ) : (
+                        <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium truncate">{file.name}</div>
+                        {file.error ? (
+                          <div className="text-xs text-red-500">Erro no upload</div>
+                        ) : (
+                          <div className="w-full bg-slate-200 rounded-full h-1 mt-1">
+                            <div 
+                              className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+                              style={{ width: `${file.progress}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeUploadingFile(file.id)}
+                      className="h-6 w-6 p-0 text-red-500 hover:bg-red-50 opacity-70 group-hover:opacity-100"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Prévia das imagens coladas */}
+          {pastedImages.length > 0 && (
+            <div className="mb-2 p-2 bg-blue-50 rounded-md border border-blue-200">
+              <div className="text-xs font-medium mb-1 text-blue-600">Imagens coladas:</div>
+              <div className="flex flex-wrap gap-2">
+                {pastedImages.map((file, index) => (
+                  <PastedImagePreview
+                    key={index}
+                    file={file}
+                    onRemove={() => removePastedImage(index)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Erro de imagem */}
+          {imageError && (
+            <div className="mb-2 p-2 bg-red-50 rounded-md border border-red-200">
+              <div className="text-xs text-red-600">{imageError}</div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <Input
+                ref={inputRef}
+                type="text"
+                value={newMessage}
+                onChange={(e) => {
+                  setNewMessage(e.target.value);
+                  handleTyping();
+                }}
+                onKeyDown={handleLocalKeyPress}
+                placeholder={Object.keys(typingUsers).length > 0 
+                  ? `${Object.values(typingUsers).join(', ')} está digitando...` 
+                  : "Digite sua mensagem ou cole uma imagem (Ctrl+V)..."}
+                className="flex-1 pr-10"
+                disabled={sending}
+              />
+              
+              {/* Botão de anexar arquivo */}
+              <label className="absolute right-2 top-1/2 transform -translate-y-1/2 cursor-pointer">
+                <input
                   type="file"
                   multiple
-                  onChange={(e) => handleFileUpload(e.target.files!)}
                   className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      handleFileUpload(e.target.files);
+                      e.target.value = ''; // Limpar o input
+                    }
+                  }}
+                  accept="image/*,.pdf,.doc,.docx,.txt,.zip,.rar"
                 />
-              </div>
-              <Button
-                onClick={() => {
-                  sendMessage();
-                  // Focar novamente após clicar no botão
-                  setTimeout(() => focusInput(), 50);
-                }}
-                disabled={(!newMessage.trim() && uploadingFiles.length === 0) || sending}
-                className="bg-[#D5B170] hover:bg-[#c4a05f] text-white px-4"
-              >
-                {sending ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
+                <Paperclip className="h-4 w-4 text-slate-400 hover:text-slate-600" />
+              </label>
             </div>
-          </>
-        )}
-      </div>
+            
+            <Button
+              onClick={async () => {
+                // Se há imagens coladas, processar primeiro
+                if (pastedImages.length > 0) {
+                  console.log('🖼️ Processando imagens coladas antes do envio...');
+                  await handlePastedImagesUpload();
+                }
+                
+                // Enviar mensagem
+                sendMessage();
+                
+                // Limpar imagens coladas após envio
+                setPastedImages([]);
+                setImageError(null);
+                
+                // Focar novamente após clicar no botão
+                setTimeout(() => focusInput(), 50);
+              }}
+              disabled={(!newMessage.trim() && uploadingFiles.length === 0 && pastedImages.length === 0) || sending || uploadingFiles.some(f => f.progress < 100 && !f.error)}
+              className="bg-[#D5B170] hover:bg-[#B8956C] text-white"
+            >
+              {sending ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        /* Ticket finalizado */
+        <div className="p-3 border-t border-slate-200 bg-slate-50">
+          <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
+            <Lock className="h-4 w-4" />
+            <span>Este ticket foi finalizado e não pode receber novas mensagens</span>
+          </div>
+          
+          {/* Mostrar botão de feedback se necessário */}
+          {showFeedback && user?.role === 'user' && selectedTicket.createdBy === user.id && (
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ThumbsUp className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    Avalie nosso atendimento
+                  </span>
+                </div>
+                <Dialog open={showFeedbackModal} onOpenChange={setShowFeedbackModal}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                      Avaliar
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Avalie nosso atendimento</DialogTitle>
+                      <DialogDescription>
+                        Sua opinião é muito importante para melhorarmos nossos serviços.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <NPSChatFeedback
+                        ticketTitle={selectedTicket.title}
+                        onSubmit={handleSubmitFeedback}
+                        isSubmitting={submittingFeedback}
+                    />
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <p className="text-xs text-blue-600 mt-1">
+                Conte-nos como foi sua experiência com nosso suporte
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

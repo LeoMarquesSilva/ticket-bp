@@ -65,16 +65,23 @@ export interface DatabaseChatMessage {
 }
 
 // Criar um armazenamento customizado com prefixo único para evitar conflitos
+// Logs reduzidos - só mostra operações importantes
 const customStorage = {
   getItem: (key: string) => {
     const prefixedKey = `${instanceId}-${key}`;
     const item = localStorage.getItem(prefixedKey);
-    console.log(`Storage get: ${prefixedKey} = ${item ? '[data]' : 'null'}`);
+    // Só logar se não for token de auth (reduzir spam)
+    if (!key.includes('auth-token')) {
+      console.log(`Storage get: ${prefixedKey} = ${item ? '[data]' : 'null'}`);
+    }
     return item;
   },
   setItem: (key: string, value: string) => {
     const prefixedKey = `${instanceId}-${key}`;
-    console.log(`Storage set: ${prefixedKey}`);
+    // Só logar se não for token de auth (reduzir spam)
+    if (!key.includes('auth-token')) {
+      console.log(`Storage set: ${prefixedKey}`);
+    }
     localStorage.setItem(prefixedKey, value);
   },
   removeItem: (key: string) => {
