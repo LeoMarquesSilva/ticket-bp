@@ -34,6 +34,11 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
     comment?: boolean;
   }>({});
 
+  // Função para verificar se o comentário é obrigatório
+  const isCommentRequired = () => {
+    return serviceScore !== null && serviceScore < 7;
+  };
+
   const handleRequestStep = () => {
     if (requestFulfilled === null) {
       setErrors(prev => ({ ...prev, requestFulfilled: true }));
@@ -60,7 +65,8 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!comment.trim()) {
+    // Validar comentário apenas se for obrigatório (nota < 7)
+    if (isCommentRequired() && !comment.trim()) {
       setErrors(prev => ({ ...prev, comment: true }));
       return;
     }
@@ -256,10 +262,13 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
           <div className="text-center">
             <Label className="text-lg font-semibold text-[#101F2E] flex items-center justify-center gap-2 mb-2">
               <MessageSquare className="h-5 w-5 text-[#D5B170]" />
-              Deixe seu comentário
+              {isCommentRequired() ? 'Deixe seu comentário' : 'Deixe seu comentário (opcional)'}
             </Label>
             <p className="text-sm text-slate-600">
-              Conte-nos mais sobre sua experiência
+              {isCommentRequired() 
+                ? 'Conte-nos mais sobre sua experiência para nos ajudar a melhorar'
+                : 'Conte-nos mais sobre sua experiência, se desejar'
+              }
             </p>
           </div>
 
@@ -269,11 +278,15 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
               value={comment}
               onChange={(e) => {
                 setComment(e.target.value);
-                if (e.target.value.trim()) {
+                if (e.target.value.trim() || !isCommentRequired()) {
                   setErrors(prev => ({ ...prev, comment: false }));
                 }
               }}
-              placeholder="Conte-nos mais sobre sua experiência, sugestões ou elogios..."
+              placeholder={
+                isCommentRequired()
+                  ? "Conte-nos mais sobre sua experiência para nos ajudar a melhorar o atendimento..."
+                  : "Conte-nos mais sobre sua experiência, sugestões ou elogios (opcional)..."
+              }
               className={`min-h-[120px] text-sm border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] ${
                 errors.comment ? 'border-red-500' : ''
               }`}
@@ -281,12 +294,25 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
             />
             {errors.comment && (
               <p className="text-xs text-red-500">
-                Por favor, deixe um comentário sobre o atendimento
+                Por favor, deixe um comentário sobre o atendimento para nos ajudar a melhorar
               </p>
             )}
             <p className="text-xs text-slate-500">
-              Seu feedback nos ajuda a melhorar continuamente nosso atendimento.
+              {isCommentRequired()
+                ? 'Seu feedback é importante para melhorarmos nosso atendimento.'
+                : 'Seu feedback nos ajuda a melhorar continuamente nosso atendimento.'
+              }
             </p>
+            
+            {/* Aviso visual quando comentário não é obrigatório */}
+            {!isCommentRequired() && (
+              <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <p className="text-xs text-green-700">
+                  Como sua avaliação foi boa (7-10), o comentário é opcional!
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Resumo da avaliação */}
@@ -305,6 +331,12 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
                   {serviceScore}/10 - {getScoreLabel(serviceScore!)}
                 </span>
               </div>
+              <div className="flex justify-between">
+                <span>Comentário:</span>
+                <span className={isCommentRequired() ? 'text-red-600' : 'text-green-600'}>
+                  {isCommentRequired() ? 'Obrigatório' : 'Opcional'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -320,7 +352,7 @@ const NPSChatFeedback: React.FC<NPSChatFeedbackProps> = ({
             <Button
               onClick={handleSubmit}
               className="flex-1 bg-gradient-to-r from-[#D5B170] to-[#c4a05f] hover:from-[#c4a05f] hover:to-[#b8955a] text-white flex items-center justify-center gap-2"
-              disabled={isSubmitting || !comment.trim()}
+              disabled={isSubmitting || (isCommentRequired() && !comment.trim())}
             >
               {isSubmitting ? (
                 <>

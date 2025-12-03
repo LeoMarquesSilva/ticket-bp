@@ -40,6 +40,11 @@ const NPSModal: React.FC<NPSModalProps> = ({
   }>({});
   const [showMandatoryWarning, setShowMandatoryWarning] = useState(false);
 
+  // Função para verificar se o comentário é obrigatório
+  const isCommentRequired = () => {
+    return serviceScore !== null && serviceScore < 7;
+  };
+
   const handleRequestStep = () => {
     if (requestFulfilled === null) {
       setErrors(prev => ({ ...prev, requestFulfilled: true }));
@@ -66,7 +71,8 @@ const NPSModal: React.FC<NPSModalProps> = ({
   };
 
   const handleSubmit = () => {
-    if (!comment.trim()) {
+    // Validar comentário apenas se for obrigatório (nota < 7)
+    if (isCommentRequired() && !comment.trim()) {
       setErrors(prev => ({ ...prev, comment: true }));
       return;
     }
@@ -310,31 +316,76 @@ const NPSModal: React.FC<NPSModalProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="comment" className="text-sm font-medium text-[#101F2E] flex items-center gap-2">
                   <MessageSquare className="h-4 w-4 text-[#D5B170]" />
-                  Deixe seu comentário sobre o atendimento
+                  {isCommentRequired() ? 'Deixe seu comentário sobre o atendimento' : 'Deixe seu comentário (opcional)'}
                 </Label>
                 <Textarea
                   id="comment"
                   value={comment}
                   onChange={(e) => {
                     setComment(e.target.value);
-                    if (e.target.value.trim()) {
+                    if (e.target.value.trim() || !isCommentRequired()) {
                       setErrors(prev => ({ ...prev, comment: false }));
                     }
                     setShowMandatoryWarning(false);
                   }}
-                  placeholder="Conte-nos mais sobre sua experiência..."
+                  placeholder={
+                    isCommentRequired()
+                      ? "Conte-nos mais sobre sua experiência para nos ajudar a melhorar o atendimento..."
+                      : "Conte-nos mais sobre sua experiência, sugestões ou elogios (opcional)..."
+                  }
                   className={`min-h-[120px] border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] ${
                     errors.comment ? 'border-red-500' : ''
                   }`}
                 />
                 {errors.comment && (
                   <p className="text-xs text-red-500">
-                    Por favor, deixe um comentário sobre o atendimento
+                    Por favor, deixe um comentário sobre o atendimento para nos ajudar a melhorar
                   </p>
                 )}
                 <p className="text-xs text-slate-500">
-                  <span className="text-red-500">*</span> Campo obrigatório
+                  {isCommentRequired() ? (
+                    <>
+                      <span className="text-red-500">*</span> Campo obrigatório - Sua avaliação nos ajuda a melhorar
+                    </>
+                  ) : (
+                    'Seu feedback nos ajuda a melhorar continuamente nosso atendimento.'
+                  )}
                 </p>
+                
+                {/* Aviso visual quando comentário não é obrigatório */}
+                {!isCommentRequired() && (
+                  <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <p className="text-xs text-green-700">
+                      Como sua avaliação foi boa (7-10), o comentário é opcional!
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Resumo da avaliação */}
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <h4 className="text-sm font-medium text-slate-700 mb-2">Resumo da sua avaliação:</h4>
+                <div className="space-y-1 text-xs text-slate-600">
+                  <div className="flex justify-between">
+                    <span>Solicitação atendida:</span>
+                    <span className={requestFulfilled ? 'text-green-600' : 'text-red-600'}>
+                      {requestFulfilled ? '✅ Sim' : '❌ Não'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Nota do atendimento:</span>
+                    <span className={`font-medium ${getScoreColor(serviceScore!)}`}>
+                      {serviceScore}/10 - {getScoreLabel(serviceScore!)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Comentário:</span>
+                    <span className={isCommentRequired() ? 'text-red-600' : 'text-green-600'}>
+                      {isCommentRequired() ? 'Obrigatório' : 'Opcional'}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -348,6 +399,7 @@ const NPSModal: React.FC<NPSModalProps> = ({
                 <Button
                   onClick={handleSubmit}
                   className="flex-1 bg-gradient-to-r from-[#101F2E] to-[#2a3f52] hover:from-[#0a1520] hover:to-[#1f3240] text-white"
+                  disabled={isCommentRequired() && !comment.trim()}
                 >
                   Enviar Avaliação
                 </Button>
