@@ -10,8 +10,8 @@ import { useNotificationSound } from '@/hooks/useNotificationSound';
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentPage: 'tickets' | 'dashboard' | 'users' | 'database';
-  onPageChange: (page: 'tickets' | 'dashboard' | 'users' | 'database') => void;
+  currentPage: 'tickets' | 'dashboard' | 'users' | 'database' | 'profile';
+  onPageChange: (page: 'tickets' | 'dashboard' | 'users' | 'database' | 'profile') => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {

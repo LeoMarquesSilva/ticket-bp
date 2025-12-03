@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, TABLES } from '@/lib/supabase';
+import { passwordService, FirstLoginData } from '@/services/passwordService';
 
 export type UserRole = 'user' | 'support' | 'admin' | 'lawyer';
 
@@ -11,6 +12,10 @@ interface User {
   department: string;
   isOnline?: boolean;
   lastActiveAt?: string;
+  firstLogin?: boolean;
+  mustChangePassword?: boolean;
+  passwordChangedAt?: string;
+  createdAt?: string
 }
 
 interface AuthContextType {
@@ -20,6 +25,8 @@ interface AuthContextType {
   logout: () => void;
   resetPassword: (email: string) => Promise<{ success: boolean; error: string | null }>;
   loading: boolean;
+  requiresPasswordChange: boolean;
+  refreshUserProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,9 +43,35 @@ export const useAuth = () => {
 const USER_STORAGE_KEY = 'helpdesk_user_data';
 const LAST_AUTH_CHECK_KEY = 'helpdesk_last_auth_check';
 
+// Função para verificar se precisa alterar senha
+const checkPasswordChangeRequired = (user: User): boolean => {
+  if (!user) return false;
+  
+  // Se é primeiro login ou está marcado para alterar senha
+  if (user.firstLogin || user.mustChangePassword) {
+    return true;
+  }
+  
+  // Se nunca alterou a senha
+  if (!user.passwordChangedAt) {
+    return true;
+  }
+  
+  // Verificar se a senha é muito antiga (opcional - 90 dias)
+  const passwordDate = new Date(user.passwordChangedAt);
+  const now = new Date();
+  const daysSinceChange = (now.getTime() - passwordDate.getTime()) / (1000 * 60 * 60 * 24);
+  
+  // Se passou mais de 90 dias, pode forçar alteração (opcional)
+  // return daysSinceChange > 90;
+  
+  return false;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   
   // Refs para controlar execuções
   const isInitialized = useRef(false);
@@ -69,8 +102,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (userData && lastCheck) {
         const timeSinceLastCheck = Date.now() - parseInt(lastCheck);
-        // Cache válido por 2 horas
-        if (timeSinceLastCheck < 24 * 60 * 60 * 1000) { // 24 horas
+        // Cache válido por 24 horas
+        if (timeSinceLastCheck < 24 * 60 * 60 * 1000) {
           return JSON.parse(userData);
         }
       }
@@ -78,6 +111,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.warn('Erro ao recuperar do sessionStorage:', error);
       return null;
+    }
+  };
+
+  // Função para recarregar perfil do usuário
+  const refreshUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('🔄 Atualizando perfil do usuário...');
+      await loadUserProfile(currentAuthUserId.current!);
+    } catch (error) {
+      console.error('❌ Erro ao atualizar perfil:', error);
     }
   };
 
@@ -95,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cachedUser) {
           console.log('✅ Usuário carregado do cache:', cachedUser.name);
           setUser(cachedUser);
+          setRequiresPasswordChange(checkPasswordChangeRequired(cachedUser));
           setLoading(false);
           return;
         }
@@ -182,11 +228,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: userProfile.role as UserRole,
             department: userProfile.department || 'Geral',
             isOnline: userProfile.is_online || false,
-            lastActiveAt: userProfile.last_active_at
+            lastActiveAt: userProfile.last_active_at,
+            firstLogin: userProfile.first_login || false,
+            mustChangePassword: userProfile.must_change_password || false,
+            passwordChangedAt: userProfile.password_changed_at,
+            createdAt: userProfile.created_at 
           };
 
           console.log('✅ Perfil carregado:', userData.name);
           setUser(userData);
+          setRequiresPasswordChange(checkPasswordChangeRequired(userData));
           saveUserToStorage(userData);
           setLoading(false);
           return;
@@ -216,11 +267,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               role: emailProfile.role as UserRole,
               department: emailProfile.department || 'Geral',
               isOnline: emailProfile.is_online || false,
-              lastActiveAt: emailProfile.last_active_at
+              lastActiveAt: emailProfile.last_active_at,
+              firstLogin: emailProfile.first_login || false,
+              mustChangePassword: emailProfile.must_change_password || false,
+              passwordChangedAt: emailProfile.password_changed_at,
+              createdAt: emailProfile.created_at
             };
 
             console.log('✅ Perfil carregado via fallback:', userData.name);
             setUser(userData);
+            setRequiresPasswordChange(checkPasswordChangeRequired(userData));
             saveUserToStorage(userData);
             setLoading(false);
             return;
@@ -245,6 +301,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLogout = () => {
     console.log('👋 Executando logout...');
     setUser(null);
+    setRequiresPasswordChange(false);
     saveUserToStorage(null);
     setLoading(false);
   };
@@ -262,6 +319,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: 'user',
           department: 'Geral',
           is_online: false,
+          first_login: true,
+          must_change_password: true,
         })
         .select()
         .single();
@@ -303,9 +362,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: directProfile.role as UserRole,
             department: directProfile.department || 'Geral',
             isOnline: directProfile.is_online || false,
+            firstLogin: true,
+            mustChangePassword: true,
           };
 
           setUser(user);
+          setRequiresPasswordChange(true);
           saveUserToStorage(user);
           setLoading(false);
           return { user, error: null };
@@ -421,7 +483,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, resetPassword, loading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      register, 
+      logout, 
+      resetPassword, 
+      loading, 
+      requiresPasswordChange,
+      refreshUserProfile
+    }}>
       {children}
     </AuthContext.Provider>
   );

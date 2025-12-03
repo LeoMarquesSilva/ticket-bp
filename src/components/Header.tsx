@@ -8,7 +8,8 @@ import {
   Users,
   Database,
   Menu,
-  X
+  X,
+  User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -159,6 +160,11 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
     navigate('/tickets');
   };
 
+  // Função para navegar para o perfil
+  const handleProfileClick = () => {
+    navigate('/profile');
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center">
@@ -266,6 +272,14 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
               )}
               
               <DropdownMenuSeparator />
+              
+              {/* ✅ NOVA OPÇÃO: Meu Perfil */}
+              <DropdownMenuItem onClick={handleProfileClick} className="cursor-pointer">
+                <User className="mr-2 h-4 w-4" />
+                <span>Meu Perfil</span>
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout} className="text-red-500 focus:text-red-500">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Sair</span>
@@ -316,6 +330,20 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
                 </div>
               </NavLink>
             ))}
+            
+            {/* ✅ NOVA OPÇÃO MOBILE: Meu Perfil */}
+            <button
+              onClick={() => {
+                handleProfileClick();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                <span>Meu Perfil</span>
+              </div>
+            </button>
             
             {/* Status online/offline para mobile */}
             {isStaff && (

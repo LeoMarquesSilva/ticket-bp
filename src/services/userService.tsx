@@ -1,5 +1,6 @@
 import { supabase, supabaseAdmin, TABLES } from '@/lib/supabase';
 import { User, UserRole, Department } from '@/types';
+import { passwordService } from '@/services/passwordService';
 
 export interface CreateUserData {
   name: string;
@@ -130,8 +131,10 @@ export class UserService {
         name: userData.name,
         email: userData.email,
         role: userData.role,
-        department: department, // Garantir que o departamento seja incluído
+        department: department,
         is_online: false,
+        first_login: true, // ✅ Novo campo
+        must_change_password: true, // ✅ Novo campo
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -162,10 +165,13 @@ export class UserService {
       // Garantir que o departamento tenha um valor
       const department = userData.department || Department.GERAL;
       
+      // Gerar senha temporária se não fornecida
+      const tempPassword = userData.password || passwordService.generateTemporaryPassword();
+      
       // 1. Criar o usuário na autenticação usando o cliente admin
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: userData.email,
-        password: userData.password,
+        password: tempPassword,
         email_confirm: true, // Email já confirmado
         user_metadata: {
           name: userData.name,
@@ -191,6 +197,8 @@ export class UserService {
         role: userData.role,
         department: department,
         is_online: false,
+        first_login: true, // ✅ Novo campo - primeiro login
+        must_change_password: true, // ✅ Novo campo - deve alterar senha
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -212,6 +220,7 @@ export class UserService {
         throw dbError;
       }
 
+      console.log(`✅ Usuário criado com senha temporária: ${tempPassword}`);
       return this.mapFromDatabase(dbUser);
     } catch (error) {
       console.error('Error in createUserAdmin:', error);
@@ -225,7 +234,7 @@ export class UserService {
       const dbUpdates = {
         name: updates.name,
         role: updates.role,
-        department: updates.department || Department.GERAL, // Usando o enum Department
+        department: updates.department || Department.GERAL,
         updated_at: new Date().toISOString(),
       };
 
@@ -244,6 +253,85 @@ export class UserService {
       return this.mapFromDatabase(data);
     } catch (error) {
       console.error('Error in updateUser:', error);
+      throw error;
+    }
+  }
+
+  // ✅ NOVO: Forçar alteração de senha para um usuário
+  static async forcePasswordChange(userId: string): Promise<boolean> {
+    try {
+      console.log('🔐 Forçando alteração de senha para usuário:', userId);
+      
+      const { error } = await supabase
+        .from(TABLES.USERS)
+        .update({
+          must_change_password: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Error forcing password change:', error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error in forcePasswordChange:', error);
+      throw error;
+    }
+  }
+
+  // ✅ NOVO: Resetar senha de um usuário (gerar nova senha temporária)
+  static async resetUserPassword(userId: string): Promise<{ tempPassword: string; success: boolean }> {
+    try {
+      console.log('🔄 Resetando senha para usuário:', userId);
+      
+      // Obter dados do usuário
+      const { data: userData, error: userError } = await supabase
+        .from(TABLES.USERS)
+        .select('auth_user_id, email, name')
+        .eq('id', userId)
+        .single();
+
+      if (userError || !userData) {
+        throw new Error('Usuário não encontrado');
+      }
+
+      // Gerar nova senha temporária
+      const tempPassword = passwordService.generateTemporaryPassword();
+
+      // Atualizar senha no Supabase Auth
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+        userData.auth_user_id,
+        { password: tempPassword }
+      );
+
+      if (authError) {
+        console.error('Error updating auth password:', authError);
+        throw authError;
+      }
+
+      // Atualizar flags na tabela de usuários
+      const { error: dbError } = await supabase
+        .from(TABLES.USERS)
+        .update({
+          must_change_password: true,
+          first_login: false, // Não é mais primeiro login, mas deve alterar senha
+          password_changed_at: null, // Resetar data de alteração
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (dbError) {
+        console.error('Error updating user password flags:', dbError);
+        throw dbError;
+      }
+
+      console.log(`✅ Senha resetada com sucesso. Nova senha: ${tempPassword}`);
+      return { tempPassword, success: true };
+    } catch (error) {
+      console.error('Error in resetUserPassword:', error);
       throw error;
     }
   }
@@ -488,9 +576,12 @@ static async deleteUser(userId: string): Promise<boolean> {
       name: data.name,
       email: data.email,
       role: data.role,
-      department: data.department || Department.GERAL, // Usando o enum Department
+      department: data.department || Department.GERAL,
       isOnline: data.is_online,
-      lastActiveAt: data.last_active_at
+      lastActiveAt: data.last_active_at,
+      firstLogin: data.first_login, // ✅ Novo campo
+      mustChangePassword: data.must_change_password, // ✅ Novo campo
+      passwordChangedAt: data.password_changed_at // ✅ Novo campo
     };
   }
 }

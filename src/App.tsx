@@ -9,7 +9,9 @@ import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
 import DatabaseManagement from '@/pages/DatabaseManagement';
+import Profile from '@/pages/Profile';
 import ResetPassword from '@/pages/ResetPassword';
+import PasswordChangeHandler from '@/components/PasswordChangeHandler';
 import { initializeConnectionHandlers } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 // import { InactivityDetector } from '@/components/InactivityDetector'; // ← REMOVIDO para permitir login persistente
@@ -26,17 +28,18 @@ const ProtectedRoute = ({
   const location = useLocation();
   const isTabVisible = useTabVisibility();
 
-  const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'database' => {
+  const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'database' | 'profile' => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return 'dashboard';
     if (path.includes('/users')) return 'users';
     if (path.includes('/database')) return 'database';
+    if (path.includes('/profile')) return 'profile';
     return 'tickets';
   };
 
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'database'>(getCurrentPage());
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'database' | 'profile'>(getCurrentPage());
 
-  const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'database') => {
+  const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'database' | 'profile') => {
     setCurrentPage(page);
   };
 
@@ -74,6 +77,8 @@ const AppRoutes = () => {
   const { user, loading } = useAuth();
   const location = useLocation();
   const isResetPasswordPage = location.pathname === '/reset-password';
+
+  console.log('🔍 Current location:', location.pathname);
 
   if (isResetPasswordPage) {
     return (
@@ -147,6 +152,15 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
+      {/* ✅ NOVA ROTA: Profile */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/"
         element={
@@ -182,7 +196,11 @@ const App = () => {
           */}
           {/* <InactivityDetector /> */}
           
-          <AppRoutes />
+          {/* PasswordChangeHandler - Controla automaticamente quando mostrar modal de alteração de senha */}
+          <PasswordChangeHandler>
+            <AppRoutes />
+          </PasswordChangeHandler>
+          
           <Toaster
             position="top-right"
             toastOptions={{

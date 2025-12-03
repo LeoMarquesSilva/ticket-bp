@@ -1,234 +1,119 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Scale, RefreshCw, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, RefreshCw, ArrowLeft } from 'lucide-react';
+import { supabase } from '@/lib/supabase'; // ✅ Importação adicionada
+import { passwordService } from '@/services/passwordService';
 import { toast } from 'sonner';
 
-const ResetPassword: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  
-  const [password, setPassword] = useState('');
+const ResetPassword = () => {
+  const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [validLink, setValidLink] = useState(false);
-  const [checkingLink, setCheckingLink] = useState(true);
+  const [success, setSuccess] = useState(false);
+  
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    // Função para extrair parâmetros do hash da URL
-    const getHashParams = (hash: string) => {
-      const params: Record<string, string> = {};
-      
-      if (!hash || hash === '#') return params;
-      
-      // Remover o # inicial se existir
-      const hashContent = hash.startsWith('#') ? hash.substring(1) : hash;
-      
-      // Dividir os parâmetros
-      const paramPairs = hashContent.split('&');
-      
-      for (const pair of paramPairs) {
-        const [key, value] = pair.split('=');
-        if (key && value) {
-          params[key] = decodeURIComponent(value);
-        }
-      }
-      
-      return params;
-    };
+    // Verificar se há um token de reset na URL
+    const accessToken = searchParams.get('access_token');
+    const refreshToken = searchParams.get('refresh_token');
+    
+    if (!accessToken || !refreshToken) {
+      setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
+      return;
+    }
 
-    // Verificar se o link de redefinição é válido
-    const checkResetLink = async () => {
+    // Configurar a sessão com os tokens
+    const setSession = async () => {
       try {
-        setCheckingLink(true);
-        console.log('Checking reset password link validity');
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
         
-        // Extrair o hash da URL
-        const hash = location.hash;
-        const searchParams = new URLSearchParams(location.search);
-        console.log('URL hash:', hash);
-        console.log('URL search params:', location.search);
-        
-        // Verificar se temos um token na URL (via query params)
-        const token = searchParams.get('token');
-        if (token) {
-          console.log('Found token in URL query params');
-          setValidLink(true);
-          setCheckingLink(false);
-          return;
-        }
-        
-        // Verificar se o hash é "#/login" - este é o formato específico que o Supabase está enviando
-        if (hash === '#/login') {
-          console.log('Detected #/login hash, checking for active session');
-          
-          // Verificar se há uma sessão ativa
-          const { data: sessionData } = await supabase.auth.getSession();
-          console.log('Session data:', sessionData);
-          
-          if (sessionData?.session) {
-            console.log('Valid session found, allowing reset');
-            setValidLink(true);
-            setCheckingLink(false);
-            return;
-          }
-          
-          // Se não há sessão, verificar o usuário atual
-          const { data: userData } = await supabase.auth.getUser();
-          if (userData?.user) {
-            console.log('Authenticated user found, allowing reset');
-            setValidLink(true);
-            setCheckingLink(false);
-            return;
-          }
-        }
-        
-        // Verificar se há erro no hash (como otp_expired)
-        if (hash && hash.includes('error=')) {
-          const errorParams = getHashParams(hash);
-          console.log('Error params:', errorParams);
-          
-          if (errorParams.error_code === 'otp_expired') {
-            setError('O link de redefinição de senha expirou. Por favor, solicite um novo link.');
-          } else {
-            setError(errorParams.error_description || 'Link de redefinição inválido.');
-          }
-          
-          setValidLink(false);
-          setCheckingLink(false);
-          return;
-        }
-        
-        if (!hash || hash === '#') {
-          // Se não temos o hash com o token na URL, verificamos se há uma sessão ativa
-          const { data, error } = await supabase.auth.getSession();
-          
-          if (error || !data.session) {
-            console.error('No valid session or token:', error);
-            setValidLink(false);
-            setError('O link de redefinição de senha é inválido ou expirou.');
-          } else {
-            console.log('Valid session found');
-            setValidLink(true);
-          }
-        } else {
-          // Se temos um hash com token, vamos tentar processar
-          try {
-            // Extrair parâmetros do hash
-            const params = getHashParams(hash);
-            console.log('Hash params:', params);
-            
-            const accessToken = params.access_token;
-            const refreshToken = params.refresh_token;
-            const type = params.type;
-            
-            if (accessToken && type === 'recovery') {
-              console.log('Found recovery token, setting session');
-              
-              // Definir a sessão com o token
-              const { data, error } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken || ''
-              });
-              
-              if (error) {
-                console.error('Error setting session:', error);
-                setValidLink(false);
-                setError('O token de redefinição de senha é inválido.');
-              } else if (data.session) {
-                console.log('Session set successfully');
-                setValidLink(true);
-                
-                // Limpar o hash da URL para segurança
-                window.history.replaceState({}, document.title, window.location.pathname);
-              } else {
-                setValidLink(false);
-                setError('Não foi possível estabelecer uma sessão válida.');
-              }
-            } else {
-              // Tentar verificar se há uma sessão ativa mesmo sem token na URL
-              const { data: sessionData } = await supabase.auth.getSession();
-              if (sessionData?.session) {
-                console.log('Valid session found without token, allowing reset');
-                setValidLink(true);
-                setCheckingLink(false);
-                return;
-              } else {
-                console.error('Missing token or not recovery type:', { accessToken, type });
-                setValidLink(false);
-                setError('Link de redefinição inválido.');
-              }
-            }
-          } catch (parseError) {
-            console.error('Error parsing hash parameters:', parseError);
-            setValidLink(false);
-            setError('Erro ao processar o link de redefinição.');
-          }
+        if (error) {
+          console.error('Erro ao configurar sessão:', error);
+          setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
         }
       } catch (error) {
-        console.error('Error checking reset link:', error);
-        setValidLink(false);
-        setError('Ocorreu um erro ao verificar o link de redefinição de senha.');
-      } finally {
-        setCheckingLink(false);
+        console.error('Erro ao configurar sessão:', error);
+        setError('Erro ao processar link de redefinição.');
       }
     };
 
-    checkResetLink();
-  }, [location.hash, location.search]);
+    setSession();
+  }, [searchParams]);
 
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const validatePassword = (password: string): string[] => {
+    const errors: string[] = [];
     
-    if (!password || !confirmPassword) {
+    if (password.length < 6) {
+      errors.push('Deve ter pelo menos 6 caracteres');
+    }
+    
+    if (!/[A-Z]/.test(password)) {
+      errors.push('Deve conter pelo menos uma letra maiúscula');
+    }
+    
+    if (!/[a-z]/.test(password)) {
+      errors.push('Deve conter pelo menos uma letra minúscula');
+    }
+    
+    if (!/[0-9]/.test(password)) {
+      errors.push('Deve conter pelo menos um número');
+    }
+    
+    return errors;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    // Validações
+    if (!newPassword || !confirmPassword) {
       setError('Por favor, preencha todos os campos');
       return;
     }
     
-    if (password !== confirmPassword) {
-      setError('As senhas não coincidem');
+    if (newPassword !== confirmPassword) {
+      setError('A nova senha e a confirmação não coincidem');
       return;
     }
     
-    if (password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres');
+    const passwordErrors = validatePassword(newPassword);
+    if (passwordErrors.length > 0) {
+      setError(`A nova senha não atende aos critérios:\n• ${passwordErrors.join('\n• ')}`);
       return;
     }
     
     setLoading(true);
-    setError('');
-    setSuccess('');
     
     try {
-      console.log('Updating password');
-      const { error } = await supabase.auth.updateUser({ password });
+      const result = await passwordService.resetPassword(newPassword);
       
-      if (error) {
-        console.error('Reset password error:', error);
-        setError(error.message);
-        toast.error(error.message);
-      } else {
-        console.log('Password updated successfully');
-        setSuccess('Senha redefinida com sucesso! Redirecionando para o login...');
+      if (result.success) {
+        setSuccess(true);
         toast.success('Senha redefinida com sucesso!');
         
-        // Redirecionar para a página de login após alguns segundos
+        // Redirecionar para login após 3 segundos
         setTimeout(() => {
-          // Fazer logout para limpar a sessão de recuperação
-          supabase.auth.signOut().then(() => {
-            navigate('/login');
-          });
+          navigate('/login');
         }, 3000);
+      } else {
+        setError(result.error || 'Erro ao redefinir senha');
+        toast.error(result.error || 'Erro ao redefinir senha');
       }
     } catch (error: any) {
-      console.error('Reset password error:', error);
       setError(error.message || 'Erro ao redefinir senha');
       toast.error(error.message || 'Erro ao redefinir senha');
     } finally {
@@ -236,146 +121,182 @@ const ResetPassword: React.FC = () => {
     }
   };
 
-  // Mostrar tela de carregamento enquanto verifica o link
-  if (checkingLink) {
+  const handleBackToLogin = () => {
+    navigate('/login');
+  };
+
+  if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0c1621] to-[#1a2a3a]">
-        <div className="text-center">
-          <RefreshCw className="h-10 w-10 animate-spin text-[#D5B170] mx-auto mb-4" />
-          <p className="text-lg text-white/80">Verificando link de redefinição...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6 text-green-600" />
+            </div>
+            <CardTitle className="text-xl text-[#101F2E]">Senha Redefinida!</CardTitle>
+            <CardDescription>
+              Sua senha foi alterada com sucesso. Você será redirecionado para a página de login.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              onClick={handleBackToLogin}
+              className="w-full bg-[#D5B170] hover:bg-[#c4a05f] text-[#101F2E] font-medium"
+            >
+              Ir para Login
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#0c1621] to-[#1a2a3a] p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-10">
-          <div className="flex items-center justify-center mb-6">
-            <div className="bg-gradient-to-r from-[#D5B170] to-[#e9d4a7] p-4 rounded-2xl shadow-2xl">
-              <Scale className="h-12 w-12 text-[#101F2E]" />
-            </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 w-12 h-12 bg-[#D5B170] bg-opacity-20 rounded-full flex items-center justify-center">
+            <Lock className="w-6 h-6 text-[#D5B170]" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-3">Sistema de Tickets BP</h1>
-          <p className="text-[#D5B170] text-lg font-medium">Redefinição de Senha</p>
-        </div>
+          <CardTitle className="text-xl text-[#101F2E]">Redefinir Senha</CardTitle>
+          <CardDescription>
+            Digite sua nova senha abaixo. Certifique-se de escolher uma senha segura.
+          </CardDescription>
+        </CardHeader>
 
-        {error && (
-          <Alert className="mb-6 border-red-300 bg-red-50/90 backdrop-blur-sm shadow-lg">
-            <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
-          </Alert>
-        )}
+        <CardContent>
+          {error && (
+            <Alert className="mb-4 border-red-300 bg-red-50">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800 whitespace-pre-line">
+                {error}
+              </AlertDescription>
+            </Alert>
+          )}
 
-        {success && (
-          <Alert className="mb-6 border-green-300 bg-green-50/90 backdrop-blur-sm shadow-lg">
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">{success}</AlertDescription>
-          </Alert>
-        )}
-
-        {validLink ? (
-          <Card className="shadow-2xl border-0 bg-white/90 backdrop-blur-md">
-            <CardHeader className="text-center pb-2">
-              <CardTitle className="text-2xl text-[#101F2E] font-bold">Redefinir Senha</CardTitle>
-              <CardDescription className="text-slate-600">
-                Digite sua nova senha abaixo
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleResetPassword} className="space-y-5">
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-[#101F2E] font-medium">Nova Senha</Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="Digite sua nova senha"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      disabled={loading}
-                      className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] pl-10 py-6"
-                    />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                      <Lock className="h-4 w-4" />
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="text-[#101F2E] font-medium">Confirmar Senha</Label>
-                  <div className="relative">
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="Confirme sua nova senha"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      disabled={loading}
-                      className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] pl-10 py-6"
-                    />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                      <Lock className="h-4 w-4" />
-                    </div>
-                  </div>
-                </div>
-                <Button 
-                  type="submit" 
-                  className="w-full bg-gradient-to-r from-[#D5B170] to-[#e9d4a7] hover:from-[#c4a05f] hover:to-[#d8c396] text-[#101F2E] font-bold py-6 text-lg shadow-lg"
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Nova Senha */}
+            <div className="space-y-2">
+              <Label htmlFor="newPassword" className="text-[#101F2E] font-medium">
+                Nova Senha
+              </Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showNewPassword ? "text" : "password"}
+                  placeholder="Digite sua nova senha"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
                   disabled={loading}
+                  className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] pl-10 pr-10"
+                />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
                 >
-                  {loading ? (
-                    <>
-                      <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-                      Processando...
-                    </>
+                  {showNewPassword ? (
+                    <EyeOff className="h-4 w-4 text-slate-400" />
                   ) : (
-                    'Redefinir Senha'
+                    <Eye className="h-4 w-4 text-slate-400" />
                   )}
                 </Button>
-              </form>
-            </CardContent>
-            <CardFooter className="flex justify-center pt-0">
-              <Button 
-                variant="link" 
-                className="text-[#D5B170] hover:text-[#c4a05f] font-medium"
-                onClick={() => navigate('/login')}
-              >
-                Voltar para o login
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : (
-          <Card className="shadow-2xl border-0 bg-white/90 backdrop-blur-md">
-            <CardHeader className="text-center pb-2">
-              <CardTitle className="text-2xl text-[#101F2E] font-bold">Link Inválido</CardTitle>
-              <CardDescription className="text-slate-600">
-                O link de redefinição de senha é inválido ou expirou.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <p className="text-slate-600 mb-4">
-                Por favor, solicite um novo link de redefinição de senha na página de login.
-              </p>
-              <Button 
-                onClick={() => navigate('/login')}
-                className="bg-[#D5B170] hover:bg-[#c4a05f] text-[#101F2E] font-medium"
-              >
-                Voltar para o login
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+              </div>
+            </div>
 
-        <div className="text-center mt-10 text-white/80">
-          <p className="text-sm">Sistema de Gerenciamento de Tickets Jurídicos</p>
-          <p className="text-xs mt-2 text-[#D5B170]">Desenvolvido pela Área de Operações Legais</p>
-        </div>
-      </div>
-      
-      {/* Elemento decorativo */}
-      <div className="absolute top-10 left-10 w-32 h-32 bg-[#D5B170]/10 rounded-full blur-3xl"></div>
-      <div className="absolute bottom-10 right-10 w-40 h-40 bg-[#D5B170]/10 rounded-full blur-3xl"></div>
+            {/* Confirmar Nova Senha */}
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="text-[#101F2E] font-medium">
+                Confirmar Nova Senha
+              </Label>
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Confirme sua nova senha"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={loading}
+                  className="border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] pl-10 pr-10"
+                />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-slate-400" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Critérios de Senha */}
+            <div className="bg-slate-50 p-3 rounded-lg">
+              <p className="text-sm font-medium text-slate-700 mb-2">Critérios para a nova senha:</p>
+              <ul className="text-xs text-slate-600 space-y-1">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className={`h-3 w-3 ${newPassword.length >= 6 ? 'text-green-500' : 'text-slate-400'}`} />
+                  Pelo menos 6 caracteres
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className={`h-3 w-3 ${/[A-Z]/.test(newPassword) ? 'text-green-500' : 'text-slate-400'}`} />
+                  Uma letra maiúscula
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className={`h-3 w-3 ${/[a-z]/.test(newPassword) ? 'text-green-500' : 'text-slate-400'}`} />
+                  Uma letra minúscula
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className={`h-3 w-3 ${/[0-9]/.test(newPassword) ? 'text-green-500' : 'text-slate-400'}`} />
+                  Um número
+                </li>
+              </ul>
+            </div>
+
+            {/* Botões */}
+            <div className="space-y-3 pt-4">
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#D5B170] hover:bg-[#c4a05f] text-[#101F2E] font-medium"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Redefinindo...
+                  </>
+                ) : (
+                  'Redefinir Senha'
+                )}
+              </Button>
+              
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleBackToLogin}
+                disabled={loading}
+                className="w-full"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Voltar ao Login
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 };

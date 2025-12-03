@@ -20,6 +20,10 @@ export interface User {
   department: Department | string; // Agora usando o enum Department
   isOnline?: boolean;
   lastActiveAt?: string;
+  firstLogin?: boolean; // ✅ Novo campo - indica se é primeiro login
+  mustChangePassword?: boolean; // ✅ Novo campo - indica se deve alterar senha
+  passwordChangedAt?: string; // ✅ Novo campo - data da última alteração de senha
+  createdAt?: string;
 }
 
 export type TicketStatus = 'open' | 'assigned' | 'in_progress' | 'resolved'; // Removido 'closed'
@@ -85,4 +89,23 @@ export interface TicketStats {
   averageNps: number;
   averageResolutionTime: number; // in hours
   averageResponseTime: number; // in hours
+}
+
+// ✅ Novos tipos para gerenciamento de senha
+export interface PasswordChangeRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface PasswordResetData {
+  email: string;
+  token?: string;
+  newPassword: string;
+}
+
+export interface FirstLoginCheck {
+  isFirstLogin: boolean;
+  mustChangePassword: boolean;
+  passwordChangedAt?: string;
 }
