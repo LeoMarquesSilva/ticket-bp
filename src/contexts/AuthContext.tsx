@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (userData && lastCheck) {
         const timeSinceLastCheck = Date.now() - parseInt(lastCheck);
         // Cache válido por 2 horas
-        if (timeSinceLastCheck < 2 * 60 * 60 * 1000) {
+        if (timeSinceLastCheck < 24 * 60 * 60 * 1000) { // 24 horas
           return JSON.parse(userData);
         }
       }
