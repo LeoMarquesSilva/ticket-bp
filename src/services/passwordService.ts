@@ -34,17 +34,36 @@ class PasswordService {
         };
       }
       
-      // Configurar URL de redirecionamento
+      // Configurar URL de redirecionamento mais robusta
       const baseUrl = window.location.origin;
       const resetUrl = `${baseUrl}/reset-password`;
       
-      // Enviar e-mail de redefinição
+      console.log('🔗 URL de redirecionamento:', resetUrl);
+      
+      // Enviar e-mail de redefinição com configurações mais específicas
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: resetUrl,
+        captchaToken: undefined, // Desabilitar captcha se não estiver configurado
       });
       
       if (error) {
         console.error('❌ Erro no reset de senha:', error);
+        
+        // Tratar erros específicos
+        if (error.message.includes('rate limit')) {
+          return { 
+            success: false, 
+            error: 'Muitas tentativas de redefinição. Aguarde alguns minutos antes de tentar novamente.' 
+          };
+        }
+        
+        if (error.message.includes('email not confirmed')) {
+          return { 
+            success: false, 
+            error: 'E-mail não confirmado. Entre em contato com o suporte.' 
+          };
+        }
+        
         return { success: false, error: error.message };
       }
       
@@ -65,6 +84,19 @@ class PasswordService {
         return { success: false, error: 'A senha deve ter pelo menos 6 caracteres' };
       }
       
+      // Verificar se há uma sessão ativa (necessária para reset)
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('❌ Sessão não encontrada para reset:', sessionError);
+        return { 
+          success: false, 
+          error: 'Sessão expirada. Solicite um novo link de redefinição de senha.' 
+        };
+      }
+      
+      console.log('✅ Sessão válida encontrada para:', session.user.email);
+      
       // Atualizar senha no Supabase Auth
       const { error: authError } = await supabase.auth.updateUser({ 
         password: newPassword 
@@ -72,25 +104,50 @@ class PasswordService {
       
       if (authError) {
         console.error('❌ Erro ao atualizar senha:', authError);
+        
+        // Tratar erros específicos
+        if (authError.message.includes('same password')) {
+          return { 
+            success: false, 
+            error: 'A nova senha deve ser diferente da senha atual.' 
+          };
+        }
+        
+        if (authError.message.includes('weak password')) {
+          return { 
+            success: false, 
+            error: 'A senha é muito fraca. Use uma senha mais forte.' 
+          };
+        }
+        
         return { success: false, error: authError.message };
       }
       
       // Obter usuário atual
-      const { data: { user } } = await supabase.auth.getUser();
+      const currentUser = session.user;
       
-      if (user) {
-        // Atualizar registro na tabela de usuários
-        const { error: updateError } = await supabase
-          .from(TABLES.USERS)
-          .update({ 
-            password_changed_at: new Date().toISOString(),
-            must_change_password: false,
-            first_login: false
-          })
-          .eq('auth_user_id', user.id);
-        
-        if (updateError) {
-          console.warn('⚠️ Erro ao atualizar registro do usuário:', updateError);
+      if (currentUser) {
+        try {
+          // Atualizar registro na tabela de usuários
+          const { error: updateError } = await supabase
+            .from(TABLES.USERS)
+            .update({ 
+              password_changed_at: new Date().toISOString(),
+              must_change_password: false,
+              first_login: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('auth_user_id', currentUser.id);
+          
+          if (updateError) {
+            console.warn('⚠️ Erro ao atualizar registro do usuário:', updateError);
+            // Não falha o processo, apenas log de warning
+          } else {
+            console.log('✅ Registro do usuário atualizado');
+          }
+        } catch (dbError) {
+          console.warn('⚠️ Erro ao atualizar banco de dados:', dbError);
+          // Não falha o processo, senha já foi alterada no Auth
         }
       }
       

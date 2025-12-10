@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, RefreshCw, ArrowLeft } from 'lucide-react';
-import { supabase } from '@/lib/supabase'; // ✅ Importação adicionada
+import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, RefreshCw, ArrowLeft, Info } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { passwordService } from '@/services/passwordService';
 import { toast } from 'sonner';
 
@@ -18,40 +18,216 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [validatingToken, setValidatingToken] = useState(true);
+  const [sessionValid, setSessionValid] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>({});
+  const [showDebug, setShowDebug] = useState(false);
   
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+
+  // Função para extrair TODOS os parâmetros possíveis da URL
+  const extractAllUrlParams = () => {
+    const currentUrl = window.location.href;
+    const urlObj = new URL(currentUrl);
+    
+    // Query parameters
+    const queryParams: any = {};
+    urlObj.searchParams.forEach((value, key) => {
+      queryParams[key] = value;
+    });
+    
+    // Hash parameters
+    const hashParams: any = {};
+    if (urlObj.hash) {
+      const hashString = urlObj.hash.substring(1);
+      const hashSearchParams = new URLSearchParams(hashString);
+      hashSearchParams.forEach((value, key) => {
+        hashParams[key] = value;
+      });
+    }
+    
+    // Também tentar extrair manualmente do hash se não funcionou com URLSearchParams
+    const manualHashParams: any = {};
+    if (urlObj.hash) {
+      const hashString = urlObj.hash.substring(1);
+      const pairs = hashString.split('&');
+      pairs.forEach(pair => {
+        const [key, value] = pair.split('=');
+        if (key && value) {
+          manualHashParams[decodeURIComponent(key)] = decodeURIComponent(value);
+        }
+      });
+    }
+    
+    return {
+      fullUrl: currentUrl,
+      pathname: urlObj.pathname,
+      search: urlObj.search,
+      hash: urlObj.hash,
+      queryParams,
+      hashParams,
+      manualHashParams
+    };
+  };
 
   useEffect(() => {
-    // Verificar se há um token de reset na URL
-    const accessToken = searchParams.get('access_token');
-    const refreshToken = searchParams.get('refresh_token');
-    
-    if (!accessToken || !refreshToken) {
-      setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
-      return;
-    }
-
-    // Configurar a sessão com os tokens
-    const setSession = async () => {
+    const validateTokenAndSetSession = async () => {
       try {
-        const { error } = await supabase.auth.setSession({
+        console.log('🔍 === INICIANDO DEBUG DE RESET DE SENHA ===');
+        
+        // Capturar TODOS os dados da URL
+        const urlData = extractAllUrlParams();
+        console.log('📍 Dados completos da URL:', urlData);
+        
+        setDebugInfo(urlData);
+        
+        // Tentar extrair tokens de todas as formas possíveis
+        let accessToken = null;
+        let refreshToken = null;
+        let type = null;
+        
+        // Método 1: Query parameters
+        if (urlData.queryParams.access_token) {
+          accessToken = urlData.queryParams.access_token;
+          refreshToken = urlData.queryParams.refresh_token;
+          type = urlData.queryParams.type;
+          console.log('✅ Tokens encontrados em query params');
+        }
+        
+        // Método 2: Hash parameters (URLSearchParams)
+        if (!accessToken && urlData.hashParams.access_token) {
+          accessToken = urlData.hashParams.access_token;
+          refreshToken = urlData.hashParams.refresh_token;
+          type = urlData.hashParams.type;
+          console.log('✅ Tokens encontrados em hash params (URLSearchParams)');
+        }
+        
+        // Método 3: Hash parameters (manual)
+        if (!accessToken && urlData.manualHashParams.access_token) {
+          accessToken = urlData.manualHashParams.access_token;
+          refreshToken = urlData.manualHashParams.refresh_token;
+          type = urlData.manualHashParams.type;
+          console.log('✅ Tokens encontrados em hash params (manual)');
+        }
+        
+        // Método 4: Tentar usar o método nativo do Supabase
+        if (!accessToken) {
+          console.log('🔄 Tentando método nativo do Supabase...');
+          
+          // O Supabase pode processar automaticamente se detectSessionInUrl estiver habilitado
+          const { data: sessionData, error: sessionCheckError } = await supabase.auth.getSession();
+          
+          if (sessionData.session && !sessionCheckError) {
+            console.log('✅ Sessão já processada automaticamente pelo Supabase!');
+            console.log('👤 Usuário da sessão:', sessionData.session.user.email);
+            setSessionValid(true);
+            setValidatingToken(false);
+            return;
+          }
+        }
+        
+        console.log('📋 Tokens extraídos:', {
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          type: type,
+          accessTokenLength: accessToken?.length || 0,
+          refreshTokenLength: refreshToken?.length || 0
+        });
+        
+        // Verificar se temos os tokens necessários
+        if (!accessToken || !refreshToken) {
+          console.error('❌ Tokens não encontrados em nenhum método');
+          console.error('❌ URL completa:', window.location.href);
+          console.error('❌ Hash:', window.location.hash);
+          console.error('❌ Search:', window.location.search);
+          
+          setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
+          setValidatingToken(false);
+          return;
+        }
+        
+        // Verificar se é um link de recovery (se o tipo estiver presente)
+        if (type && type !== 'recovery') {
+          console.error('❌ Tipo de link inválido:', type);
+          setError('Link de redefinição inválido. Solicite um novo link.');
+          setValidatingToken(false);
+          return;
+        }
+        
+        console.log('🔄 Configurando sessão com tokens...');
+        console.log('🔑 Access token (primeiros 50 chars):', accessToken.substring(0, 50) + '...');
+        console.log('🔄 Refresh token (primeiros 50 chars):', refreshToken.substring(0, 50) + '...');
+        
+        // Configurar a sessão com os tokens
+        const { data, error: sessionError } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
         });
         
-        if (error) {
-          console.error('Erro ao configurar sessão:', error);
-          setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
+        console.log('📊 Resultado do setSession:', {
+          hasData: !!data,
+          hasSession: !!data?.session,
+          hasUser: !!data?.user,
+          error: sessionError?.message || 'nenhum'
+        });
+        
+        if (sessionError) {
+          console.error('❌ Erro ao configurar sessão:', sessionError);
+          
+          // Log detalhado do erro
+          console.error('❌ Detalhes do erro:', {
+            message: sessionError.message,
+            status: (sessionError as any).status,
+            code: (sessionError as any).code
+          });
+          
+          // Tratar erros específicos
+          if (sessionError.message.includes('expired') || sessionError.message.includes('Invalid')) {
+            setError('Link de redefinição expirado. Solicite um novo link.');
+          } else if (sessionError.message.includes('invalid')) {
+            setError('Link de redefinição inválido. Solicite um novo link.');
+          } else {
+            setError(`Erro ao processar link: ${sessionError.message}`);
+          }
+          
+          setValidatingToken(false);
+          return;
         }
-      } catch (error) {
-        console.error('Erro ao configurar sessão:', error);
-        setError('Erro ao processar link de redefinição.');
+        
+        if (!data.session || !data.user) {
+          console.error('❌ Sessão não foi criada corretamente');
+          console.error('❌ Data:', data);
+          setError('Erro ao processar link de redefinição. Solicite um novo link.');
+          setValidatingToken(false);
+          return;
+        }
+        
+        console.log('✅ Sessão configurada com sucesso!');
+        console.log('👤 Usuário:', data.user.email);
+        console.log('🆔 User ID:', data.user.id);
+        console.log('🕐 Sessão expira em:', new Date(data.session.expires_at! * 1000));
+        
+        setSessionValid(true);
+        setValidatingToken(false);
+        
+        // Limpar a URL dos parâmetros sensíveis para segurança
+        window.history.replaceState({}, document.title, '/reset-password');
+        
+        toast.success('Link válido! Você pode redefinir sua senha agora.');
+        
+      } catch (error: any) {
+        console.error('❌ Erro inesperado ao processar link:', error);
+        console.error('❌ Stack trace:', error.stack);
+        setError(`Erro inesperado: ${error.message}`);
+        setValidatingToken(false);
       }
     };
 
-    setSession();
-  }, [searchParams]);
+    // Só executar se não estamos em estado de sucesso
+    if (!success) {
+      validateTokenAndSetSession();
+    }
+  }, [success]);
 
   const validatePassword = (password: string): string[] => {
     const errors: string[] = [];
@@ -99,23 +275,43 @@ const ResetPassword = () => {
     setLoading(true);
     
     try {
+      console.log('🔄 Iniciando redefinição de senha...');
+      
+      // Verificar se ainda temos uma sessão válida
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('❌ Sessão não encontrada ou expirada:', sessionError);
+        setError('Sessão expirada. Solicite um novo link de redefinição.');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('✅ Sessão válida encontrada, redefinindo senha...');
+      
       const result = await passwordService.resetPassword(newPassword);
       
       if (result.success) {
+        console.log('✅ Senha redefinida com sucesso!');
         setSuccess(true);
         toast.success('Senha redefinida com sucesso!');
+        
+        // Fazer logout da sessão temporária
+        await supabase.auth.signOut();
         
         // Redirecionar para login após 3 segundos
         setTimeout(() => {
           navigate('/login');
         }, 3000);
       } else {
+        console.error('❌ Erro ao redefinir senha:', result.error);
         setError(result.error || 'Erro ao redefinir senha');
         toast.error(result.error || 'Erro ao redefinir senha');
       }
     } catch (error: any) {
-      setError(error.message || 'Erro ao redefinir senha');
-      toast.error(error.message || 'Erro ao redefinir senha');
+      console.error('❌ Erro inesperado ao redefinir senha:', error);
+      setError(error.message || 'Erro inesperado ao redefinir senha');
+      toast.error(error.message || 'Erro inesperado ao redefinir senha');
     } finally {
       setLoading(false);
     }
@@ -125,6 +321,50 @@ const ResetPassword = () => {
     navigate('/login');
   };
 
+  const handleRequestNewLink = () => {
+    navigate('/login');
+    toast.info('Use a opção "Esqueci minha senha" para solicitar um novo link.');
+  };
+
+  // Tela de validação do token
+  if (validatingToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-12 h-12 bg-[#D5B170] bg-opacity-20 rounded-full flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-[#D5B170] animate-spin" />
+            </div>
+            <CardTitle className="text-xl text-[#101F2E]">Validando Link</CardTitle>
+            <CardDescription>
+              Verificando o link de redefinição de senha...
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDebug(!showDebug)}
+              className="w-full mb-4"
+            >
+              <Info className="mr-2 h-4 w-4" />
+              {showDebug ? 'Ocultar' : 'Mostrar'} Informações de Debug
+            </Button>
+            
+            {showDebug && (
+              <div className="bg-slate-100 p-3 rounded-lg text-xs font-mono">
+                <pre className="whitespace-pre-wrap overflow-auto max-h-40">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Tela de sucesso
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
@@ -135,7 +375,7 @@ const ResetPassword = () => {
             </div>
             <CardTitle className="text-xl text-[#101F2E]">Senha Redefinida!</CardTitle>
             <CardDescription>
-              Sua senha foi alterada com sucesso. Você será redirecionado para a página de login.
+              Sua senha foi alterada com sucesso. Você será redirecionado para a página de login em instantes.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -143,7 +383,7 @@ const ResetPassword = () => {
               onClick={handleBackToLogin}
               className="w-full bg-[#D5B170] hover:bg-[#c4a05f] text-[#101F2E] font-medium"
             >
-              Ir para Login
+              Ir para Login Agora
             </Button>
           </CardContent>
         </Card>
@@ -151,6 +391,60 @@ const ResetPassword = () => {
     );
   }
 
+  // Tela de erro (link inválido)
+  if (!sessionValid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <AlertCircle className="w-6 h-6 text-red-600" />
+            </div>
+            <CardTitle className="text-xl text-[#101F2E]">Link Inválido</CardTitle>
+            <CardDescription className="text-red-600">
+              {error}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDebug(!showDebug)}
+              className="w-full"
+            >
+              <Info className="mr-2 h-4 w-4" />
+              {showDebug ? 'Ocultar' : 'Mostrar'} Informações de Debug
+            </Button>
+            
+            {showDebug && (
+              <div className="bg-slate-100 p-3 rounded-lg text-xs font-mono mb-4">
+                <pre className="whitespace-pre-wrap overflow-auto max-h-40">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </div>
+            )}
+            
+            <Button 
+              onClick={handleRequestNewLink}
+              className="w-full bg-[#D5B170] hover:bg-[#c4a05f] text-[#101F2E] font-medium"
+            >
+              Solicitar Novo Link
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleBackToLogin}
+              className="w-full"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar ao Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Formulário de redefinição de senha
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <Card className="w-full max-w-md">

@@ -91,13 +91,14 @@ const customStorage = {
   }
 };
 
-// Inicializar o cliente Supabase com configurações otimizadas
+// ✅ CORREÇÃO: Habilitar detecção de sessão na URL para reset de senha
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false,
-    storage: customStorage
+    detectSessionInUrl: true, // ✅ HABILITADO para permitir reset de senha
+    storage: customStorage,
+    flowType: 'pkce' // ✅ Usar PKCE flow para maior segurança
   },
   realtime: {
     params: {
