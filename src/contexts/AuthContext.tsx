@@ -445,15 +445,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     handleLogout();
   };
 
+  // ✅ VERSÃO MELHORADA com mais debug
   const resetPassword = async (email: string): Promise<{ success: boolean; error: string | null }> => {
     try {
-      console.log('🔄 Solicitando reset de senha para:', email);
+      console.log('🔄 === INICIANDO PROCESSO DE RESET DE SENHA ===');
+      console.log('📧 Email:', email);
       
+      // Verificar se o usuário existe
       const { data: userExists, error: userCheckError } = await supabase
         .from(TABLES.USERS)
-        .select('id')
+        .select('id, name, email')
         .eq('email', email)
         .single();
+      
+      console.log('👤 Verificação de usuário:', {
+        encontrado: !!userExists,
+        erro: userCheckError?.message || 'nenhum',
+        dadosUsuario: userExists ? { id: userExists.id, name: userExists.name } : null
+      });
       
       if (userCheckError || !userExists) {
         console.error('❌ Usuário não encontrado:', email);
@@ -463,22 +472,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
       
+      // Configurar URLs de redirecionamento
       const baseUrl = window.location.origin;
       const resetUrl = `${baseUrl}/reset-password`;
       
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      console.log('🔗 URLs configuradas:', {
+        baseUrl,
+        resetUrl,
+        currentUrl: window.location.href
+      });
+      
+      // ✅ CONFIGURAÇÕES MAIS ESPECÍFICAS para o reset
+      console.log('📤 Enviando e-mail de reset...');
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: resetUrl,
+        captchaToken: undefined, // Desabilitar captcha
+      });
+      
+      console.log('📨 Resultado do envio:', {
+        data: data,
+        error: error?.message || 'nenhum',
+        errorCode: (error as any)?.code || 'nenhum',
+        errorStatus: (error as any)?.status || 'nenhum'
       });
       
       if (error) {
-        console.error('❌ Erro no reset de senha:', error);
-        return { success: false, error: error.message };
+        console.error('❌ Erro detalhado no reset de senha:', {
+          message: error.message,
+          code: (error as any).code,
+          status: (error as any).status,
+          details: (error as any).details
+        });
+        
+        // Tratar erros específicos
+        if (error.message.includes('rate limit') || error.message.includes('too many')) {
+          return { 
+            success: false, 
+            error: 'Muitas tentativas de redefinição. Aguarde alguns minutos antes de tentar novamente.' 
+          };
+        }
+        
+        if (error.message.includes('email not confirmed')) {
+          return { 
+            success: false, 
+            error: 'E-mail não confirmado. Entre em contato com o suporte.' 
+          };
+        }
+        
+        if (error.message.includes('not authorized')) {
+          return { 
+            success: false, 
+            error: 'Não autorizado a redefinir senha para este e-mail.' 
+          };
+        }
+        
+        return { success: false, error: `Erro ao enviar e-mail: ${error.message}` };
       }
+      
+      console.log('✅ E-mail de reset enviado com sucesso!');
+      console.log('📋 Dados retornados:', data);
       
       return { success: true, error: null };
     } catch (error: any) {
-      console.error('❌ Erro no reset de senha:', error);
-      return { success: false, error: error.message || 'Erro ao solicitar redefinição de senha' };
+      console.error('❌ Erro inesperado no reset de senha:', error);
+      console.error('❌ Stack trace:', error.stack);
+      return { success: false, error: error.message || 'Erro inesperado ao solicitar redefinição de senha' };
     }
   };
 
