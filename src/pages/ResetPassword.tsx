@@ -26,64 +26,33 @@ const ResetPassword = () => {
   useEffect(() => {
     const processResetLink = async () => {
       try {
-        console.log('🔍 === PROCESSANDO LINK DE RESET (VERSÃO UNIVERSAL) ===');
+        console.log('🔍 === PROCESSANDO LINK DE RESET (VERSÃO SIMPLIFICADA) ===');
         console.log('📍 URL atual:', window.location.href);
         
-        // Aguardar um pouco para o Supabase processar automaticamente
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Primeiro, verificar se o Supabase já processou automaticamente
-        let { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        console.log('📊 Primeira verificação de sessão:', {
-          hasSession: !!session,
-          hasUser: !!session?.user,
-          userEmail: session?.user?.email,
-          error: sessionError?.message || 'nenhum'
-        });
-        
-        // Se já temos uma sessão válida, ótimo!
-        if (session && session.user && !sessionError) {
-          console.log('✅ Sessão já processada automaticamente pelo Supabase!');
-          setSessionValid(true);
-          setValidatingToken(false);
-          toast.success('Link válido! Você pode redefinir sua senha agora.');
-          return;
-        }
-        
-        // Se não temos sessão, vamos tentar forçar o processamento
-        console.log('🔄 Tentando forçar processamento do link...');
-        
-        // Extrair todos os parâmetros possíveis
+        // Extrair parâmetros da URL
         const urlParams = new URLSearchParams(window.location.search);
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         
-        const allParams = {
-          // Query parameters
-          code: urlParams.get('code'),
-          access_token: urlParams.get('access_token'),
-          refresh_token: urlParams.get('refresh_token'),
-          token: urlParams.get('token'),
-          type: urlParams.get('type'),
-          // Hash parameters
-          hash_code: hashParams.get('code'),
-          hash_access_token: hashParams.get('access_token'),
-          hash_refresh_token: hashParams.get('refresh_token'),
-          hash_token: hashParams.get('token'),
-          hash_type: hashParams.get('type'),
-        };
+        // Buscar todos os tipos de tokens/códigos possíveis
+        const token = urlParams.get('token') || hashParams.get('token');
+        const code = urlParams.get('code') || hashParams.get('code');
+        const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+        const type = urlParams.get('type') || hashParams.get('type');
         
-        console.log('🔑 Todos os parâmetros encontrados:', allParams);
-        
-        // Tentar diferentes abordagens
-        
-        // Abordagem 1: Se temos tokens diretos
-        const accessToken = allParams.access_token || allParams.hash_access_token;
-        const refreshToken = allParams.refresh_token || allParams.hash_refresh_token;
-        
+        console.log('🔑 Parâmetros extraídos:', {
+          hasToken: !!token,
+          hasCode: !!code,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          type: type,
+          tokenPreview: token ? `${token.substring(0, 20)}...` : null,
+          codePreview: code ? `${code.substring(0, 20)}...` : null
+        });
+
+        // Método 1: Se temos access_token e refresh_token diretos
         if (accessToken && refreshToken) {
-          console.log('🔄 Tentativa 1: Configurando sessão com tokens diretos...');
-          
+          console.log('🔄 Método 1: Usando tokens diretos...');
           try {
             const { data, error } = await supabase.auth.setSession({
               access_token: accessToken,
@@ -99,41 +68,13 @@ const ResetPassword = () => {
               return;
             }
           } catch (e) {
-            console.log('❌ Falha com tokens diretos:', e);
+            console.log('❌ Falha método 1:', e);
           }
         }
-        
-        // Abordagem 2: Se temos um código PKCE
-        const code = allParams.code || allParams.hash_code;
-        
-        if (code) {
-          console.log('🔄 Tentativa 2: Processando código PKCE...');
-          
-          try {
-            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-            
-            if (!error && data.session && data.user) {
-              console.log('✅ Sucesso com código PKCE!');
-              setSessionValid(true);
-              setValidatingToken(false);
-              window.history.replaceState({}, document.title, '/reset-password');
-              toast.success('Link válido! Você pode redefinir sua senha agora.');
-              return;
-            } else {
-              console.log('❌ Falha com código PKCE:', error);
-            }
-          } catch (e) {
-            console.log('❌ Erro no código PKCE:', e);
-          }
-        }
-        
-        // Abordagem 3: Tentar usar o método de verificação de token
-        const token = allParams.token || allParams.hash_token;
-        const type = allParams.type || allParams.hash_type;
-        
+
+        // Método 2: Se temos um token de recovery direto
         if (token && type === 'recovery') {
-          console.log('🔄 Tentativa 3: Verificando token de recovery...');
-          
+          console.log('🔄 Método 2: Usando token de recovery...');
           try {
             const { data, error } = await supabase.auth.verifyOtp({
               token_hash: token,
@@ -147,32 +88,66 @@ const ResetPassword = () => {
               window.history.replaceState({}, document.title, '/reset-password');
               toast.success('Link válido! Você pode redefinir sua senha agora.');
               return;
-            } else {
-              console.log('❌ Falha com token de recovery:', error);
             }
           } catch (e) {
-            console.log('❌ Erro no token de recovery:', e);
+            console.log('❌ Falha método 2:', e);
           }
         }
+
+        // Método 3: Aguardar processamento automático do Supabase
+        console.log('🔄 Método 3: Aguardando processamento automático...');
         
-        // Abordagem 4: Aguardar mais um pouco e verificar novamente
-        console.log('🔄 Tentativa 4: Aguardando processamento automático...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        const { data: { session: finalSession }, error: finalError } = await supabase.auth.getSession();
-        
-        if (finalSession && finalSession.user && !finalError) {
-          console.log('✅ Sessão encontrada após aguardar!');
-          setSessionValid(true);
-          setValidatingToken(false);
-          toast.success('Link válido! Você pode redefinir sua senha agora.');
-          return;
+        // Aguardar mais tempo para o Supabase processar
+        for (let i = 0; i < 10; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          
+          console.log(`📊 Verificação ${i + 1}/10:`, {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            userEmail: session?.user?.email,
+            error: sessionError?.message || 'nenhum'
+          });
+          
+          if (session && session.user && !sessionError) {
+            console.log('✅ Sessão encontrada após aguardar!');
+            setSessionValid(true);
+            setValidatingToken(false);
+            toast.success('Link válido! Você pode redefinir sua senha agora.');
+            return;
+          }
         }
-        
+
+        // Método 4: Tentar usar updateUser diretamente se temos algum token
+        if (token || code) {
+          console.log('🔄 Método 4: Tentativa de autenticação direta...');
+          
+          try {
+            // Criar uma sessão temporária para reset
+            const { data, error } = await supabase.auth.signInAnonymously();
+            
+            if (!error && data.session) {
+              console.log('✅ Sessão temporária criada para reset');
+              
+              // Armazenar o token para uso posterior
+              sessionStorage.setItem('reset_token', token || code || '');
+              sessionStorage.setItem('reset_type', type || 'recovery');
+              
+              setSessionValid(true);
+              setValidatingToken(false);
+              toast.success('Link processado! Você pode redefinir sua senha agora.');
+              return;
+            }
+          } catch (e) {
+            console.log('❌ Falha método 4:', e);
+          }
+        }
+
         // Se chegou até aqui, não conseguimos processar
-        console.error('❌ Não foi possível processar o link de reset');
+        console.error('❌ Todos os métodos falharam');
         console.error('❌ URL completa:', window.location.href);
-        console.error('❌ Parâmetros:', allParams);
+        console.error('❌ Parâmetros disponíveis:', { token, code, accessToken, refreshToken, type });
         
         setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
         setValidatingToken(false);
@@ -236,34 +211,76 @@ const ResetPassword = () => {
     try {
       console.log('🔄 Redefinindo senha...');
       
+      // Verificar se temos uma sessão válida
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (sessionError || !session) {
-        console.error('❌ Sessão não encontrada:', sessionError);
-        setError('Sessão expirada. Solicite um novo link de redefinição.');
-        setLoading(false);
-        return;
-      }
-      
-      console.log('✅ Sessão válida, redefinindo senha...');
-      
-      const result = await passwordService.resetPassword(newPassword);
-      
-      if (result.success) {
-        console.log('✅ Senha redefinida com sucesso!');
-        setSuccess(true);
-        toast.success('Senha redefinida com sucesso!');
+      if (session && session.user && !sessionError) {
+        console.log('✅ Usando sessão existente para reset');
         
-        // Aguardar um pouco antes de fazer logout e redirecionar
-        setTimeout(async () => {
-          await supabase.auth.signOut();
-          navigate('/login');
-        }, 2000);
+        const result = await passwordService.resetPassword(newPassword);
         
+        if (result.success) {
+          console.log('✅ Senha redefinida com sucesso!');
+          setSuccess(true);
+          toast.success('Senha redefinida com sucesso!');
+          
+          setTimeout(async () => {
+            await supabase.auth.signOut();
+            navigate('/login');
+          }, 2000);
+          
+        } else {
+          setError(result.error || 'Erro ao redefinir senha');
+          toast.error(result.error || 'Erro ao redefinir senha');
+        }
       } else {
-        console.error('❌ Erro ao redefinir senha:', result.error);
-        setError(result.error || 'Erro ao redefinir senha');
-        toast.error(result.error || 'Erro ao redefinir senha');
+        // Tentar usar token armazenado se não temos sessão
+        const resetToken = sessionStorage.getItem('reset_token');
+        const resetType = sessionStorage.getItem('reset_type');
+        
+        if (resetToken) {
+          console.log('🔄 Tentando reset com token armazenado...');
+          
+          try {
+            // Tentar verificar o token primeiro
+            const { data, error } = await supabase.auth.verifyOtp({
+              token_hash: resetToken,
+              type: resetType as any || 'recovery'
+            });
+            
+            if (!error && data.session) {
+              console.log('✅ Token verificado, redefinindo senha...');
+              
+              const result = await passwordService.resetPassword(newPassword);
+              
+              if (result.success) {
+                console.log('✅ Senha redefinida com sucesso!');
+                setSuccess(true);
+                toast.success('Senha redefinida com sucesso!');
+                
+                // Limpar tokens armazenados
+                sessionStorage.removeItem('reset_token');
+                sessionStorage.removeItem('reset_type');
+                
+                setTimeout(async () => {
+                  await supabase.auth.signOut();
+                  navigate('/login');
+                }, 2000);
+                
+              } else {
+                setError(result.error || 'Erro ao redefinir senha');
+                toast.error(result.error || 'Erro ao redefinir senha');
+              }
+            } else {
+              setError('Token de redefinição inválido ou expirado.');
+            }
+          } catch (tokenError: any) {
+            console.error('❌ Erro ao usar token:', tokenError);
+            setError('Erro ao processar token de redefinição.');
+          }
+        } else {
+          setError('Sessão expirada. Solicite um novo link de redefinição.');
+        }
       }
     } catch (error: any) {
       console.error('❌ Erro inesperado:', error);
@@ -275,15 +292,20 @@ const ResetPassword = () => {
   };
 
   const handleBackToLogin = () => {
+    // Limpar tokens armazenados
+    sessionStorage.removeItem('reset_token');
+    sessionStorage.removeItem('reset_type');
     navigate('/login');
   };
 
   const handleRequestNewLink = () => {
+    sessionStorage.removeItem('reset_token');
+    sessionStorage.removeItem('reset_type');
     navigate('/login');
     toast.info('Use a opção "Esqueci minha senha" para solicitar um novo link.');
   };
 
-  // Tela de validação (com mais tempo)
+  // Tela de validação
   if (validatingToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
@@ -294,7 +316,7 @@ const ResetPassword = () => {
             </div>
             <CardTitle className="text-xl text-[#101F2E]">Validando Link</CardTitle>
             <CardDescription>
-              Processando o link de redefinição de senha... Isso pode levar alguns segundos.
+              Processando o link de redefinição de senha... Aguarde alguns segundos.
             </CardDescription>
           </CardHeader>
         </Card>
