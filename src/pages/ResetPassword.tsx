@@ -26,91 +26,145 @@ const ResetPassword = () => {
   useEffect(() => {
     const validateTokenAndSetSession = async () => {
       try {
-        console.log('🔍 Verificando link de reset de senha...');
+        console.log('🔍 === PROCESSANDO LINK DE RESET (VERSÃO PKCE) ===');
         console.log('📍 URL atual:', window.location.href);
         
-        // Aguardar um pouco para o Supabase processar a URL
+        // Extrair parâmetros da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        
+        // Verificar se temos um código PKCE
+        const code = urlParams.get('code') || hashParams.get('code');
+        
+        // Ou tokens diretos (fluxo antigo)
+        const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+        const type = urlParams.get('type') || hashParams.get('type');
+        
+        console.log('🔑 Parâmetros encontrados:', {
+          hasCode: !!code,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          type: type,
+          code: code ? `${code.substring(0, 20)}...` : null
+        });
+        
+        // Fluxo 1: Se temos um código PKCE, trocar por tokens
+        if (code) {
+          console.log('🔄 Processando fluxo PKCE com código...');
+          
+          try {
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            
+            console.log('📊 Resultado da troca de código:', {
+              hasData: !!data,
+              hasSession: !!data?.session,
+              hasUser: !!data?.user,
+              error: error?.message || 'nenhum'
+            });
+            
+            if (error) {
+              console.error('❌ Erro ao trocar código por sessão:', error);
+              
+              if (error.message.includes('expired') || error.message.includes('invalid')) {
+                setError('Link de redefinição expirado ou inválido. Solicite um novo link.');
+              } else {
+                setError(`Erro ao processar link: ${error.message}`);
+              }
+              setValidatingToken(false);
+              return;
+            }
+            
+            if (data.session && data.user) {
+              console.log('✅ Sessão PKCE criada com sucesso!');
+              console.log('👤 Usuário:', data.user.email);
+              
+              setSessionValid(true);
+              setValidatingToken(false);
+              
+              // Limpar URL
+              window.history.replaceState({}, document.title, '/reset-password');
+              toast.success('Link válido! Você pode redefinir sua senha agora.');
+              return;
+            }
+          } catch (pkceError: any) {
+            console.error('❌ Erro no fluxo PKCE:', pkceError);
+            setError(`Erro ao processar link: ${pkceError.message}`);
+            setValidatingToken(false);
+            return;
+          }
+        }
+        
+        // Fluxo 2: Tokens diretos (fluxo legado)
+        if (accessToken && refreshToken) {
+          console.log('🔄 Processando fluxo com tokens diretos...');
+          
+          try {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            
+            if (error) {
+              console.error('❌ Erro ao configurar sessão:', error);
+              setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
+              setValidatingToken(false);
+              return;
+            }
+            
+            if (data.session && data.user) {
+              console.log('✅ Sessão com tokens diretos criada!');
+              setSessionValid(true);
+              setValidatingToken(false);
+              
+              // Limpar URL
+              window.history.replaceState({}, document.title, '/reset-password');
+              toast.success('Link válido! Você pode redefinir sua senha agora.');
+              return;
+            }
+          } catch (tokenError: any) {
+            console.error('❌ Erro no fluxo de tokens:', tokenError);
+            setError(`Erro ao processar link: ${tokenError.message}`);
+            setValidatingToken(false);
+            return;
+          }
+        }
+        
+        // Fluxo 3: Verificar se o Supabase já processou automaticamente
+        console.log('🔄 Verificando se há sessão existente...');
+        
+        // Aguardar um pouco para o Supabase processar
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Verificar se o Supabase já processou automaticamente
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        console.log('📊 Status da sessão:', {
+        console.log('📊 Verificação de sessão existente:', {
           hasSession: !!session,
           hasUser: !!session?.user,
           userEmail: session?.user?.email,
           error: sessionError?.message || 'nenhum'
         });
         
-        if (sessionError) {
-          console.error('❌ Erro na sessão:', sessionError);
-          setError('Erro ao processar link de redefinição. Tente novamente.');
-          setValidatingToken(false);
-          return;
-        }
-        
-        if (session && session.user) {
-          console.log('✅ Sessão válida encontrada!');
-          console.log('👤 Usuário:', session.user.email);
-          
+        if (session && session.user && !sessionError) {
+          console.log('✅ Sessão já existente encontrada!');
           setSessionValid(true);
           setValidatingToken(false);
-          
           toast.success('Link válido! Você pode redefinir sua senha agora.');
           return;
         }
         
-        // Se não há sessão, tentar extrair tokens manualmente da URL
-        console.log('🔄 Tentando extrair tokens da URL...');
+        // Se chegou até aqui, não conseguimos processar o link
+        console.error('❌ Não foi possível processar o link de reset');
+        console.error('❌ URL completa:', window.location.href);
+        console.error('❌ Parâmetros disponíveis:', { code, accessToken, refreshToken, type });
         
-        const urlParams = new URLSearchParams(window.location.search);
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        
-        let accessToken = urlParams.get('access_token') || hashParams.get('access_token');
-        let refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
-        let type = urlParams.get('type') || hashParams.get('type');
-        
-        console.log('🔑 Tokens encontrados:', {
-          hasAccessToken: !!accessToken,
-          hasRefreshToken: !!refreshToken,
-          type: type
-        });
-        
-        if (accessToken && refreshToken) {
-          console.log('🔄 Configurando sessão manualmente...');
-          
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          
-          if (error) {
-            console.error('❌ Erro ao configurar sessão:', error);
-            setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
-            setValidatingToken(false);
-            return;
-          }
-          
-          if (data.session && data.user) {
-            console.log('✅ Sessão configurada com sucesso!');
-            setSessionValid(true);
-            setValidatingToken(false);
-            
-            // Limpar URL
-            window.history.replaceState({}, document.title, '/reset-password');
-            toast.success('Link válido! Você pode redefinir sua senha agora.');
-            return;
-          }
-        }
-        
-        // Se chegou até aqui, o link é inválido
-        console.error('❌ Link de reset inválido ou expirado');
         setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
         setValidatingToken(false);
         
       } catch (error: any) {
-        console.error('❌ Erro inesperado:', error);
-        setError('Erro inesperado ao processar link. Tente novamente.');
+        console.error('❌ Erro inesperado ao processar link:', error);
+        console.error('❌ Stack trace:', error.stack);
+        setError(`Erro inesperado: ${error.message}`);
         setValidatingToken(false);
       }
     };
@@ -167,13 +221,24 @@ const ResetPassword = () => {
     try {
       console.log('🔄 Redefinindo senha...');
       
+      // Verificar se ainda temos uma sessão válida
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
+      console.log('📊 Status da sessão para reset:', {
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        userEmail: session?.user?.email,
+        error: sessionError?.message || 'nenhum'
+      });
+      
       if (sessionError || !session) {
+        console.error('❌ Sessão não encontrada ou expirada:', sessionError);
         setError('Sessão expirada. Solicite um novo link de redefinição.');
         setLoading(false);
         return;
       }
+      
+      console.log('✅ Sessão válida, procedendo com reset...');
       
       const result = await passwordService.resetPassword(newPassword);
       
@@ -182,19 +247,19 @@ const ResetPassword = () => {
         setSuccess(true);
         toast.success('Senha redefinida com sucesso!');
         
-        // Fazer logout da sessão temporária
-        await supabase.auth.signOut();
-        
-        // Redirecionar para login após 3 segundos
-        setTimeout(() => {
+        // Fazer logout da sessão temporária após um delay
+        setTimeout(async () => {
+          await supabase.auth.signOut();
           navigate('/login');
-        }, 3000);
+        }, 2000);
+        
       } else {
+        console.error('❌ Erro ao redefinir senha:', result.error);
         setError(result.error || 'Erro ao redefinir senha');
         toast.error(result.error || 'Erro ao redefinir senha');
       }
     } catch (error: any) {
-      console.error('❌ Erro ao redefinir senha:', error);
+      console.error('❌ Erro inesperado ao redefinir senha:', error);
       setError(error.message || 'Erro inesperado ao redefinir senha');
       toast.error(error.message || 'Erro inesperado ao redefinir senha');
     } finally {
