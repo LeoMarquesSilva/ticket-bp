@@ -8,7 +8,8 @@ import {
   Filter,
   SlidersHorizontal,
   Circle,
-  ChevronDown
+  ChevronDown,
+  UserPlus
 } from 'lucide-react';
 import { 
   Tooltip, 
@@ -49,6 +50,8 @@ interface TicketHeaderProps {
   user: { role: string; id?: string } | null;
   setShowCreateForm: (show: boolean) => void;
   onlineUsersCount?: number;
+  // Novas props para criar ticket para usuário
+  setShowCreateForUserModal?: (show: boolean) => void;
 }
 
 const TicketHeader: React.FC<TicketHeaderProps> = ({
@@ -57,7 +60,8 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   supportUsers,
   user,
   setShowCreateForm,
-  onlineUsersCount = 0
+  onlineUsersCount = 0,
+  setShowCreateForUserModal
 }) => {
   const isAdmin = user?.role === 'admin';
   const isSupport = user?.role === 'support';
@@ -400,17 +404,47 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
               </Popover>
             )}
             
-            {/* Botão para criar novo ticket - APENAS para usuários comuns */}
-            {isUser && (
-              <Button
-                onClick={() => setShowCreateForm(true)}
-                size="sm"
-                className="bg-[#D5B170] hover:bg-[#c9a25e] text-[#101F2E] font-medium shadow-md"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Ticket
-              </Button>
-            )}
+            {/* Botões de criação de tickets */}
+            <div className="flex items-center gap-2">
+              {/* Botão para criar novo ticket - APENAS para usuários comuns */}
+              {isUser && (
+                <Button
+                  onClick={() => setShowCreateForm(true)}
+                  size="sm"
+                  className="bg-[#D5B170] hover:bg-[#c9a25e] text-[#101F2E] font-medium shadow-md"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Ticket
+                </Button>
+              )}
+              
+              {/* Botões para equipe (admin, support, lawyer) */}
+              {isStaff && (
+                <>
+            
+                  {/* Botão para criar ticket para usuário */}
+                  {setShowCreateForUserModal && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => setShowCreateForUserModal(true)}
+                            size="sm"
+                            className="bg-[#D5B170] hover:bg-[#c9a25e] text-[#101F2E] font-medium shadow-md"
+                          >
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            + Ticket
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Criar ticket em nome de um usuário</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -427,7 +461,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                     variant={view === 'list' ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setView('list')}
-                                    className={view === 'list' ? 'bg-[#101F2E] hover:bg-[#1c3651] text-white' : ''}
+                    className={view === 'list' ? 'bg-[#101F2E] hover:bg-[#1c3651] text-white' : ''}
                   >
                     <List className="h-4 w-4" />
                   </Button>

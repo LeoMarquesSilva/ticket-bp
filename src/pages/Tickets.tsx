@@ -15,6 +15,7 @@ import TicketChatPanel from '@/components/TicketChatPanel';
 import SimpleTicketCard from '@/components/SimpleTicketCard';
 import TicketFilters from '@/components/TicketFilters';
 import CreateTicketModal from '@/components/CreateTicketModal';
+import CreateTicketForUserModal from '@/components/CreateTicketForUserModal';
 import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
 import { useChatContext } from '@/contexts/ChatContext';
 
@@ -41,6 +42,16 @@ interface CreateTicketData {
   description: string;
   category: string;
   subcategory: string;
+}
+
+interface CreateTicketForUserData {
+  title: string;
+  description: string;
+  category: string;
+  subcategory?: string;
+  userId: string;
+  userName: string;
+  userDepartment?: string;
 }
 
 const Tickets = () => {
@@ -71,7 +82,9 @@ const Tickets = () => {
   const { setActiveChatId } = useChatContext();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+  const [showCreateForUserModal, setShowCreateForUserModal] = useState(false);
+
+
   // Referências para controlar inscrições e evitar vazamentos de memória
   const channelsRef = useRef<{
     system?: ReturnType<typeof supabase.channel>;
@@ -88,8 +101,9 @@ const Tickets = () => {
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   
   // Verificar se o usuário é "user" para mostrar o modal em vez do formulário embutido
-  const shouldUseModal = user?.role === 'user';
-
+// Determinar se deve usar modal ou formulário inline
+const shouldUseModal = user?.role === 'user';
+const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role === 'lawyer'; // ✅ ADICIONAR ESTA LINHA
   // NOVO: Função para configurar subscription de tickets em tempo real
   const setupTicketsChannel = () => {
     if (!user?.id) return;
@@ -1022,6 +1036,43 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
   }
 };
 
+const handleCreateTicketForUser = async (ticketData: CreateTicketForUserData) => {
+  if (!user || !isStaff) {
+    toast.error('Você não tem permissão para criar tickets em nome de usuários');
+    return;
+  }
+
+  try {
+    console.log('Creating ticket for user:', ticketData);
+    
+    // Primeiro, criar o ticket
+    const newTicket = await TicketService.createTicket({
+      title: ticketData.title,
+      description: ticketData.description,
+      category: ticketData.category,
+      subcategory: ticketData.subcategory,
+      createdBy: ticketData.userId,
+      createdByName: ticketData.userName,
+      createdByDepartment: ticketData.userDepartment,
+    });
+    
+    // Depois, atribuir ao criador (membro da equipe)
+    if (newTicket && newTicket.id) {
+      await handleUpdateTicket(newTicket.id, {
+        assignedTo: user.id,
+        assignedToName: user.name,
+        status: 'in_progress'
+      });
+      
+      setShowCreateForUserModal(false);
+      toast.success(`Ticket criado e atribuído com sucesso para ${ticketData.userName}!`);
+    }
+  } catch (error) {
+    console.error('Error creating ticket for user:', error);
+    toast.error('Erro ao criar ticket para usuário');
+  }
+};
+
 const handleUpdateTicket = async (ticketId: string, updates: Record<string, unknown>) => {
   try {
     console.log('Updating ticket:', ticketId, updates);
@@ -1381,6 +1432,7 @@ return (
         view={view}
         setView={handleViewChange}
         setShowCreateForm={setShowCreateForm}
+        setShowCreateForUserModal={setShowCreateForUserModal}
         supportUsers={supportUsers}
         user={user}
         onlineUsersCount={getOnlineStaff().length}
@@ -1436,6 +1488,18 @@ return (
         </div>
       )}
     </div>
+
+        {/* Modal para criação de ticket em nome de usuário (para equipe) */}
+        {isStaff && (
+          <CreateTicketForUserModal
+            isOpen={showCreateForUserModal}
+            onClose={() => setShowCreateForUserModal(false)}
+            onSuccess={() => {
+              // Modal já criou o ticket internamente, só precisamos fechar
+              setShowCreateForUserModal(false);
+            }}
+          />
+        )}
 
     {/* Conteúdo principal - ocupa todo o espaço restante */}
     <div className="flex-1 flex overflow-hidden w-full h-full">
