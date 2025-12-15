@@ -40,9 +40,29 @@ const NPSModal: React.FC<NPSModalProps> = ({
   }>({});
   const [showMandatoryWarning, setShowMandatoryWarning] = useState(false);
 
+  // Constantes para validação de comentário
+  const MIN_COMMENT_LENGTH = 10; // Mínimo de 10 caracteres
+
   // Função para verificar se o comentário é obrigatório
   const isCommentRequired = () => {
     return serviceScore !== null && serviceScore < 7;
+  };
+
+  // Função para validar o comprimento do comentário
+  const validateCommentLength = (text: string) => {
+    return text.trim().length >= MIN_COMMENT_LENGTH;
+  };
+
+  // Função para obter mensagem de erro do comentário
+  const getCommentErrorMessage = () => {
+    const trimmedComment = comment.trim();
+    if (!trimmedComment && isCommentRequired()) {
+      return 'Por favor, deixe um comentário sobre o atendimento para nos ajudar a melhorar';
+    }
+    if (trimmedComment && !validateCommentLength(trimmedComment)) {
+      return `O comentário deve ter pelo menos ${MIN_COMMENT_LENGTH} caracteres (atual: ${trimmedComment.length})`;
+    }
+    return null;
   };
 
   const handleRequestStep = () => {
@@ -52,6 +72,12 @@ const NPSModal: React.FC<NPSModalProps> = ({
     }
 
     if (requestFulfilled === false && !notFulfilledReason.trim()) {
+      setErrors(prev => ({ ...prev, notFulfilledReason: true }));
+      return;
+    }
+
+    // Validar comprimento mínimo da razão quando não foi atendida
+    if (requestFulfilled === false && notFulfilledReason.trim().length < MIN_COMMENT_LENGTH) {
       setErrors(prev => ({ ...prev, notFulfilledReason: true }));
       return;
     }
@@ -71,8 +97,22 @@ const NPSModal: React.FC<NPSModalProps> = ({
   };
 
   const handleSubmit = () => {
-    // Validar comentário apenas se for obrigatório (nota < 7)
-    if (isCommentRequired() && !comment.trim()) {
+    const trimmedComment = comment.trim();
+    
+    // Validar comentário se for obrigatório (nota < 7)
+    if (isCommentRequired()) {
+      if (!trimmedComment) {
+        setErrors(prev => ({ ...prev, comment: true }));
+        return;
+      }
+      if (!validateCommentLength(trimmedComment)) {
+        setErrors(prev => ({ ...prev, comment: true }));
+        return;
+      }
+    }
+
+    // Se comentário foi fornecido (mesmo sendo opcional), validar comprimento
+    if (trimmedComment && !validateCommentLength(trimmedComment)) {
       setErrors(prev => ({ ...prev, comment: true }));
       return;
     }
@@ -82,7 +122,7 @@ const NPSModal: React.FC<NPSModalProps> = ({
         requestFulfilled,
         notFulfilledReason: !requestFulfilled ? notFulfilledReason.trim() : undefined,
         serviceScore,
-        comment: comment.trim()
+        comment: trimmedComment
       });
       resetForm();
     }
@@ -119,6 +159,18 @@ const NPSModal: React.FC<NPSModalProps> = ({
     if (scoreValue <= 6) return 'Insatisfeito';
     if (scoreValue <= 8) return 'Satisfeito';
     return 'Muito Satisfeito';
+  };
+
+  // Função para obter mensagem de erro da razão de não atendimento
+  const getNotFulfilledReasonError = () => {
+    const trimmedReason = notFulfilledReason.trim();
+    if (!trimmedReason) {
+      return 'Por favor, explique por que sua solicitação não foi atendida';
+    }
+    if (trimmedReason.length < MIN_COMMENT_LENGTH) {
+      return `A explicação deve ter pelo menos ${MIN_COMMENT_LENGTH} caracteres (atual: ${trimmedReason.length})`;
+    }
+    return null;
   };
 
   return (
@@ -201,19 +253,29 @@ const NPSModal: React.FC<NPSModalProps> = ({
                     value={notFulfilledReason}
                     onChange={(e) => {
                       setNotFulfilledReason(e.target.value);
-                      if (e.target.value.trim()) {
+                      if (e.target.value.trim() && e.target.value.trim().length >= MIN_COMMENT_LENGTH) {
                         setErrors(prev => ({ ...prev, notFulfilledReason: false }));
                       }
                       setShowMandatoryWarning(false);
                     }}
-                    placeholder="Explique por que sua solicitação não foi atendida..."
+                    placeholder={`Explique por que sua solicitação não foi atendida... (mínimo ${MIN_COMMENT_LENGTH} caracteres)`}
                     className={`min-h-[80px] border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] ${
                       errors.notFulfilledReason ? 'border-red-500' : ''
                     }`}
                   />
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-500">
+                      {notFulfilledReason.trim().length}/{MIN_COMMENT_LENGTH} caracteres mínimos
+                    </span>
+                    {notFulfilledReason.trim().length > 0 && notFulfilledReason.trim().length < MIN_COMMENT_LENGTH && (
+                      <span className="text-xs text-amber-600">
+                        Faltam {MIN_COMMENT_LENGTH - notFulfilledReason.trim().length} caracteres
+                      </span>
+                    )}
+                  </div>
                   {errors.notFulfilledReason && (
                     <p className="text-xs text-red-500">
-                      Por favor, explique por que sua solicitação não foi atendida
+                      {getNotFulfilledReasonError()}
                     </p>
                   )}
                 </div>
@@ -323,25 +385,53 @@ const NPSModal: React.FC<NPSModalProps> = ({
                   value={comment}
                   onChange={(e) => {
                     setComment(e.target.value);
-                    if (e.target.value.trim() || !isCommentRequired()) {
+                    const trimmed = e.target.value.trim();
+                    if (!isCommentRequired() && !trimmed) {
+                      // Se não é obrigatório e está vazio, não há erro
+                      setErrors(prev => ({ ...prev, comment: false }));
+                    } else if (trimmed && validateCommentLength(trimmed)) {
+                      // Se tem conteúdo e atende o mínimo, não há erro
+                      setErrors(prev => ({ ...prev, comment: false }));
+                    } else if (isCommentRequired() && trimmed && validateCommentLength(trimmed)) {
+                      // Se é obrigatório, tem conteúdo e atende o mínimo, não há erro
                       setErrors(prev => ({ ...prev, comment: false }));
                     }
                     setShowMandatoryWarning(false);
                   }}
                   placeholder={
                     isCommentRequired()
-                      ? "Conte-nos mais sobre sua experiência para nos ajudar a melhorar o atendimento..."
-                      : "Conte-nos mais sobre sua experiência, sugestões ou elogios (opcional)..."
+                      ? `Conte-nos mais sobre sua experiência para nos ajudar a melhorar o atendimento... (mínimo ${MIN_COMMENT_LENGTH} caracteres)`
+                      : `Conte-nos mais sobre sua experiência, sugestões ou elogios (opcional, mas se fornecido, mínimo ${MIN_COMMENT_LENGTH} caracteres)...`
                   }
                   className={`min-h-[120px] border-slate-300 focus:border-[#D5B170] focus:ring-[#D5B170] ${
                     errors.comment ? 'border-red-500' : ''
                   }`}
                 />
+                
+                {/* Contador de caracteres */}
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500">
+                    {comment.trim().length} caracteres
+                    {(isCommentRequired() || comment.trim().length > 0) && ` (mínimo ${MIN_COMMENT_LENGTH})`}
+                  </span>
+                  {comment.trim().length > 0 && comment.trim().length < MIN_COMMENT_LENGTH && (
+                    <span className="text-xs text-amber-600">
+                      Faltam {MIN_COMMENT_LENGTH - comment.trim().length} caracteres
+                    </span>
+                  )}
+                  {comment.trim().length >= MIN_COMMENT_LENGTH && (
+                    <span className="text-xs text-green-600">
+                      ✓ Comprimento adequado
+                    </span>
+                  )}
+                </div>
+
                 {errors.comment && (
                   <p className="text-xs text-red-500">
-                    Por favor, deixe um comentário sobre o atendimento para nos ajudar a melhorar
+                    {getCommentErrorMessage()}
                   </p>
                 )}
+                
                 <p className="text-xs text-slate-500">
                   {isCommentRequired() ? (
                     <>
@@ -399,7 +489,12 @@ const NPSModal: React.FC<NPSModalProps> = ({
                 <Button
                   onClick={handleSubmit}
                   className="flex-1 bg-gradient-to-r from-[#101F2E] to-[#2a3f52] hover:from-[#0a1520] hover:to-[#1f3240] text-white"
-                  disabled={isCommentRequired() && !comment.trim()}
+                  disabled={
+                    // Desabilitar se comentário é obrigatório e não atende os critérios
+                    (isCommentRequired() && (!comment.trim() || !validateCommentLength(comment.trim()))) ||
+                    // Ou se comentário foi fornecido mas não atende o mínimo
+                    (comment.trim() && !validateCommentLength(comment.trim()))
+                  }
                 >
                   Enviar Avaliação
                 </Button>
