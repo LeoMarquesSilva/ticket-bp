@@ -3,6 +3,7 @@ import { UserService } from './userService';
 import { executeWithRetry, isOnline } from '../utils/supabaseHelpers';
 import { saveForLater } from '../utils/offlineStorage';
 import ticketEventService from './ticketEventService';
+import { notifyDetractorFeedback } from './webhookService';
 
 export interface Ticket {
   id: string;
@@ -401,6 +402,18 @@ static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedback
     
     const now = new Date().toISOString();
     
+    // Buscar dados completos do ticket antes de atualizar
+    const { data: ticketData, error: fetchError } = await supabase
+      .from(TABLES.TICKETS)
+      .select('*')
+      .eq('id', ticketId)
+      .single();
+
+    if (fetchError) {
+      console.error('Erro ao buscar dados do ticket:', fetchError);
+      throw fetchError;
+    }
+    
     // Atualizar o ticket com os dados de feedback - mantém status como 'resolved'
     const { error } = await supabase
       .from(TABLES.TICKETS)
@@ -418,6 +431,38 @@ static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedback
     if (error) {
       console.error('Erro ao atualizar ticket com feedback:', error);
       throw error;
+    }
+
+    // Se o feedback for de detrator (0-6), enviar webhook para n8n
+    if (feedbackData.serviceScore <= 6) {
+      try {
+        // Buscar email do usuário criador
+        const { data: userData } = await supabase
+          .from(TABLES.USERS)
+          .select('email')
+          .eq('id', ticketData.created_by)
+          .single();
+
+        await notifyDetractorFeedback({
+          ticketId: ticketId,
+          ticketTitle: ticketData.title || `Ticket #${ticketId.slice(-8)}`,
+          serviceScore: feedbackData.serviceScore,
+          comment: feedbackData.comment,
+          requestFulfilled: feedbackData.requestFulfilled,
+          notFulfilledReason: feedbackData.notFulfilledReason,
+          createdByName: ticketData.created_by_name || 'Não informado',
+          createdByEmail: userData?.email,
+          assignedToName: ticketData.assigned_to_name || 'Não atribuído',
+          category: ticketData.category,
+          subcategory: ticketData.subcategory,
+          createdAt: ticketData.created_at,
+          resolvedAt: ticketData.resolved_at,
+          feedbackSubmittedAt: now,
+        });
+      } catch (webhookError) {
+        // Não falhar o processo se o webhook falhar
+        console.error('Erro ao enviar webhook de detrator:', webhookError);
+      }
     }
 
     return true;
