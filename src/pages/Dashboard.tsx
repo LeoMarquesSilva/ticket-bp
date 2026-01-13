@@ -6,7 +6,7 @@ import {
   BarChart3, LineChart as LineChartIcon, PieChart, Users, Clock, CheckCircle, 
   TrendingUp, Star, MessageSquare, ThumbsUp, ThumbsDown, User, Activity,
   RefreshCw, Calendar, AlertTriangle, ArrowUp, ArrowDown, BarChart, Layers,
-  ChevronRight, HelpCircle, HeadphonesIcon, Briefcase, Loader2, ArrowUpDown
+  ChevronRight, HelpCircle, HeadphonesIcon, Briefcase, Loader2, ArrowUpDown, ChevronDown, ChevronUp, Tag
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -25,9 +25,10 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { DateRange } from 'react-day-picker';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
-import { format, subDays, endOfDay, startOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, startOfWeek, endOfWeek } from 'date-fns';
+import { format, subDays, endOfDay, startOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, startOfWeek, endOfWeek, differenceInHours, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import RecentFeedbackList from '@/components/RecentFeedbackList';
+import { CATEGORIES_CONFIG } from '@/services/dashboardService';
 
 // Cores da Marca
 const BRAND = {
@@ -80,6 +81,7 @@ const Dashboard = () => {
   const [chatTicket, setChatTicket] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [showTicketDetails, setShowTicketDetails] = useState(false);
   
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 30),
@@ -234,13 +236,22 @@ const Dashboard = () => {
 
   // === LÓGICA DO CHAT ===
   const handleOpenChat = async (ticket: any) => {
-    setChatTicket(ticket);
     setIsChatOpen(true);
     setIsChatLoading(true);
     setChatMessages([]); 
 
     try {
-      const messages = await TicketService.getTicketMessages(ticket.id);
+      // Se for um feedback (tem apenas id, title, etc), buscar o ticket completo
+      let fullTicket = ticket;
+      if (ticket.id && !ticket.createdBy) {
+        const ticketData = await TicketService.getTicket(ticket.id);
+        if (ticketData) {
+          fullTicket = ticketData;
+        }
+      }
+      
+      setChatTicket(fullTicket);
+      const messages = await TicketService.getTicketMessages(fullTicket.id);
       setChatMessages(messages);
     } catch (error) {
       console.error('Erro ao carregar mensagens:', error);
@@ -255,31 +266,33 @@ const Dashboard = () => {
   };
 
   // === LÓGICA DE ESTILO DAS MENSAGENS ===
-  const getMessageStyles = (role: string | undefined) => {
-    const normalizedRole = (role || '').toLowerCase();
+  const getMessageStyles = (message: any, ticket: any) => {
+    // Identificar se a mensagem é do cliente (criador do ticket) ou do suporte/advogado/admin
+    // Se o userId da mensagem for igual ao createdBy do ticket, é do cliente (esquerda)
+    // Caso contrário, é do suporte/advogado/admin (direita)
+    const isFromClient = ticket?.createdBy && message.userId === ticket.createdBy;
     
-    // Lista de roles que devem aparecer na DIREITA (Lado da Empresa)
-    const companyRoles = ['admin', 'support', 'lawyer', 'administrator'];
-    const isCompanySide = companyRoles.includes(normalizedRole);
-
-    if (isCompanySide) {
-      // --- LADO DIREITO (EMPRESA) ---
+    if (!isFromClient) {
+      // --- LADO DIREITO (SUPORTE/ADVOGADO/ADMIN) ---
+      // Verificar se é advogado baseado no assignedToRole do ticket
+      const isLawyer = ticket?.assignedToRole === 'lawyer';
+      
       let bubbleClass = '';
       let avatarBg = '';
       let icon = null;
       let label = '';
       let nameColor = '';
 
-      if (normalizedRole === 'lawyer') {
+      if (isLawyer) {
         bubbleClass = 'bg-[#DE5532] text-white rounded-tr-none'; // Advogado (Vermelho)
         avatarBg = 'bg-[#DE5532]';
         icon = <Briefcase className="h-4 w-4 text-white" />;
         label = 'Advogado';
         nameColor = 'text-[#DE5532]';
       } else {
-        bubbleClass = 'bg-[#F69F19] text-[#2C2D2F] rounded-tr-none'; // Suporte/Admin (Amarelo)
+        bubbleClass = 'bg-[#F69F19] text-white rounded-tr-none'; // Suporte/Admin (Laranja)
         avatarBg = 'bg-[#F69F19]';
-        icon = <HeadphonesIcon className="h-4 w-4 text-[#2C2D2F]" />;
+        icon = <HeadphonesIcon className="h-4 w-4 text-white" />;
         label = 'Suporte';
         nameColor = 'text-[#F69F19]';
       }
@@ -319,6 +332,47 @@ const Dashboard = () => {
     if (score >= 7) return "bg-blue-50 text-blue-700 border-blue-200";
     if (score >= 5) return "bg-yellow-50 text-yellow-700 border-yellow-200";
     return "bg-red-50 text-red-700 border-red-200";
+  };
+
+  // Função para obter o label formatado da categoria
+  const getCategoryLabel = (category: string): string => {
+    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    return categoryConfig?.label || category || 'Geral';
+  };
+
+  // Função para obter o label formatado da subcategoria
+  const getSubcategoryLabel = (category: string, subcategory: string): string => {
+    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    if (!categoryConfig || !subcategory) return subcategory || '';
+    
+    const subcategoryConfig = categoryConfig.subcategories.find(
+      sub => sub.value === subcategory
+    );
+    return subcategoryConfig?.label || subcategory;
+  };
+
+  // Função para calcular e formatar o tempo de resolução
+  const getResolutionTime = (createdAt?: string, resolvedAt?: string): string => {
+    if (!createdAt || !resolvedAt) return 'Não resolvido';
+    
+    try {
+      const created = new Date(createdAt);
+      const resolved = new Date(resolvedAt);
+      const hours = differenceInHours(resolved, created);
+      const days = differenceInDays(resolved, created);
+      
+      if (days > 0) {
+        const remainingHours = hours % 24;
+        return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+      } else if (hours > 0) {
+        return `${hours}h`;
+      } else {
+        const minutes = Math.round((resolved.getTime() - created.getTime()) / (1000 * 60));
+        return `${minutes}min`;
+      }
+    } catch (error) {
+      return 'Erro ao calcular';
+    }
   };
 
   const CustomTooltip = ({ active, payload, label }: TooltipProps<any, any>) => {
@@ -875,6 +929,7 @@ const Dashboard = () => {
                       <TableRow>
                         <TableHead className="w-[300px]">Ticket</TableHead>
                         <TableHead>Data</TableHead>
+                        <TableHead>Atendente</TableHead>
                         <TableHead className="text-center">
                           <button
                             onClick={() => handleSort('nps')}
@@ -916,7 +971,7 @@ const Dashboard = () => {
                     <TableBody>
                       {(!stats.recentFeedback || stats.recentFeedback.length === 0) ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center text-slate-500">
+                          <TableCell colSpan={7} className="h-24 text-center text-slate-500">
                             Nenhuma avaliação encontrada neste período.
                           </TableCell>
                         </TableRow>
@@ -933,6 +988,9 @@ const Dashboard = () => {
                             </TableCell>
                             <TableCell className="text-slate-500 text-sm">
                               {formatDate(feedback.resolvedAt)}
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm text-slate-700">{feedback.assignedToName || 'Não atribuído'}</span>
                             </TableCell>
                             <TableCell className="text-center">
                               {feedback.npsScore !== undefined && feedback.npsScore !== null ? (
@@ -1014,36 +1072,107 @@ const Dashboard = () => {
       <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
         {/* CORREÇÃO: Altura fixa (80vh) e padding zerado no container principal */}
         <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col p-0 gap-0" aria-describedby="chat-history-description">
-          <DialogHeader className="p-6 pb-2">
-            <DialogTitle className="text-xl">Histórico da Conversa</DialogTitle>
-            <DialogDescription id="chat-history-description">
+          <DialogHeader className="p-4 sm:p-6 pb-2">
+            <DialogTitle className="text-lg sm:text-xl">Histórico da Conversa</DialogTitle>
+            <DialogDescription id="chat-history-description" className="text-xs sm:text-sm">
               Histórico completo de mensagens do ticket {chatTicket?.title}.
             </DialogDescription>
             
+            {/* Botão Mostrar Detalhes */}
+            <div className="mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowTicketDetails(!showTicketDetails)}
+                className="w-full sm:w-auto text-xs"
+              >
+                {showTicketDetails ? (
+                  <>
+                    <ChevronUp className="h-3 w-3 mr-1" />
+                    Ocultar detalhes
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3 w-3 mr-1" />
+                    Mostrar detalhes
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Detalhes do Ticket (expandível) */}
+            {showTicketDetails && chatTicket && (
+              <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 animate-in slide-in-from-top-2">
+                {/* Tempo de Resolução */}
+                {chatTicket.createdAt && chatTicket.resolvedAt && (
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="font-semibold text-[#2C2D2F]">Tempo de resolução:</span>
+                    <span className="text-slate-700">{getResolutionTime(chatTicket.createdAt, chatTicket.resolvedAt)}</span>
+                  </div>
+                )}
+                
+                {/* Categoria e Subcategoria */}
+                {(chatTicket.category || chatTicket.subcategory) && (
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <Tag className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="font-semibold text-[#2C2D2F]">Categoria:</span>
+                    <span className="text-slate-700">
+                      {getCategoryLabel(chatTicket.category || 'outros')}
+                      {chatTicket.subcategory && (
+                        <span> / {getSubcategoryLabel(chatTicket.category || 'outros', chatTicket.subcategory)}</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div className="mt-3 space-y-2">
+              {/* Informações do cliente/usuario */}
+              {chatTicket?.createdByName && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="text-xs font-medium text-slate-500 shrink-0">Cliente:</div>
+                    <span className="text-xs sm:text-sm text-slate-700 truncate">{chatTicket.createdByName}</span>
+                  </div>
+                  {/* NPS */}
+                  {chatTicket?.serviceScore !== undefined && chatTicket?.serviceScore !== null && (
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs font-medium text-slate-500 shrink-0">NPS:</div>
+                      <Badge variant="outline" className={`${getScoreColor(chatTicket.serviceScore)} font-bold text-xs shrink-0`}>
+                        {chatTicket.serviceScore}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {/* Informações do atendente */}
               {chatTicket?.assignedToName && (
-                <div className="flex items-center gap-2">
-                  <div className="w-24 text-xs font-medium text-slate-500">Atendente:</div>
-                  <div className="flex items-center gap-1">
-                    <Avatar className="h-5 w-5 bg-slate-200">
-                      <AvatarFallback className={
-                        chatTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
-                        chatTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-[#2C2D2F]' :
-                        'bg-[#2C2D2F] text-[#F6F6F6]'
-                      }>
-                        {chatTicket.assignedToRole === 'lawyer' ? <Briefcase className="h-3 w-3" /> :
-                        chatTicket.assignedToRole === 'support' ? <HeadphonesIcon className="h-3 w-3" /> :
-                        getInitials(chatTicket.assignedToName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm">{chatTicket.assignedToName}</span>
-                    {chatTicket.assignedToRole && (
-                      <Badge variant="outline" className="text-xs font-normal ml-1 bg-slate-50 border-slate-200">
-                        {chatTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
-                        chatTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
-                      </Badge>
-                    )}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="text-xs font-medium text-slate-500 shrink-0">Atendente:</div>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <Avatar className="h-4 w-4 sm:h-5 sm:w-5 bg-slate-200 shrink-0">
+                        <AvatarFallback className={
+                          chatTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
+                          chatTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
+                          'bg-[#2C2D2F] text-[#F6F6F6]'
+                        }>
+                          {chatTicket.assignedToRole === 'lawyer' ? <Briefcase className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
+                          chatTicket.assignedToRole === 'support' ? <HeadphonesIcon className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
+                          getInitials(chatTicket.assignedToName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-xs sm:text-sm text-slate-700 truncate">{chatTicket.assignedToName}</span>
+                      {chatTicket.assignedToRole && (
+                        <Badge variant="outline" className="text-xs font-normal bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
+                          {chatTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
+                          chatTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1085,7 +1214,7 @@ const Dashboard = () => {
             <ScrollArea className="flex-1 w-full p-6 pt-0">
               <div className="space-y-6 w-full">
                 {chatMessages.map((message) => {
-                  const styles = getMessageStyles(message.userRole);
+                  const styles = getMessageStyles(message, chatTicket);
                   
                   return (
                     <div key={message.id} className={`flex w-full ${styles.containerClass}`}>

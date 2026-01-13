@@ -683,7 +683,9 @@ async function processFeedbackFromTickets(tickets: any[]) {
       resolvedAt: ticket.resolved_at,
       ticketUrl: `/tickets/${ticket.id}`,
       assignedToName: ticket.assigned_to_name || (assignedUser ? assignedUser.name : 'Não atribuído'),
-      assignedToRole: assignedUser ? assignedUser.role : undefined
+      assignedToRole: assignedUser ? assignedUser.role : undefined,
+      createdByName: ticket.created_by_name,
+      createdBy: ticket.created_by
     };
   });
   

@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import RecentFeedbackCard from './RecentFeedbackCard';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { TicketService } from '@/services/ticketService';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase } from 'lucide-react';
+import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, ChevronDown, ChevronUp, Tag, Clock } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { CATEGORIES_CONFIG } from '@/services/dashboardService';
+import { differenceInHours, differenceInDays } from 'date-fns';
 
 interface RecentFeedbackItem {
   id: string;
@@ -23,6 +25,10 @@ interface RecentFeedbackItem {
   assignedToName: string; // Nome do atendente
   assignedToRole?: string; // Função do atendente (support, lawyer, etc.)
   createdByName?: string; // Nome do solicitante
+  createdBy?: string; // ID do criador do ticket
+  category?: string; // Categoria do ticket
+  subcategory?: string; // Subcategoria do ticket
+  createdAt?: string; // Data de criação do ticket
 }
 
 interface RecentFeedbackListProps {
@@ -49,6 +55,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
   const [feedbacksByAttendant, setFeedbacksByAttendant] = useState<Record<string, RecentFeedbackItem[]>>({});
   const [attendants, setAttendants] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
+  const [showTicketDetails, setShowTicketDetails] = useState(false);
 
   // Processar feedbacks e agrupá-los por atendente
   useEffect(() => {
@@ -120,7 +127,6 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
     const ticket = feedbackItems.find(item => item.id === ticketId);
     if (!ticket) return;
     
-    setSelectedTicket(ticket);
     setIsModalOpen(true);
     setIsLoading(true);
     setError(null);
@@ -133,6 +139,25 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
         return;
       }
       
+      // Buscar o ticket completo para ter todas as informações (createdBy, category, etc.)
+      let fullTicket = ticket;
+      if (ticket.id && (!ticket.createdByName || !ticket.createdBy || !ticket.category || !ticket.createdAt)) {
+        const ticketData = await TicketService.getTicket(ticket.id);
+        if (ticketData) {
+          fullTicket = {
+            ...ticket,
+            createdByName: ticketData.createdByName,
+            createdBy: ticketData.createdBy,
+            category: ticketData.category || ticket.category,
+            subcategory: ticketData.subcategory || ticket.subcategory,
+            createdAt: ticketData.createdAt || ticket.createdAt,
+            serviceScore: ticketData.serviceScore || ticket.serviceScore,
+            npsScore: ticketData.npsScore || ticket.npsScore
+          };
+        }
+      }
+      
+      setSelectedTicket(fullTicket);
       const messages = await TicketService.getTicketMessages(ticketId);
       setChatMessages(messages);
     } catch (error) {
@@ -165,6 +190,116 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
       .join('')
       .toUpperCase()
       .substring(0, 2);
+  };
+
+  // Função para obter cor do score
+  const getScoreColor = (score: number) => {
+    if (score >= 9) return "bg-green-100 text-green-700 border-green-200";
+    if (score >= 7) return "bg-blue-50 text-blue-700 border-blue-200";
+    if (score >= 5) return "bg-yellow-50 text-yellow-700 border-yellow-200";
+    return "bg-red-50 text-red-700 border-red-200";
+  };
+
+  // Função para obter o label formatado da categoria
+  const getCategoryLabel = (category: string): string => {
+    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    return categoryConfig?.label || category || 'Geral';
+  };
+
+  // Função para obter o label formatado da subcategoria
+  const getSubcategoryLabel = (category: string, subcategory: string): string => {
+    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    if (!categoryConfig || !subcategory) return subcategory || '';
+    
+    const subcategoryConfig = categoryConfig.subcategories.find(
+      sub => sub.value === subcategory
+    );
+    return subcategoryConfig?.label || subcategory;
+  };
+
+  // Função para calcular e formatar o tempo de resolução
+  const getResolutionTime = (createdAt?: string, resolvedAt?: string): string => {
+    if (!createdAt || !resolvedAt) return 'Não resolvido';
+    
+    try {
+      const created = new Date(createdAt);
+      const resolved = new Date(resolvedAt);
+      const hours = differenceInHours(resolved, created);
+      const days = differenceInDays(resolved, created);
+      
+      if (days > 0) {
+        const remainingHours = hours % 24;
+        return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+      } else if (hours > 0) {
+        return `${hours}h`;
+      } else {
+        const minutes = Math.round((resolved.getTime() - created.getTime()) / (1000 * 60));
+        return `${minutes}min`;
+      }
+    } catch (error) {
+      return 'Erro ao calcular';
+    }
+  };
+
+  // Função para obter estilos da mensagem (igual ao Dashboard)
+  const getMessageStyles = (message: ChatMessage, ticket: RecentFeedbackItem | null) => {
+    if (!ticket) {
+      // Fallback para lógica antiga se não tiver ticket
+      const roleStyles = getUserRoleStyles(message.userRole);
+      return {
+        containerClass: 'justify-start',
+        flexDirection: 'flex-row',
+        bubbleClass: 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200',
+        avatarBg: roleStyles.color,
+        icon: roleStyles.icon,
+        label: roleStyles.label,
+        textAlign: 'text-left'
+      };
+    }
+    
+    // Identificar se a mensagem é do cliente (criador do ticket) ou do suporte/advogado/admin
+    // Se o userId da mensagem for igual ao createdBy do ticket, é do cliente (esquerda)
+    // Caso contrário, é do suporte/advogado/admin (direita)
+    const isFromClient = ticket?.createdBy && message.userId === ticket.createdBy;
+    
+    if (!isFromClient) {
+      // --- LADO DIREITO (SUPORTE/ADVOGADO/ADMIN) ---
+      // Verificar se é advogado baseado no assignedToRole do ticket
+      const isLawyer = ticket?.assignedToRole === 'lawyer';
+      
+      if (isLawyer) {
+        return {
+          containerClass: 'justify-end',
+          flexDirection: 'flex-row-reverse',
+          bubbleClass: 'bg-[#DE5532] text-white rounded-tr-none',
+          avatarBg: 'bg-[#DE5532]',
+          icon: <Briefcase className="h-4 w-4 text-white" />,
+          label: 'Advogado',
+          textAlign: 'text-right'
+        };
+      } else {
+        return {
+          containerClass: 'justify-end',
+          flexDirection: 'flex-row-reverse',
+          bubbleClass: 'bg-[#F69F19] text-white rounded-tr-none',
+          avatarBg: 'bg-[#F69F19]',
+          icon: <HeadphonesIcon className="h-4 w-4 text-white" />,
+          label: 'Suporte',
+          textAlign: 'text-right'
+        };
+      }
+    } else {
+      // --- LADO ESQUERDO (CLIENTE/USUÁRIO) ---
+      return {
+        containerClass: 'justify-start',
+        flexDirection: 'flex-row',
+        bubbleClass: 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200',
+        avatarBg: 'bg-[#2C2D2F]',
+        icon: <User className="h-4 w-4 text-white" />,
+        label: 'Cliente',
+        textAlign: 'text-left'
+      };
+    }
   };
 
   // Renderizar o card de feedback
@@ -379,53 +514,106 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
 
         {/* Modal para exibir o histórico da conversa */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="sm:max-w-[600px] max-h-[80vh]" aria-describedby="chat-history-description">
-            <DialogHeader>
-              <DialogTitle className="text-xl">Histórico da Conversa</DialogTitle>
-              <p className="text-sm text-slate-500" id="chat-history-description">{selectedTicket?.title}</p>
+          <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col p-0 gap-0" aria-describedby="chat-history-description">
+            <DialogHeader className="p-4 sm:p-6 pb-2">
+              <DialogTitle className="text-lg sm:text-xl">Histórico da Conversa</DialogTitle>
+              <p className="text-xs sm:text-sm text-slate-500" id="chat-history-description">{selectedTicket?.title}</p>
+              
+              {/* Botão Mostrar Detalhes */}
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTicketDetails(!showTicketDetails)}
+                  className="w-full sm:w-auto text-xs"
+                >
+                  {showTicketDetails ? (
+                    <>
+                      <ChevronUp className="h-3 w-3 mr-1" />
+                      Ocultar detalhes
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3 w-3 mr-1" />
+                      Mostrar detalhes
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Detalhes do Ticket (expandível) */}
+              {showTicketDetails && selectedTicket && (
+                <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 animate-in slide-in-from-top-2">
+                  {/* Tempo de Resolução */}
+                  {selectedTicket.createdAt && selectedTicket.resolvedAt && (
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span className="font-semibold text-[#2C2D2F]">Tempo de resolução:</span>
+                      <span className="text-slate-700">{getResolutionTime(selectedTicket.createdAt, selectedTicket.resolvedAt)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Categoria e Subcategoria */}
+                  {(selectedTicket.category || selectedTicket.subcategory) && (
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <Tag className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span className="font-semibold text-[#2C2D2F]">Categoria:</span>
+                      <span className="text-slate-700">
+                        {getCategoryLabel(selectedTicket.category || 'outros')}
+                        {selectedTicket.subcategory && (
+                          <span> / {getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
               
               <div className="mt-3 space-y-2">
-                {/* Informações do atendente */}
-                {selectedTicket?.assignedToName && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 text-xs font-medium text-slate-500">Atendente:</div>
-                    <div className="flex items-center gap-1">
-                      <Avatar className="h-5 w-5">
-                        <AvatarFallback className={
-                          selectedTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
-                          selectedTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-[#2C2D2F]' :
-                          'bg-[#2C2D2F] text-[#F6F6F6]'
-                        }>
-                          {selectedTicket.assignedToRole === 'lawyer' ? <Briefcase className="h-3 w-3" /> :
-                          selectedTicket.assignedToRole === 'support' ? <HeadphonesIcon className="h-3 w-3" /> :
-                          getInitials(selectedTicket.assignedToName)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm">{selectedTicket.assignedToName}</span>
-                      {selectedTicket.assignedToRole && (
-                        <Badge variant="outline" className="text-xs font-normal ml-1 bg-slate-50 border-slate-200">
-                          {selectedTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
-                          selectedTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
-                        </Badge>
-                      )}
+                {/* Informações do cliente/usuario */}
+                {selectedTicket?.createdByName && (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="text-xs font-medium text-slate-500 shrink-0">Cliente:</div>
+                      <span className="text-xs sm:text-sm text-slate-700 truncate">{selectedTicket.createdByName}</span>
                     </div>
+                    {/* NPS */}
+                    {(selectedTicket?.serviceScore !== undefined && selectedTicket?.serviceScore !== null) && (
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs font-medium text-slate-500 shrink-0">NPS:</div>
+                        <Badge variant="outline" className={`${getScoreColor(selectedTicket.serviceScore)} font-bold text-xs shrink-0`}>
+                          {selectedTicket.serviceScore}
+                        </Badge>
+                      </div>
+                    )}
                   </div>
                 )}
                 
-                {/* Informações do solicitante */}
-                {selectedTicket?.createdByName && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 text-xs font-medium text-slate-500">Solicitado por:</div>
-                    <div className="flex items-center gap-1">
-                      <Avatar className="h-5 w-5">
-                        <AvatarFallback className="bg-[#2C2D2F] text-[#F6F6F6]">
-                          <User className="h-3 w-3" />
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm">{selectedTicket.createdByName}</span>
-                      <Badge variant="outline" className="text-xs font-normal ml-1 bg-slate-50 border-slate-200">
-                        Cliente
-                      </Badge>
+                {/* Informações do atendente */}
+                {selectedTicket?.assignedToName && (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="text-xs font-medium text-slate-500 shrink-0">Atendente:</div>
+                      <div className="flex items-center gap-1 min-w-0">
+                        <Avatar className="h-4 w-4 sm:h-5 sm:w-5 bg-slate-200 shrink-0">
+                          <AvatarFallback className={
+                            selectedTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
+                            selectedTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
+                            'bg-[#2C2D2F] text-[#F6F6F6]'
+                          }>
+                            {selectedTicket.assignedToRole === 'lawyer' ? <Briefcase className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
+                            selectedTicket.assignedToRole === 'support' ? <HeadphonesIcon className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
+                            getInitials(selectedTicket.assignedToName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs sm:text-sm text-slate-700 truncate">{selectedTicket.assignedToName}</span>
+                        {selectedTicket.assignedToRole && (
+                          <Badge variant="outline" className="text-xs font-normal bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
+                            {selectedTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
+                            selectedTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -435,30 +623,22 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
             </DialogHeader>
             
             {/* Legenda para identificar os participantes */}
-            <div className="flex flex-wrap gap-4 mb-3 px-2 bg-[#F6F6F6] p-2 rounded-md">
-              <div className="flex items-center gap-2">
-                <Avatar className="h-5 w-5 bg-[#2C2D2F] text-[#F6F6F6]">
-                  <AvatarFallback>
-                    <User className="h-3 w-3" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs text-[#2C2D2F]">Cliente</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Avatar className="h-5 w-5 bg-[#F69F19] text-[#2C2D2F]">
-                  <AvatarFallback>
-                    <HeadphonesIcon className="h-3 w-3" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs text-[#2C2D2F]">Suporte</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Avatar className="h-5 w-5 bg-[#DE5532] text-white">
-                  <AvatarFallback>
-                    <Briefcase className="h-3 w-3" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs text-[#2C2D2F]">Advogado</span>
+            <div className="px-4 sm:px-6 pb-2">
+              <div className="flex flex-wrap gap-4 px-2 bg-[#F6F6F6] p-2 rounded-md justify-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-slate-200 border border-slate-300"></div>
+                  <span className="text-xs text-[#2C2D2F]">Cliente (Esq)</span>
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[#F69F19]"></div>
+                    <span className="text-xs text-[#2C2D2F]">Suporte (Dir)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[#DE5532]"></div>
+                    <span className="text-xs text-[#2C2D2F]">Advogado (Dir)</span>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -481,52 +661,36 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                 <p>Nenhuma mensagem encontrada para este ticket.</p>
               </div>
             ) : (
-              <ScrollArea className="h-[400px]">
-                <div className="space-y-6 p-4">
+              <ScrollArea className="flex-1 w-full p-4 sm:p-6 pt-0">
+                <div className="space-y-6 w-full">
                   {chatMessages.map((message) => {
-                    const isCurrentUser = message.userId === user?.id;
-                    const roleStyles = getUserRoleStyles(message.userRole);
+                    const styles = getMessageStyles(message, selectedTicket);
                     
                     return (
-                      <div 
-                        key={message.id} 
-                        className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div className={`flex gap-3 max-w-[80%] ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
-                          <div className="flex flex-col items-center mt-1">
-                            <Avatar className={`h-8 w-8 ${roleStyles.color}`}>
-                              <AvatarFallback>
-                                {message.userRole === 'lawyer' ? (
-                                  <Briefcase className="h-4 w-4" />
-                                ) : message.userRole === 'support' || message.userRole === 'admin' ? (
-                                  <HeadphonesIcon className="h-4 w-4" />
-                                ) : message.userName ? (
-                                  getInitials(message.userName)
-                                ) : (
-                                  <User className="h-4 w-4" />
-                                )}
+                      <div key={message.id} className={`flex w-full ${styles.containerClass}`}>
+                        <div className={`flex gap-3 ${styles.flexDirection}`} style={{ maxWidth: '85%', width: 'fit-content' }}>
+                          {/* Avatar */}
+                          <div className="flex flex-col items-center mt-1 shrink-0">
+                            <Avatar className={`h-8 w-8 ${styles.avatarBg}`}>
+                              <AvatarFallback className={`${styles.avatarBg} flex items-center justify-center`}>
+                                {styles.icon}
                               </AvatarFallback>
                             </Avatar>
-                            <span className={`text-[10px] font-medium mt-1 ${
-                              isCurrentUser ? 'text-[#DE5532]' : 
-                              message.userRole === 'support' ? 'text-[#F69F19]' : 
-                              message.userRole === 'lawyer' ? 'text-[#DE5532]' :
-                              'text-[#2C2D2F]'
-                            }`}>
-                              {isCurrentUser ? 'Você' : message.userName || roleStyles.label}
-                            </span>
                           </div>
-                          
-                          <div>
-                            <div className={`rounded-lg p-3 ${
-                              isCurrentUser ? 'bg-[#2C2D2F] text-[#F6F6F6] rounded-tr-none' : 
-                              message.userRole === 'support' ? 'bg-[#F69F19] text-[#2C2D2F] rounded-tl-none' : 
-                              message.userRole === 'lawyer' ? 'bg-[#DE5532] text-white rounded-tl-none' :
-                              'bg-[#F6F6F6] text-[#2C2D2F] rounded-tl-none'
-                            }`}>
-                              <p className="whitespace-pre-wrap break-words">{message.message}</p>
+
+                          {/* Balão da Mensagem */}
+                          <div className="flex flex-col" style={{ minWidth: 0, maxWidth: '100%', width: '100%' }}>
+                            <div className={`rounded-lg p-3 shadow-sm ${styles.bubbleClass}`} style={{ wordBreak: 'break-word', overflowWrap: 'break-word', overflow: 'hidden' }}>
+                              <p className="text-[10px] font-bold opacity-70 mb-1 uppercase tracking-wide">
+                                {message.userName || styles.label}
+                              </p>
+                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word', maxWidth: '100%' }}>
+                                {message.message}
+                              </p>
                             </div>
-                            <div className={`text-xs mt-1 ${isCurrentUser ? 'text-right' : 'text-left'} text-[#2C2D2F]/70`}>
+                            
+                            {/* Data */}
+                            <div className={`text-[10px] mt-1 ${styles.textAlign} text-slate-400`}>
                               {formatDate(message.createdAt)}
                             </div>
                           </div>
@@ -538,10 +702,8 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
               </ScrollArea>
             )}
             
-            <div className="flex justify-end mt-4">
-              <Button onClick={() => setIsModalOpen(false)}>
-                Fechar
-              </Button>
+            <div className="p-4 sm:p-6 pt-2 border-t border-slate-100 flex justify-end">
+              <Button onClick={() => setIsModalOpen(false)} variant="outline">Fechar</Button>
             </div>
           </DialogContent>
         </Dialog>
