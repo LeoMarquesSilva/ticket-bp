@@ -472,14 +472,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
       
-      // Configurar URLs de redirecionamento
-      const baseUrl = window.location.origin;
+      // Configurar URLs de redirecionamento - usar URL absoluta completa
+      // Tentar usar variável de ambiente primeiro, senão usar window.location.origin
+      const baseUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
       const resetUrl = `${baseUrl}/reset-password`;
       
       console.log('🔗 URLs configuradas:', {
         baseUrl,
         resetUrl,
-        currentUrl: window.location.href
+        currentUrl: window.location.href,
+        envUrl: import.meta.env.VITE_SITE_URL || 'não configurado'
       });
       
       // ✅ CONFIGURAÇÕES MAIS ESPECÍFICAS para o reset

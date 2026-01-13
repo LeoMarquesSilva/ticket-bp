@@ -34,11 +34,16 @@ class PasswordService {
         };
       }
       
-      // Configurar URL de redirecionamento mais robusta
-      const baseUrl = window.location.origin;
+      // Configurar URL de redirecionamento - usar URL absoluta completa
+      // Tentar usar variável de ambiente primeiro, senão usar window.location.origin
+      const baseUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
       const resetUrl = `${baseUrl}/reset-password`;
       
-      console.log('🔗 URL de redirecionamento:', resetUrl);
+      console.log('🔗 URL de redirecionamento:', {
+        resetUrl,
+        baseUrl,
+        envUrl: import.meta.env.VITE_SITE_URL || 'não configurado'
+      });
       
       // Enviar e-mail de redefinição com configurações mais específicas
       const { error } = await supabase.auth.resetPasswordForEmail(email, {

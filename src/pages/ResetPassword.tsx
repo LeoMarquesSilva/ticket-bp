@@ -77,9 +77,52 @@ const ResetPassword = () => {
           }
         }
 
-        // Método 2: Se temos um token de recovery direto (formato alternativo)
+        // Método 2: Se temos um código (code) - formato mais comum do Supabase
+        if (code) {
+          console.log('🔄 Método 2: Usando código (code) para trocar por sessão...');
+          try {
+            // Trocar código por sessão usando exchangeCodeForSession
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            
+            if (!error && data.session && data.user) {
+              console.log('✅ Sucesso ao trocar código por sessão!');
+              setSessionValid(true);
+              setValidatingToken(false);
+              window.history.replaceState({}, document.title, '/reset-password');
+              toast.success('Link válido! Você pode redefinir sua senha agora.');
+              return;
+            } else {
+              console.log('❌ Erro ao trocar código:', error?.message);
+              // Tentar também como OTP recovery
+              if (error?.message?.includes('invalid') || error?.message?.includes('expired')) {
+                console.log('🔄 Tentando como OTP recovery...');
+                try {
+                  const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
+                    token_hash: code,
+                    type: 'recovery'
+                  });
+                  
+                  if (!otpError && otpData.session && otpData.user) {
+                    console.log('✅ Sucesso com OTP recovery!');
+                    setSessionValid(true);
+                    setValidatingToken(false);
+                    window.history.replaceState({}, document.title, '/reset-password');
+                    toast.success('Link válido! Você pode redefinir sua senha agora.');
+                    return;
+                  }
+                } catch (otpE: any) {
+                  console.log('❌ Falha OTP recovery:', otpE?.message || otpE);
+                }
+              }
+            }
+          } catch (e: any) {
+            console.log('❌ Falha método 2:', e?.message || e);
+          }
+        }
+
+        // Método 2.5: Se temos um token de recovery direto (formato alternativo)
         if (token && type === 'recovery') {
-          console.log('🔄 Método 2: Usando token de recovery...');
+          console.log('🔄 Método 2.5: Usando token de recovery...');
           try {
             const { data, error } = await supabase.auth.verifyOtp({
               token_hash: token,
@@ -97,7 +140,7 @@ const ResetPassword = () => {
               console.log('❌ Erro ao verificar OTP:', error?.message);
             }
           } catch (e: any) {
-            console.log('❌ Falha método 2:', e?.message || e);
+            console.log('❌ Falha método 2.5:', e?.message || e);
           }
         }
 
