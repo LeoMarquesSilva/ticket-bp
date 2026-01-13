@@ -41,6 +41,7 @@ const ResetPassword = () => {
         
         // Buscar todos os tipos de tokens/códigos possíveis
         const token = urlParams.get('token') || hashParams.get('token');
+        const tokenHash = urlParams.get('token_hash') || hashParams.get('token_hash');
         const code = urlParams.get('code') || hashParams.get('code');
         const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
         const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
@@ -48,11 +49,13 @@ const ResetPassword = () => {
         
         console.log('🔑 Parâmetros extraídos:', {
           hasToken: !!token,
+          hasTokenHash: !!tokenHash,
           hasCode: !!code,
           hasAccessToken: !!accessToken,
           hasRefreshToken: !!refreshToken,
           type: type,
           tokenPreview: token ? `${token.substring(0, 20)}...` : null,
+          tokenHashPreview: tokenHash ? `${tokenHash.substring(0, 20)}...` : null,
           codePreview: code ? `${code.substring(0, 20)}...` : null
         });
 
@@ -81,15 +84,14 @@ const ResetPassword = () => {
           }
         }
 
-        // Método 2: Se temos um código (code) - usar verifyOtp com type recovery
-        // Para reset de senha, o Supabase envia um código que deve ser usado com verifyOtp
-        if (code) {
-          console.log('🔄 Método 2: Usando código (code) com verifyOtp recovery...');
+        // Método 2: Se temos token_hash (formato correto do template) - usar verifyOtp com type recovery
+        // Para reset de senha, o Supabase envia um token_hash que deve ser usado com verifyOtp
+        if (tokenHash && type === 'recovery') {
+          console.log('🔄 Método 2: Usando token_hash com verifyOtp recovery...');
           try {
             // Para reset de senha, usar verifyOtp com token_hash
-            // O código que vem na URL é um token_hash para recovery
             const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
-              token_hash: code,
+              token_hash: tokenHash,
               type: 'recovery'
             });
             
@@ -152,9 +154,33 @@ const ResetPassword = () => {
           }
         }
 
-        // Método 2.5: Se temos um token de recovery direto (formato alternativo)
+        // Método 2.5: Se temos um código (code) - tentar como token_hash (formato alternativo)
+        if (code && !tokenHash) {
+          console.log('🔄 Método 2.5: Tentando código (code) como token_hash...');
+          try {
+            const { data, error } = await supabase.auth.verifyOtp({
+              token_hash: code,
+              type: 'recovery'
+            });
+            
+            if (!error && data.session && data.user) {
+              console.log('✅ Sucesso com código como token_hash!');
+              setSessionValid(true);
+              setValidatingToken(false);
+              window.history.replaceState({}, document.title, '/reset-password');
+              toast.success('Link válido! Você pode redefinir sua senha agora.');
+              return;
+            } else {
+              console.log('❌ Erro ao verificar código:', error?.message);
+            }
+          } catch (e: any) {
+            console.log('❌ Falha método 2.5:', e?.message || e);
+          }
+        }
+
+        // Método 2.6: Se temos um token de recovery direto (formato alternativo)
         if (token && type === 'recovery') {
-          console.log('🔄 Método 2.5: Usando token de recovery...');
+          console.log('🔄 Método 2.6: Usando token de recovery...');
           try {
             const { data, error } = await supabase.auth.verifyOtp({
               token_hash: token,
@@ -172,7 +198,7 @@ const ResetPassword = () => {
               console.log('❌ Erro ao verificar OTP:', error?.message);
             }
           } catch (e: any) {
-            console.log('❌ Falha método 2.5:', e?.message || e);
+            console.log('❌ Falha método 2.6:', e?.message || e);
           }
         }
 
@@ -243,7 +269,8 @@ const ResetPassword = () => {
         console.error('❌ Todos os métodos falharam');
         console.error('❌ URL completa:', window.location.href);
         console.error('❌ Parâmetros disponíveis:', { 
-          token: !!token, 
+          token: !!token,
+          tokenHash: !!tokenHash,
           code: !!code, 
           accessToken: !!accessToken, 
           refreshToken: !!refreshToken, 
