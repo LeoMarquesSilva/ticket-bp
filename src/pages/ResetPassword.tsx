@@ -24,12 +24,14 @@ const ResetPassword = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let authListener: { data: { subscription: any } } | null = null;
+    
     const processResetLink = async () => {
       try {
-        console.log('🔍 === PROCESSANDO LINK DE RESET (VERSÃO SIMPLIFICADA) ===');
+        console.log('🔍 === PROCESSANDO LINK DE RESET ===');
         console.log('📍 URL atual:', window.location.href);
         
-        // Extrair parâmetros da URL
+        // Extrair parâmetros da URL (query string e hash)
         const urlParams = new URLSearchParams(window.location.search);
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         
@@ -50,9 +52,9 @@ const ResetPassword = () => {
           codePreview: code ? `${code.substring(0, 20)}...` : null
         });
 
-        // Método 1: Se temos access_token e refresh_token diretos
+        // Método 1: Se temos access_token e refresh_token diretos (formato mais comum do Supabase)
         if (accessToken && refreshToken) {
-          console.log('🔄 Método 1: Usando tokens diretos...');
+          console.log('🔄 Método 1: Usando tokens diretos do hash...');
           try {
             const { data, error } = await supabase.auth.setSession({
               access_token: accessToken,
@@ -63,16 +65,19 @@ const ResetPassword = () => {
               console.log('✅ Sucesso com tokens diretos!');
               setSessionValid(true);
               setValidatingToken(false);
+              // Limpar hash da URL para não expor tokens
               window.history.replaceState({}, document.title, '/reset-password');
               toast.success('Link válido! Você pode redefinir sua senha agora.');
               return;
+            } else {
+              console.log('❌ Erro ao definir sessão:', error?.message);
             }
-          } catch (e) {
-            console.log('❌ Falha método 1:', e);
+          } catch (e: any) {
+            console.log('❌ Falha método 1:', e?.message || e);
           }
         }
 
-        // Método 2: Se temos um token de recovery direto
+        // Método 2: Se temos um token de recovery direto (formato alternativo)
         if (token && type === 'recovery') {
           console.log('🔄 Método 2: Usando token de recovery...');
           try {
@@ -88,66 +93,93 @@ const ResetPassword = () => {
               window.history.replaceState({}, document.title, '/reset-password');
               toast.success('Link válido! Você pode redefinir sua senha agora.');
               return;
+            } else {
+              console.log('❌ Erro ao verificar OTP:', error?.message);
             }
-          } catch (e) {
-            console.log('❌ Falha método 2:', e);
+          } catch (e: any) {
+            console.log('❌ Falha método 2:', e?.message || e);
           }
         }
 
-        // Método 3: Aguardar processamento automático do Supabase
-        console.log('🔄 Método 3: Aguardando processamento automático...');
+        // Método 3: Listener para mudanças de autenticação (o Supabase pode processar automaticamente)
+        console.log('🔄 Método 3: Configurando listener de autenticação...');
         
-        // Aguardar mais tempo para o Supabase processar
-        for (let i = 0; i < 10; i++) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        const { data: authData } = supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log('🔔 Evento de autenticação:', event, {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            userEmail: session?.user?.email
+          });
+          
+          if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
+            console.log('✅ Sessão criada via evento de autenticação!');
+            setSessionValid(true);
+            setValidatingToken(false);
+            window.history.replaceState({}, document.title, '/reset-password');
+            toast.success('Link válido! Você pode redefinir sua senha agora.');
+            
+            // Remover listener após sucesso
+            if (authListener) {
+              authListener.data.subscription.unsubscribe();
+              authListener = null;
+            }
+          }
+        });
+        
+        authListener = authData;
+
+        // Método 4: Aguardar processamento automático do Supabase (com detectSessionInUrl habilitado)
+        console.log('🔄 Método 4: Aguardando processamento automático...');
+        
+        // Aguardar para o Supabase processar a sessão automaticamente
+        for (let i = 0; i < 15; i++) {
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           
-          console.log(`📊 Verificação ${i + 1}/10:`, {
-            hasSession: !!session,
-            hasUser: !!session?.user,
-            userEmail: session?.user?.email,
-            error: sessionError?.message || 'nenhum'
-          });
+          if (i % 3 === 0) { // Log a cada 1.5 segundos
+            console.log(`📊 Verificação ${i + 1}/15:`, {
+              hasSession: !!session,
+              hasUser: !!session?.user,
+              userEmail: session?.user?.email,
+              error: sessionError?.message || 'nenhum'
+            });
+          }
           
           if (session && session.user && !sessionError) {
             console.log('✅ Sessão encontrada após aguardar!');
             setSessionValid(true);
             setValidatingToken(false);
+            
+            // Remover listener após sucesso
+            if (authListener) {
+              authListener.data.subscription.unsubscribe();
+              authListener = null;
+            }
+            
+            // Limpar hash da URL
+            window.history.replaceState({}, document.title, '/reset-password');
             toast.success('Link válido! Você pode redefinir sua senha agora.');
             return;
-          }
-        }
-
-        // Método 4: Tentar usar updateUser diretamente se temos algum token
-        if (token || code) {
-          console.log('🔄 Método 4: Tentativa de autenticação direta...');
-          
-          try {
-            // Criar uma sessão temporária para reset
-            const { data, error } = await supabase.auth.signInAnonymously();
-            
-            if (!error && data.session) {
-              console.log('✅ Sessão temporária criada para reset');
-              
-              // Armazenar o token para uso posterior
-              sessionStorage.setItem('reset_token', token || code || '');
-              sessionStorage.setItem('reset_type', type || 'recovery');
-              
-              setSessionValid(true);
-              setValidatingToken(false);
-              toast.success('Link processado! Você pode redefinir sua senha agora.');
-              return;
-            }
-          } catch (e) {
-            console.log('❌ Falha método 4:', e);
           }
         }
 
         // Se chegou até aqui, não conseguimos processar
         console.error('❌ Todos os métodos falharam');
         console.error('❌ URL completa:', window.location.href);
-        console.error('❌ Parâmetros disponíveis:', { token, code, accessToken, refreshToken, type });
+        console.error('❌ Parâmetros disponíveis:', { 
+          token: !!token, 
+          code: !!code, 
+          accessToken: !!accessToken, 
+          refreshToken: !!refreshToken, 
+          type 
+        });
+        
+        // Remover listener se ainda estiver ativo
+        if (authListener) {
+          authListener.data.subscription.unsubscribe();
+          authListener = null;
+        }
         
         setError('Link de redefinição inválido ou expirado. Solicite um novo link.');
         setValidatingToken(false);
@@ -156,12 +188,25 @@ const ResetPassword = () => {
         console.error('❌ Erro inesperado ao processar link:', error);
         setError(`Erro inesperado: ${error.message}`);
         setValidatingToken(false);
+        
+        // Limpar listener em caso de erro
+        if (authListener) {
+          authListener.data.subscription.unsubscribe();
+          authListener = null;
+        }
       }
     };
 
     if (!success) {
       processResetLink();
     }
+    
+    // Cleanup: remover listener quando componente desmontar
+    return () => {
+      if (authListener) {
+        authListener.data.subscription.unsubscribe();
+      }
+    };
   }, [success]);
 
   const validatePassword = (password: string): string[] => {
