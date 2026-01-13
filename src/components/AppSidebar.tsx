@@ -65,14 +65,15 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
       icon: <Users className="h-5 w-5" />,
       roles: ["admin"],
       badge: null
-    },
-    {
-      name: "Banco de Dados",
-      href: "/database",
-      icon: <Database className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
     }
+    // Banco de Dados removido - desabilitado para todos os usuários
+    // {
+    //   name: "Banco de Dados",
+    //   href: "/database",
+    //   icon: <Database className="h-5 w-5" />,
+    //   roles: ["admin"],
+    //   badge: null
+    // }
   ];
 
   const getRoleBadgeVariant = (role: string) => {

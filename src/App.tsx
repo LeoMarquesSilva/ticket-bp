@@ -8,7 +8,8 @@ import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
-import DatabaseManagement from '@/pages/DatabaseManagement';
+// Banco de Dados desabilitado
+// import DatabaseManagement from '@/pages/DatabaseManagement';
 import Profile from '@/pages/Profile';
 import ResetPassword from '@/pages/ResetPassword';
 import PasswordChangeHandler from '@/components/PasswordChangeHandler';
@@ -28,18 +29,17 @@ const ProtectedRoute = ({
   const location = useLocation();
   const isTabVisible = useTabVisibility();
   
-  const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'database' | 'profile' => {
+  const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'profile' => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return 'dashboard';
     if (path.includes('/users')) return 'users';
-    if (path.includes('/database')) return 'database';
     if (path.includes('/profile')) return 'profile';
     return 'tickets';
   };
   
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'database' | 'profile'>(getCurrentPage());
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'profile'>(getCurrentPage());
   
-  const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'database' | 'profile') => {
+  const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'profile') => {
     setCurrentPage(page);
   };
   
@@ -143,14 +143,15 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      <Route
+      {/* Banco de Dados desabilitado - rota removida */}
+      {/* <Route
         path="/database"
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <DatabaseManagement />
           </ProtectedRoute>
         }
-      />
+      /> */}
       {/* ✅ NOVA ROTA: Profile */}
       <Route
         path="/profile"

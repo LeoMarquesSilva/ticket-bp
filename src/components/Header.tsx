@@ -92,14 +92,15 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
       icon: <Users className="h-5 w-5" />,
       roles: ["admin"],
       badge: null
-    },
-    {
-      name: "Banco de Dados",
-      href: "/database",
-      icon: <Database className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
     }
+    // Banco de Dados removido - desabilitado para todos os usuários
+    // {
+    //   name: "Banco de Dados",
+    //   href: "/database",
+    //   icon: <Database className="h-5 w-5" />,
+    //   roles: ["admin"],
+    //   badge: null
+    // }
   ];
 
   const filteredNavItems = navItems.filter(
