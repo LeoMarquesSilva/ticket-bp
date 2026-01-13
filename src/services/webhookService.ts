@@ -43,7 +43,7 @@ export async function sendWebhook(payload: WebhookPayload): Promise<boolean> {
 }
 
 /**
- * Envia notificação quando um feedback de detrator (0-6) é recebido
+ * Envia notificação quando um feedback de detrator (0-7) é recebido
  * @param ticketData - Dados do ticket e feedback
  */
 export async function notifyDetractorFeedback(ticketData: {

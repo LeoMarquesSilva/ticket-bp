@@ -433,8 +433,8 @@ static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedback
       throw error;
     }
 
-    // Se o feedback for de detrator (0-6), enviar webhook para n8n
-    if (feedbackData.serviceScore <= 6) {
+            // Se o feedback for de detrator (0-7), enviar webhook para n8n
+            if (feedbackData.serviceScore <= 7) {
       try {
         // Buscar email do usuário criador
         const { data: userData } = await supabase

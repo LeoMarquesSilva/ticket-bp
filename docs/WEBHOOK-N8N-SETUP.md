@@ -1,10 +1,10 @@
 # Configuração de Webhook para n8n - Notificação de Detratores
 
-Este documento explica como configurar o webhook no n8n para receber notificações quando um feedback de detrator (nota 0-6) é enviado.
+Este documento explica como configurar o webhook no n8n para receber notificações quando um feedback de detrator (nota 0-7) é enviado.
 
 ## 📋 Visão Geral
 
-Quando um usuário avalia o atendimento com nota 0-6 (detrator), o sistema envia automaticamente um webhook para o n8n com todas as informações relevantes.
+Quando um usuário avalia o atendimento com nota 0-7 (detrator), o sistema envia automaticamente um webhook para o n8n com todas as informações relevantes.
 
 ## ⚙️ Configuração
 
