@@ -33,6 +33,16 @@ export interface DashboardStats {
     day: string;
     time: number;
   }>;
+  responseTimeByAgent: Array<{
+    name: string;
+    time: number;
+    tickets: number;
+  }>;
+  resolutionTimeByCategory: Array<{
+    category: string;
+    time: number;
+    tickets: number;
+  }>;
   npsScores: {
     score: number;
     promoters: number;
@@ -181,7 +191,7 @@ export async function getDashboardStats(
     }
 
     // Processar os dados para as estatísticas
-    const stats = processTicketsData(tickets || [], days);
+    const stats = await processTicketsData(tickets || [], days);
     
     // Processar feedback diretamente dos tickets (já que não existe uma tabela separada)
     stats.recentFeedback = await processFeedbackFromTickets(tickets || []);
@@ -194,7 +204,7 @@ export async function getDashboardStats(
 }
 
 // Função para processar os dados dos tickets
-function processTicketsData(tickets: any[], days: number): DashboardStats {
+async function processTicketsData(tickets: any[], days: number): Promise<DashboardStats> {
   // Contadores de status
   const openTickets = tickets.filter(t => t.status === 'open').length;
   const assignedTickets = tickets.filter(t => t.status === 'assigned').length;
@@ -230,7 +240,13 @@ function processTicketsData(tickets: any[], days: number): DashboardStats {
   const subcategoryDistribution = generateSubcategoryDistributionData(tickets);
 
   // Gerar dados de tempo de resposta por dia
-  const responseTimeByDay = generateResponseTimeByDayData(tickets);
+  const responseTimeByDay = await generateResponseTimeByDayData(tickets);
+  
+  // Gerar dados de tempo de resposta por atendente
+  const responseTimeByAgent = await generateResponseTimeByAgentData(tickets);
+  
+  // Gerar dados de tempo de resolução por categoria
+  const resolutionTimeByCategory = generateResolutionTimeByCategoryData(tickets);
 
   // Gerar dados de usuários com mais tickets
   const topUsers = generateTopUsersData(tickets);
@@ -255,6 +271,8 @@ function processTicketsData(tickets: any[], days: number): DashboardStats {
     categoryDistribution,
     subcategoryDistribution,
     responseTimeByDay,
+    responseTimeByAgent,
+    resolutionTimeByCategory,
     topUsers,
     npsScores: npsData,
     serviceScores: serviceData,
@@ -264,17 +282,18 @@ function processTicketsData(tickets: any[], days: number): DashboardStats {
 }
 
 // Função para calcular pontuações NPS a partir de dados reais
+// Usa service_score (nota de 1-10) para calcular o NPS
 function calculateNpsScores(tickets: any[]) {
-  // Filtrar tickets com feedback
-  const ticketsWithFeedback = tickets.filter(t => t.nps_score !== undefined && t.nps_score !== null);
+  // Filtrar tickets com feedback de serviço (service_score)
+  const ticketsWithFeedback = tickets.filter(t => t.service_score !== undefined && t.service_score !== null);
   
   // Contar promotores (9-10), passivos (7-8) e detratores (0-6)
-  const promoters = ticketsWithFeedback.filter(t => t.nps_score >= 9).length;
-  const passives = ticketsWithFeedback.filter(t => t.nps_score >= 7 && t.nps_score <= 8).length;
-  const detractors = ticketsWithFeedback.filter(t => t.nps_score <= 6).length;
+  const promoters = ticketsWithFeedback.filter(t => t.service_score >= 9).length;
+  const passives = ticketsWithFeedback.filter(t => t.service_score >= 7 && t.service_score <= 8).length;
+  const detractors = ticketsWithFeedback.filter(t => t.service_score <= 6).length;
   const total = ticketsWithFeedback.length;
   
-  // Calcular pontuação NPS
+  // Calcular pontuação NPS: % Promotores - % Detratores (escala de -100 a 100)
   const score = total > 0 
     ? Math.round(((promoters / total) - (detractors / total)) * 100) 
     : 0;
@@ -285,7 +304,7 @@ function calculateNpsScores(tickets: any[]) {
     passives,
     detractors,
     total,
-    target: PERFORMANCE_TARGETS.NPS // Meta de NPS: 70%
+    target: PERFORMANCE_TARGETS.NPS // Meta de NPS: 70
   };
 }
 
@@ -420,7 +439,7 @@ function generateSubcategoryDistributionData(tickets: any[]) {
 }
 
 // Função para gerar dados de tempo de resposta por dia da semana
-function generateResponseTimeByDayData(tickets: any[]) {
+async function generateResponseTimeByDayData(tickets: any[]): Promise<Array<{ day: string; time: number }>> {
   const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
   const dayData: Record<string, { count: number; totalTime: number }> = {};
   
@@ -429,16 +448,63 @@ function generateResponseTimeByDayData(tickets: any[]) {
     dayData[day] = { count: 0, totalTime: 0 };
   });
   
+  // Buscar primeira mensagem de atendente para cada ticket (quando first_response_at não estiver disponível)
+  const firstResponseByTicket: Record<string, string> = {};
+  
+  if (tickets.length > 0) {
+    const ticketIds = tickets.map(t => t.id);
+    
+    // Buscar todas as mensagens dos tickets em uma única query
+    const { data: allMessages, error: messagesError } = await supabase
+      .from(TABLES.CHAT_MESSAGES)
+      .select('ticket_id, user_id, created_at')
+      .in('ticket_id', ticketIds);
+    
+    if (messagesError) {
+      console.error('Erro ao buscar mensagens para cálculo de tempo de resposta:', messagesError);
+    }
+    
+    // Criar um mapa de ticket_id para primeira mensagem do atendente
+    if (allMessages && allMessages.length > 0) {
+      tickets.forEach(ticket => {
+        const ticketMessages = allMessages
+          .filter(msg => msg.ticket_id === ticket.id)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        
+        // Encontrar a primeira mensagem que não foi enviada pelo criador do ticket
+        const firstResponseMessage = ticketMessages.find(msg => msg.user_id !== ticket.created_by);
+        
+        if (firstResponseMessage) {
+          firstResponseByTicket[ticket.id] = firstResponseMessage.created_at;
+        }
+      });
+    }
+  }
+  
   // Calcular tempo médio de resposta para cada dia
   tickets.forEach(ticket => {
-    if (ticket.created_at && ticket.first_response_at) {
+    let firstResponseTime: string | null = null;
+    
+    // Primeiro, tentar usar first_response_at se estiver disponível
+    if (ticket.first_response_at) {
+      firstResponseTime = ticket.first_response_at;
+    } 
+    // Caso contrário, usar a primeira mensagem do atendente
+    else if (firstResponseByTicket[ticket.id]) {
+      firstResponseTime = firstResponseByTicket[ticket.id];
+    }
+    
+    if (ticket.created_at && firstResponseTime) {
       const createdDate = new Date(ticket.created_at);
       const dayName = dayNames[createdDate.getDay()];
-      const responseTime = new Date(ticket.first_response_at).getTime() - createdDate.getTime();
+      const responseTime = new Date(firstResponseTime).getTime() - createdDate.getTime();
       const responseTimeHours = responseTime / (1000 * 60 * 60);
       
-      dayData[dayName].count++;
-      dayData[dayName].totalTime += responseTimeHours;
+      // Ignorar valores negativos (erros de data) e valores muito grandes (possíveis erros)
+      if (responseTimeHours >= 0 && responseTimeHours < 10000) {
+        dayData[dayName].count++;
+        dayData[dayName].totalTime += responseTimeHours;
+      }
     }
   });
   
@@ -447,6 +513,107 @@ function generateResponseTimeByDayData(tickets: any[]) {
     day,
     time: dayData[day].count > 0 ? Math.round((dayData[day].totalTime / dayData[day].count) * 10) / 10 : 0
   }));
+}
+
+// Função para gerar dados de tempo de resposta por atendente
+async function generateResponseTimeByAgentData(tickets: any[]): Promise<Array<{ name: string; time: number; tickets: number }>> {
+  const agentData: Record<string, { name: string; totalTime: number; count: number }> = {};
+  
+  // Buscar todas as mensagens para calcular tempo de primeira resposta
+  const ticketIds = tickets.map(t => t.id);
+  const firstResponseByTicket: Record<string, string> = {};
+  
+  if (ticketIds.length > 0) {
+    const { data: allMessages } = await supabase
+      .from(TABLES.CHAT_MESSAGES)
+      .select('ticket_id, user_id, created_at')
+      .in('ticket_id', ticketIds);
+    
+    if (allMessages && allMessages.length > 0) {
+      tickets.forEach(ticket => {
+        const ticketMessages = allMessages
+          .filter(msg => msg.ticket_id === ticket.id)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        
+        const firstResponseMessage = ticketMessages.find(msg => msg.user_id !== ticket.created_by);
+        if (firstResponseMessage) {
+          firstResponseByTicket[ticket.id] = firstResponseMessage.created_at;
+        }
+      });
+    }
+  }
+  
+  // Calcular tempo de resposta por atendente
+  tickets.forEach(ticket => {
+    if (!ticket.assigned_to_name || ticket.assigned_to_name === 'Não atribuído') return;
+    
+    let firstResponseTime: string | null = null;
+    
+    if (ticket.first_response_at) {
+      firstResponseTime = ticket.first_response_at;
+    } else if (firstResponseByTicket[ticket.id]) {
+      firstResponseTime = firstResponseByTicket[ticket.id];
+    }
+    
+    if (ticket.created_at && firstResponseTime) {
+      const responseTime = new Date(firstResponseTime).getTime() - new Date(ticket.created_at).getTime();
+      const responseTimeHours = responseTime / (1000 * 60 * 60);
+      
+      if (responseTimeHours >= 0 && responseTimeHours < 10000) {
+        const agentName = ticket.assigned_to_name;
+        
+        if (!agentData[agentName]) {
+          agentData[agentName] = { name: agentName, totalTime: 0, count: 0 };
+        }
+        
+        agentData[agentName].totalTime += responseTimeHours;
+        agentData[agentName].count++;
+      }
+    }
+  });
+  
+  // Calcular médias e formatar
+  return Object.values(agentData)
+    .map(agent => ({
+      name: agent.name,
+      time: agent.count > 0 ? Math.round((agent.totalTime / agent.count) * 10) / 10 : 0,
+      tickets: agent.count
+    }))
+    .sort((a, b) => a.time - b.time); // Ordenar por tempo (menor primeiro = melhor)
+}
+
+// Função para gerar dados de tempo de resolução por categoria
+function generateResolutionTimeByCategoryData(tickets: any[]): Array<{ category: string; time: number; tickets: number }> {
+  const categoryData: Record<string, { totalTime: number; count: number }> = {};
+  
+  tickets.forEach(ticket => {
+    if (ticket.resolved_at && ticket.created_at && ticket.category) {
+      const createdDate = new Date(ticket.created_at);
+      const resolvedDate = new Date(ticket.resolved_at);
+      const timeDiff = resolvedDate.getTime() - createdDate.getTime();
+      const daysDiff = timeDiff / (1000 * 3600 * 24);
+      
+      if (daysDiff >= 0 && daysDiff < 1000) {
+        const category = ticket.category;
+        
+        if (!categoryData[category]) {
+          categoryData[category] = { totalTime: 0, count: 0 };
+        }
+        
+        categoryData[category].totalTime += daysDiff;
+        categoryData[category].count++;
+      }
+    }
+  });
+  
+  // Calcular médias e formatar
+  return Object.entries(categoryData)
+    .map(([category, data]) => ({
+      category: category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' '),
+      time: data.count > 0 ? Math.round((data.totalTime / data.count) * 10) / 10 : 0,
+      tickets: data.count
+    }))
+    .sort((a, b) => b.tickets - a.tickets); // Ordenar por quantidade de tickets
 }
 
 // Função para gerar dados dos usuários com mais tickets
@@ -476,11 +643,9 @@ async function processFeedbackFromTickets(tickets: any[]) {
   // 1. Filtrar APENAS tickets que realmente têm algum feedback
   // Isso garante que a tabela mostre apenas dados reais de avaliação
   const ticketsWithFeedback = tickets.filter(ticket => 
-    (ticket.nps_score !== null && ticket.nps_score !== undefined) || 
     (ticket.service_score !== null && ticket.service_score !== undefined) || 
     (ticket.request_fulfilled !== null && ticket.request_fulfilled !== undefined) ||
-    (ticket.comment !== null && ticket.comment !== '') ||
-    (ticket.nps_feedback !== null && ticket.nps_feedback !== '')
+    (ticket.comment !== null && ticket.comment !== '')
   );
   
   // 2. Ordenar por data de feedback (mais recente primeiro)
@@ -511,11 +676,10 @@ async function processFeedbackFromTickets(tickets: any[]) {
     return {
       id: ticket.id,
       title: ticket.title || `Ticket #${ticket.id.substring(0, 8)}`,
-      npsScore: ticket.nps_score,
+      npsScore: ticket.service_score, // Usar service_score como NPS
       serviceScore: ticket.service_score,
       requestFulfilled: ticket.request_fulfilled,
-      // Prioriza o comentário explícito, depois o feedback do NPS
-      comment: ticket.comment || ticket.nps_feedback, 
+      comment: ticket.comment || null, 
       resolvedAt: ticket.resolved_at,
       ticketUrl: `/tickets/${ticket.id}`,
       assignedToName: ticket.assigned_to_name || (assignedUser ? assignedUser.name : 'Não atribuído'),

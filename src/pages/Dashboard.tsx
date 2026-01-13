@@ -6,7 +6,7 @@ import {
   BarChart3, LineChart as LineChartIcon, PieChart, Users, Clock, CheckCircle, 
   TrendingUp, Star, MessageSquare, ThumbsUp, ThumbsDown, User, Activity,
   RefreshCw, Calendar, AlertTriangle, ArrowUp, ArrowDown, BarChart, Layers,
-  ChevronRight, HelpCircle, HeadphonesIcon, Briefcase, Loader2
+  ChevronRight, HelpCircle, HeadphonesIcon, Briefcase, Loader2, ArrowUpDown
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -25,7 +25,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { DateRange } from 'react-day-picker';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
-import { format, subDays, endOfDay, startOfDay } from 'date-fns';
+import { format, subDays, endOfDay, startOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import RecentFeedbackList from '@/components/RecentFeedbackList';
 
@@ -62,6 +62,8 @@ const Dashboard = () => {
     ticketsOverTime: [],
     categoryDistribution: [],
     responseTimeByDay: [],
+    responseTimeByAgent: [],
+    resolutionTimeByCategory: [],
     topUsers: [],
     npsScores: { score: 0, promoters: 0, passives: 0, detractors: 0, total: 0 },
     serviceScores: { averageScore: 0, excellent: 0, good: 0, average: 0, poor: 0, total: 0 },
@@ -83,6 +85,47 @@ const Dashboard = () => {
     from: subDays(new Date(), 30),
     to: new Date()
   });
+  
+  const [activePeriod, setActivePeriod] = useState<string>('30days');
+
+  // Estados para ordenação da tabela de avaliações
+  const [sortColumn, setSortColumn] = useState<'nps' | 'requestFulfilled' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  // Função para lidar com ordenação
+  const handleSort = (column: 'nps' | 'requestFulfilled') => {
+    if (sortColumn === column) {
+      // Se já está ordenando por esta coluna, inverte a direção
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Se é uma nova coluna, começa com ascendente
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+  
+  // Função para ordenar os feedbacks
+  const getSortedFeedback = () => {
+    if (!stats.recentFeedback || !sortColumn) {
+      return stats.recentFeedback || [];
+    }
+    
+    const sorted = [...stats.recentFeedback].sort((a, b) => {
+      if (sortColumn === 'nps') {
+        const aVal = a.npsScore ?? -1; // -1 para colocar valores nulos no final
+        const bVal = b.npsScore ?? -1;
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      } else if (sortColumn === 'requestFulfilled') {
+        // Para boolean: true (Sim) vem depois de false (Não) em ascendente
+        const aVal = a.requestFulfilled === true ? 1 : a.requestFulfilled === false ? 0 : -1;
+        const bVal = b.requestFulfilled === true ? 1 : b.requestFulfilled === false ? 0 : -1;
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return 0;
+    });
+    
+    return sorted;
+  };
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -137,6 +180,56 @@ const Dashboard = () => {
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
+  };
+  
+  // Função para aplicar filtro rápido de período
+  const applyPeriodFilter = (period: string) => {
+    const today = new Date();
+    let from: Date;
+    let to: Date = endOfDay(today);
+    
+    switch (period) {
+      case 'today':
+        from = startOfDay(today);
+        to = endOfDay(today);
+        break;
+      case '7days':
+        from = startOfDay(subDays(today, 6));
+        to = endOfDay(today);
+        break;
+      case '30days':
+        from = startOfDay(subDays(today, 29));
+        to = endOfDay(today);
+        break;
+      case '90days':
+        from = startOfDay(subDays(today, 89));
+        to = endOfDay(today);
+        break;
+      case 'thisMonth':
+        from = startOfDay(startOfMonth(today));
+        to = endOfDay(endOfMonth(today));
+        break;
+      case 'lastMonth':
+        const lastMonth = subMonths(today, 1);
+        from = startOfDay(startOfMonth(lastMonth));
+        to = endOfDay(endOfMonth(lastMonth));
+        break;
+      case 'thisYear':
+        from = startOfDay(startOfYear(today));
+        to = endOfDay(endOfYear(today));
+        break;
+      case 'lastYear':
+        const lastYear = new Date(today.getFullYear() - 1, 0, 1);
+        from = startOfDay(startOfYear(lastYear));
+        to = endOfDay(endOfYear(lastYear));
+        break;
+      default:
+        from = startOfDay(subDays(today, 29));
+        to = endOfDay(today);
+    }
+    
+    setDateRange({ from, to });
+    setActivePeriod(period);
   };
 
   // === LÓGICA DO CHAT ===
@@ -338,22 +431,90 @@ const Dashboard = () => {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto bg-white/5 p-1.5 rounded-xl border border-white/10 backdrop-blur-sm">
-            <DatePickerWithRange
-              date={dateRange}
-              setDate={setDateRange}
-              className="w-full sm:w-auto bg-transparent border-0 text-white focus:ring-0 hover:bg-white/5"
-              locale={ptBR}
-            />
-            <Button 
-              size="icon"
-              variant="ghost" 
-              onClick={handleRefresh}
-              className="text-slate-400 hover:text-white hover:bg-white/10"
-              title="Atualizar dados"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+          <div className="flex flex-col gap-3 w-full md:w-auto">
+            {/* Botões de Filtro Rápido */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={() => applyPeriodFilter('today')}
+                variant={activePeriod === 'today' ? 'default' : 'outline'}
+                size="sm"
+                className={activePeriod === 'today' ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white border-0' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}
+              >
+                Hoje
+              </Button>
+              <Button
+                onClick={() => applyPeriodFilter('7days')}
+                variant={activePeriod === '7days' ? 'default' : 'outline'}
+                size="sm"
+                className={activePeriod === '7days' ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white border-0' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}
+              >
+                7 dias
+              </Button>
+              <Button
+                onClick={() => applyPeriodFilter('30days')}
+                variant={activePeriod === '30days' ? 'default' : 'outline'}
+                size="sm"
+                className={activePeriod === '30days' ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white border-0' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}
+              >
+                30 dias
+              </Button>
+              <Button
+                onClick={() => applyPeriodFilter('90days')}
+                variant={activePeriod === '90days' ? 'default' : 'outline'}
+                size="sm"
+                className={activePeriod === '90days' ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white border-0' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}
+              >
+                90 dias
+              </Button>
+              <Button
+                onClick={() => applyPeriodFilter('thisMonth')}
+                variant={activePeriod === 'thisMonth' ? 'default' : 'outline'}
+                size="sm"
+                className={activePeriod === 'thisMonth' ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white border-0' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}
+              >
+                Este mês
+              </Button>
+              <Button
+                onClick={() => applyPeriodFilter('lastMonth')}
+                variant={activePeriod === 'lastMonth' ? 'default' : 'outline'}
+                size="sm"
+                className={activePeriod === 'lastMonth' ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white border-0' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}
+              >
+                Mês passado
+              </Button>
+              <Button
+                onClick={() => applyPeriodFilter('thisYear')}
+                variant={activePeriod === 'thisYear' ? 'default' : 'outline'}
+                size="sm"
+                className={activePeriod === 'thisYear' ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white border-0' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}
+              >
+                Este ano
+              </Button>
+            </div>
+            
+            {/* Seleção Personalizada e Botão de Atualizar */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 bg-white/5 p-1.5 rounded-lg border border-white/10">
+                <DatePickerWithRange
+                  date={dateRange}
+                  setDate={(range) => {
+                    setDateRange(range);
+                    setActivePeriod('custom');
+                  }}
+                  className="w-full sm:w-auto bg-transparent border-0 text-white"
+                  locale={ptBR}
+                />
+              </div>
+              <Button 
+                size="icon"
+                variant="ghost" 
+                onClick={handleRefresh}
+                className="text-slate-400 hover:text-white hover:bg-white/10"
+                title="Atualizar dados"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -473,28 +634,83 @@ const Dashboard = () => {
 
           {/* === TAB: PERFORMANCE === */}
           <TabsContent value="performance" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-lg font-bold text-[#2C2D2F] flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-[#DE5532]" />
-                  Tempo de Resposta (Horas)
-                </CardTitle>
-                <CardDescription>Média de tempo para primeira resposta por dia da semana</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={stats.responseTimeByDay} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Line type="monotone" dataKey="time" name="Horas" stroke={BRAND.red} strokeWidth={3} dot={{ r: 4, fill: BRAND.red, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: BRAND.red }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Gráfico: Tempo de Resposta por Atendente */}
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-[#2C2D2F] flex items-center gap-2">
+                    <User className="h-5 w-5 text-[#F69F19]" />
+                    Tempo de Resposta por Atendente
+                  </CardTitle>
+                  <CardDescription>Média de horas para primeira resposta (menor é melhor)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[350px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBarChart data={stats.responseTimeByAgent || []} layout="vertical" margin={{ top: 20, right: 30, left: 80, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                        <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} label={{ value: 'Horas', position: 'insideBottom', offset: -5, fill: '#64748b' }} />
+                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} width={70} />
+                        <Tooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
+                                  <p className="font-semibold text-[#2C2D2F]">{data.name}</p>
+                                  <p className="text-sm text-slate-600">Tempo médio: <span className="font-bold">{data.time}h</span></p>
+                                  <p className="text-sm text-slate-600">Tickets: <span className="font-bold">{data.tickets}</span></p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar dataKey="time" name="Horas" fill={BRAND.orange} radius={[0, 4, 4, 0]} />
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Gráfico: Tempo de Resolução por Categoria */}
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-[#2C2D2F] flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-[#DE5532]" />
+                    Tempo de Resolução por Categoria
+                  </CardTitle>
+                  <CardDescription>Média de dias para resolver tickets (menor é melhor)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[350px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBarChart data={stats.resolutionTimeByCategory || []} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} angle={-45} textAnchor="end" height={80} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} label={{ value: 'Dias', angle: -90, position: 'insideLeft', fill: '#64748b' }} />
+                        <Tooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
+                                  <p className="font-semibold text-[#2C2D2F]">{data.category}</p>
+                                  <p className="text-sm text-slate-600">Tempo médio: <span className="font-bold">{data.time} dias</span></p>
+                                  <p className="text-sm text-slate-600">Tickets: <span className="font-bold">{data.tickets}</span></p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar dataKey="time" name="Dias" fill={BRAND.red} radius={[4, 4, 0, 0]} />
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
@@ -532,6 +748,7 @@ const Dashboard = () => {
                     <Star className="h-5 w-5 text-[#F69F19]" />
                     Net Promoter Score (NPS)
                   </CardTitle>
+                  <CardDescription>Baseado na avaliação do atendimento (1-10)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col items-center justify-center py-6">
@@ -587,6 +804,57 @@ const Dashboard = () => {
               </Card>
             </div>
 
+            {/* Gráfico de "Sua solicitação foi atendida" */}
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-[#10B981]" />
+                  Sua Solicitação Foi Atendida?
+                </CardTitle>
+                <CardDescription>Distribuição de solicitações atendidas vs não atendidas</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={[
+                          { name: 'Atendidas', value: stats.requestFulfillment.fulfilled, fill: '#10B981' },
+                          { name: 'Não Atendidas', value: stats.requestFulfillment.notFulfilled, fill: '#EF4444' }
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        <Cell fill="#10B981" />
+                        <Cell fill="#EF4444" />
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
+                    <div className="text-3xl font-bold text-green-700">{stats.requestFulfillment.fulfilled}</div>
+                    <div className="text-sm text-green-600 mt-1">Solicitações Atendidas</div>
+                  </div>
+                  <div className="text-center p-4 bg-red-50 rounded-lg border border-red-100">
+                    <div className="text-3xl font-bold text-red-700">{stats.requestFulfillment.notFulfilled}</div>
+                    <div className="text-sm text-red-600 mt-1">Solicitações Não Atendidas</div>
+                  </div>
+                </div>
+                <div className="mt-4 text-center">
+                  <div className="text-2xl font-bold text-[#2C2D2F]">{stats.requestFulfillment.percentage}%</div>
+                  <div className="text-sm text-slate-500">Taxa de Atendimento</div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* === TABELA DE DETALHAMENTO DAS AVALIAÇÕES === */}
             <Card className="border-slate-200 shadow-sm mt-6">
               <CardHeader className="border-b border-slate-100 bg-slate-50/50">
@@ -607,8 +875,40 @@ const Dashboard = () => {
                       <TableRow>
                         <TableHead className="w-[300px]">Ticket</TableHead>
                         <TableHead>Data</TableHead>
-                        <TableHead className="text-center">NPS</TableHead>
-                        <TableHead className="text-center">Serviço</TableHead>
+                        <TableHead className="text-center">
+                          <button
+                            onClick={() => handleSort('nps')}
+                            className="flex items-center justify-center gap-1 hover:text-[#F69F19] transition-colors cursor-pointer w-full"
+                          >
+                            NPS
+                            {sortColumn === 'nps' ? (
+                              sortDirection === 'asc' ? (
+                                <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-30" />
+                            )}
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-center">
+                          <button
+                            onClick={() => handleSort('requestFulfilled')}
+                            className="flex items-center justify-center gap-1 hover:text-[#F69F19] transition-colors cursor-pointer w-full"
+                          >
+                            Solicitação Atendida
+                            {sortColumn === 'requestFulfilled' ? (
+                              sortDirection === 'asc' ? (
+                                <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-30" />
+                            )}
+                          </button>
+                        </TableHead>
                         <TableHead>Comentário</TableHead>
                         <TableHead className="text-right">Ver Conversa</TableHead>
                       </TableRow>
@@ -621,7 +921,7 @@ const Dashboard = () => {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        stats.recentFeedback.map((feedback: any) => (
+                        getSortedFeedback().map((feedback: any) => (
                           <TableRow key={feedback.id} className="hover:bg-slate-50/50">
                             <TableCell>
                               <div className="flex flex-col">
@@ -642,9 +942,16 @@ const Dashboard = () => {
                               ) : <span className="text-slate-300">-</span>}
                             </TableCell>
                             <TableCell className="text-center">
-                              {feedback.serviceScore !== undefined && feedback.serviceScore !== null ? (
-                                <Badge variant="outline" className={`${getScoreColor(feedback.serviceScore)} font-bold`}>
-                                  {feedback.serviceScore}
+                              {feedback.requestFulfilled !== undefined && feedback.requestFulfilled !== null ? (
+                                <Badge 
+                                  variant="outline" 
+                                  className={`font-bold ${
+                                    feedback.requestFulfilled 
+                                      ? 'bg-green-50 text-green-700 border-green-200' 
+                                      : 'bg-red-50 text-red-700 border-red-200'
+                                  }`}
+                                >
+                                  {feedback.requestFulfilled ? 'Sim' : 'Não'}
                                 </Badge>
                               ) : <span className="text-slate-300">-</span>}
                             </TableCell>
