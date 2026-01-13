@@ -2,27 +2,31 @@
 // Este código deve ser colado em um nó "Code" após o nó "Webhook" do GitHub
 
 // Extrair dados do payload recebido do webhook
+// n8n recebe os dados diretamente no body do JSON
 const webhookData = $input.item.json.body || $input.item.json;
 
 // Verificar se os dados estão no formato esperado
-if (!webhookData || !webhookData.data) {
+if (!webhookData || (!webhookData.commit && !webhookData.data)) {
   return {
     json: {
-      error: 'Dados inválidos recebidos do webhook'
+      error: 'Dados inválidos recebidos do webhook',
+      received: webhookData
     }
   };
 }
 
-const { event, data, timestamp } = webhookData;
+// Se os dados estão dentro de um objeto 'data', extrair
+const data = webhookData.data || webhookData;
+const { event, repository, branch, actor, commit, workflow, runId, url, timestamp } = data;
 
 // Extrair informações do commit
-const commit = data.commit || {};
-const repository = data.repository || 'ticket-bp-2026';
-const branch = data.branch || 'master';
-const pusher = data.pusher || data.actor || 'Desconhecido';
-const workflow = data.workflow || 'Deploy Notification';
-const runId = data.runId || '';
-const runUrl = data.url || '';
+const commitInfo = commit || data.commit || {};
+const repositoryName = repository || data.repository || 'ticket-bp-2026';
+const branchName = branch || data.branch || 'master';
+const pusher = actor || data.actor || data.pusher || 'Desconhecido';
+const workflowName = workflow || data.workflow || 'Deploy Notification';
+const runIdValue = runId || data.runId || '';
+const runUrl = url || data.url || '';
 
 // Formatar data para português (ajustar para UTC-3, horário de Brasília)
 const formatDate = (dateString) => {
@@ -52,18 +56,18 @@ const getCommitMessage = (message) => {
 const message = `
 🚀 *Nova Atualização no Sistema Responsum*
 
-📦 *Repositório:* ${repository}
-🌿 *Branch:* ${branch}
+📦 *Repositório:* ${repositoryName}
+🌿 *Branch:* ${branchName}
 🔨 *Deploy realizado por:* ${pusher}
 
 📝 *Commit:*
-   • Hash: ${commit.hash || 'N/A'}
-   • Autor: ${commit.author || 'Desconhecido'}
-   • Mensagem: ${getCommitMessage(commit.message)}
-   • Data: ${formatDate(commit.date || timestamp)}
+   • Hash: ${commitInfo.hash || 'N/A'}
+   • Autor: ${commitInfo.author || 'Desconhecido'}
+   • Mensagem: ${getCommitMessage(commitInfo.message)}
+   • Data: ${formatDate(commitInfo.date || timestamp)}
 
-⚙️ *Workflow:* ${workflow}
-🔗 *Run ID:* ${runId ? `#${runId}` : 'N/A'}
+⚙️ *Workflow:* ${workflowName}
+🔗 *Run ID:* ${runIdValue ? `#${runIdValue}` : 'N/A'}
 
 ✅ *Status:* Deploy realizado com sucesso
 
@@ -84,10 +88,10 @@ return {
     // Dados adicionais para referência (opcional)
     metadata: {
       event: event,
-      repository: repository,
-      branch: branch,
-      commitHash: commit.hash,
-      commitAuthor: commit.author,
+      repository: repositoryName,
+      branch: branchName,
+      commitHash: commitInfo.hash,
+      commitAuthor: commitInfo.author,
       pusher: pusher,
       timestamp: timestamp
     }

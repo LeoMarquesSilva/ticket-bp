@@ -15,17 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
       
       - name: Get commit info
         id: commit-info
         run: |
-          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B | sed 's/"/\\"/g' | tr -d '\n')
           COMMIT_AUTHOR=$(git log -1 --pretty=%an)
           COMMIT_HASH=$(git log -1 --pretty=%h)
-          COMMIT_DATE=$(git log -1 --pretty=%ci)
+          COMMIT_DATE=$(git log -1 --pretty=%cI)
           
           echo "message<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
@@ -36,25 +36,38 @@ jobs:
           echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
       
       - name: Send webhook to n8n
+        env:
+          WEBHOOK_URL: ${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}
         run: |
-          curl -X POST "${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}" \
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "⚠️ N8N_DEPLOY_WEBHOOK_URL secret não está configurado"
+            exit 0
+          fi
+          
+          # Criar payload JSON
+          PAYLOAD=$(cat <<EOF
+          {
+            "event": "deploy_notification",
+            "repository": "${{ github.repository }}",
+            "branch": "${{ github.ref_name }}",
+            "actor": "${{ github.actor }}",
+            "commit": {
+              "hash": "${{ steps.commit-info.outputs.hash }}",
+              "author": "${{ steps.commit-info.outputs.author }}",
+              "message": "${{ steps.commit-info.outputs.message }}",
+              "date": "${{ steps.commit-info.outputs.date }}"
+            },
+            "workflow": "${{ github.workflow }}",
+            "runId": "${{ github.run_id }}",
+            "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          )
+          
+          # Enviar webhook
+          curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d '{
-              "event": "deploy",
-              "data": {
-                "repository": "${{ github.repository }}",
-                "branch": "${{ github.ref_name }}",
-                "commit": {
-                  "hash": "${{ steps.commit-info.outputs.hash }}",
-                  "message": "${{ steps.commit-info.outputs.message }}",
-                  "author": "${{ steps.commit-info.outputs.author }}",
-                  "date": "${{ steps.commit-info.outputs.date }}"
-                },
-                "pusher": "${{ github.actor }}",
-                "workflow": "${{ github.workflow }}",
-                "runId": "${{ github.run_id }}",
-                "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              },
-              "timestamp": "${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}"
-            }'
+            -d "$PAYLOAD" \
+            -v || echo "⚠️ Erro ao enviar webhook"
         continue-on-error: true
