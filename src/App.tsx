@@ -164,13 +164,13 @@ const AppRoutes = () => {
       <Route
         path="/"
         element={
-          <Navigate to={user?.role === 'admin' ? "/dashboard" : "/tickets"} replace />
+          <Navigate to="/tickets" replace />
         }
       />
       <Route
         path="*"
         element={
-          <Navigate to={user?.role === 'admin' ? "/dashboard" : "/tickets"} replace />
+          <Navigate to="/tickets" replace />
         }
       />
     </Routes>

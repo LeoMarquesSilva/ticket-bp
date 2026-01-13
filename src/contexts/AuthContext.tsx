@@ -1,22 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, TABLES } from '@/lib/supabase';
 import { passwordService, FirstLoginData } from '@/services/passwordService';
+import { User, UserRole } from '@/types';
 
-export type UserRole = 'user' | 'support' | 'admin' | 'lawyer';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  department: string;
-  isOnline?: boolean;
-  lastActiveAt?: string;
-  firstLogin?: boolean;
-  mustChangePassword?: boolean;
-  passwordChangedAt?: string;
-  createdAt?: string
-}
+// Re-exportar UserRole para compatibilidade
+export type { UserRole };
 
 interface AuthContextType {
   user: User | null;
@@ -120,7 +108,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       console.log('🔄 Atualizando perfil do usuário...');
-      await loadUserProfile(currentAuthUserId.current!);
+      
+      // Obter authUserId da sessão atual
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUserId = session?.user?.id;
+      
+      if (!authUserId) {
+        console.error('❌ Não foi possível obter authUserId da sessão');
+        return;
+      }
+      
+      await loadUserProfile(authUserId);
     } catch (error) {
       console.error('❌ Erro ao atualizar perfil:', error);
     }
@@ -175,20 +173,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Configurar listener de auth APENAS UMA VEZ
     if (!authSubscription.current) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('🔄 Auth event:', event);
+        console.log('🔄 Auth event:', event, 'Session user:', session?.user?.id);
         
         // CRÍTICO: Só processar eventos realmente novos
         const newAuthUserId = session?.user?.id || null;
         
-        if (event === 'SIGNED_IN' && newAuthUserId && newAuthUserId !== currentAuthUserId.current && !user) {
-          console.log('✅ Processando login genuíno');
-          currentAuthUserId.current = newAuthUserId;
-          await loadUserProfile(newAuthUserId);
+        if (event === 'SIGNED_IN' && newAuthUserId) {
+          // Só processar se ainda não tiver carregado o perfil para este usuário
+          if (newAuthUserId !== currentAuthUserId.current || !user) {
+            console.log('✅ Processando login genuíno');
+            currentAuthUserId.current = newAuthUserId;
+            setLoading(true);
+            await loadUserProfile(newAuthUserId);
+          } else {
+            console.log('🚫 Perfil já carregado para este usuário');
+          }
         } else if (event === 'SIGNED_OUT') {
           console.log('👋 Processando logout');
           handleLogout();
+        } else if (event === 'TOKEN_REFRESHED' && newAuthUserId) {
+          // Atualizar se necessário quando o token for atualizado
+          console.log('🔄 Token atualizado');
         } else {
-          console.log('🚫 Ignorando evento auth (usuário já carregado ou evento duplicado)');
+          console.log('🚫 Ignorando evento auth:', event);
         }
       });
       
@@ -203,7 +210,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const loadUserProfile = async (authUserId: string) => {
+  const loadUserProfile = async (authUserId: string | null | undefined) => {
+    // Validar authUserId antes de usar
+    if (!authUserId || authUserId === 'null' || authUserId === 'undefined') {
+      console.error('❌ authUserId inválido:', authUserId);
+      setLoading(false);
+      return;
+    }
+    
     try {
       console.log('👤 Carregando perfil para:', authUserId);
       
@@ -211,16 +225,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       try {
+        // Selecionar campos específicos incluindo ticket_view_preference
         const { data: userProfile, error } = await supabase
           .from(TABLES.USERS)
-          .select('*')
+          .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, created_at, auth_user_id')
           .eq('auth_user_id', authUserId)
           .abortSignal(controller.signal)
           .single();
 
         clearTimeout(timeoutId);
 
+        if (error) {
+          console.error('❌ Erro ao buscar perfil:', error);
+          // Continuar para o fallback mesmo se houver erro
+        }
+
         if (userProfile && !error) {
+          // Carregar preferência de visualização do banco
+          const ticketViewPref = (userProfile.ticket_view_preference as 'list' | 'board' | 'users' | null) || 'list';
+          
           const userData: User = {
             id: userProfile.id,
             name: userProfile.name,
@@ -232,6 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             firstLogin: userProfile.first_login || false,
             mustChangePassword: userProfile.must_change_password || false,
             passwordChangedAt: userProfile.password_changed_at,
+            ticketViewPreference: ticketViewPref,
             createdAt: userProfile.created_at 
           };
 
@@ -248,9 +272,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { user: authUser } } = await supabase.auth.getUser();
         
         if (authUser?.email) {
+          // Selecionar campos específicos incluindo ticket_view_preference
           const { data: emailProfile, error: emailError } = await supabase
             .from(TABLES.USERS)
-            .select('*')
+            .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, created_at, auth_user_id')
             .eq('email', authUser.email)
             .single();
           
@@ -259,6 +284,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .from(TABLES.USERS)
               .update({ auth_user_id: authUserId })
               .eq('id', emailProfile.id);
+            
+            // Carregar preferência de visualização do banco
+            const ticketViewPref = (emailProfile.ticket_view_preference as 'list' | 'board' | 'users' | null) || 'list';
             
             const userData: User = {
               id: emailProfile.id,
@@ -271,6 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               firstLogin: emailProfile.first_login || false,
               mustChangePassword: emailProfile.must_change_password || false,
               passwordChangedAt: emailProfile.password_changed_at,
+              ticketViewPreference: ticketViewPref,
               createdAt: emailProfile.created_at
             };
 
@@ -289,11 +318,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (error: any) {
         clearTimeout(timeoutId);
         console.error('❌ Erro ao carregar perfil:', error);
+        console.error('❌ Detalhes do erro:', {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint
+        });
         setLoading(false);
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro geral ao carregar perfil:', error);
+      console.error('❌ Detalhes do erro geral:', {
+        message: error?.message,
+        stack: error?.stack
+      });
       setLoading(false);
     }
   };
@@ -402,6 +441,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.user) {
         console.log('✅ Login bem-sucedido');
         currentAuthUserId.current = data.user.id;
+        // Carregar perfil imediatamente após login
+        setLoading(true);
+        try {
+          await loadUserProfile(data.user.id);
+        } catch (error) {
+          console.error('❌ Erro ao carregar perfil após login:', error);
+          setLoading(false);
+          return { user: null, error: 'Erro ao carregar perfil do usuário' };
+        }
+        // Não precisa setar loading para false aqui, loadUserProfile já faz isso
         return { user: null, error: null };
       }
 

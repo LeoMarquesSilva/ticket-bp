@@ -23,6 +23,7 @@ export interface User {
   firstLogin?: boolean; // ✅ Novo campo - indica se é primeiro login
   mustChangePassword?: boolean; // ✅ Novo campo - indica se deve alterar senha
   passwordChangedAt?: string; // ✅ Novo campo - data da última alteração de senha
+  ticketViewPreference?: 'list' | 'board' | 'users'; // ✅ Preferência de visualização de tickets
   createdAt?: string;
 }
 

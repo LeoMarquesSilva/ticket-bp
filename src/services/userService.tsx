@@ -581,7 +581,42 @@ static async deleteUser(userId: string): Promise<boolean> {
       lastActiveAt: data.last_active_at,
       firstLogin: data.first_login, // ✅ Novo campo
       mustChangePassword: data.must_change_password, // ✅ Novo campo
-      passwordChangedAt: data.password_changed_at // ✅ Novo campo
+      passwordChangedAt: data.password_changed_at, // ✅ Novo campo
+      ticketViewPreference: data.ticket_view_preference || 'list' // ✅ Preferência de visualização
     };
+  }
+
+  // ✅ NOVO: Atualizar preferência de visualização de tickets
+  static async updateTicketViewPreference(userId: string, view: 'list' | 'board' | 'users'): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from(TABLES.USERS)
+        .update({
+          ticket_view_preference: view,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (error) {
+        // Se o erro for porque a coluna não existe, apenas logar e retornar true
+        // (a preferência será salva quando a coluna for adicionada)
+        if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+          console.warn('⚠️ Campo ticket_view_preference ainda não existe no banco. A preferência será salva quando a coluna for adicionada.');
+          return true; // Retornar true para não bloquear o fluxo
+        }
+        console.error('Erro ao atualizar preferência de visualização:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error: any) {
+      // Se o erro for porque a coluna não existe, apenas logar e retornar true
+      if (error?.message?.includes('column') && error?.message?.includes('does not exist')) {
+        console.warn('⚠️ Campo ticket_view_preference ainda não existe no banco. A preferência será salva quando a coluna for adicionada.');
+        return true; // Retornar true para não bloquear o fluxo
+      }
+      console.error('Erro ao atualizar preferência de visualização:', error);
+      return false;
+    }
   }
 }

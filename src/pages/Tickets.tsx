@@ -6,6 +6,7 @@ import { AlertCircle, X, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
+import { UserService } from '@/services/userService';
 import TicketForm from '@/components/TicketForm';
 import TicketHeader from '@/components/TicketHeader';
 import TicketKanbanBoard from '@/components/TicketKanbanBoard';
@@ -66,7 +67,39 @@ const Tickets = () => {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [view, setView] = useState<'list' | 'board' | 'users'>('list');
+  // Carregar preferência do usuário ou usar 'list' como padrão
+  const [view, setViewState] = useState<'list' | 'board' | 'users'>(
+    user?.ticketViewPreference || 'list'
+  );
+  
+  // Função para atualizar a visualização e salvar a preferência
+  const setView = async (newView: 'list' | 'board' | 'users') => {
+    setViewState(newView);
+    
+    // Salvar preferência no banco de dados
+    if (user?.id) {
+      try {
+        await UserService.updateTicketViewPreference(user.id, newView);
+        // Atualizar também no contexto do usuário (opcional, para sincronização imediata)
+        if (user) {
+          user.ticketViewPreference = newView;
+        }
+      } catch (error) {
+        console.error('Erro ao salvar preferência de visualização:', error);
+        // Não mostrar erro ao usuário, apenas logar
+      }
+    }
+  };
+  
+  // Carregar preferência do usuário quando o componente monta ou quando o usuário muda
+  useEffect(() => {
+    if (user?.ticketViewPreference) {
+      console.log('🔄 Carregando preferência do usuário:', user.ticketViewPreference);
+      setViewState(user.ticketViewPreference);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.ticketViewPreference]);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -1255,15 +1288,16 @@ const isTicketFinalized = (ticket: Ticket) => {
   return ticket.status === 'resolved';
 };
 
-// Função para alternar entre vistas (list, board, users)
-const handleViewChange = (newView: 'list' | 'board' | 'users') => {
-  // Se estiver mudando para Kanban ou UserBoard e o chat estiver aberto, feche-o
-  if (newView !== 'list' && showChat) {
-    closeChat();
-  }
-  
-  setView(newView);
-};
+  // Função para alternar entre vistas (list, board, users)
+  const handleViewChange = (newView: 'list' | 'board' | 'users') => {
+    // Se estiver mudando para Kanban ou UserBoard e o chat estiver aberto, feche-o
+    if (newView !== 'list' && showChat) {
+      closeChat();
+    }
+    
+    // Atualizar visualização (salva preferência automaticamente)
+    setView(newView);
+  };
 
 // Função para abrir o chat de um ticket
 const openChat = (ticket: Ticket) => {

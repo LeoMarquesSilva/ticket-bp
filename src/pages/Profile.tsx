@@ -1,16 +1,50 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { User, Lock, Mail, Calendar, Shield, Key } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { User, Lock, Mail, Calendar, Shield, Key, LayoutGrid, List, Users } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import { UserService } from '@/services/userService';
 import { toast } from 'sonner';
 
 const Profile: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUserProfile } = useAuth();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [viewPreference, setViewPreference] = useState<'list' | 'board' | 'users'>('list');
+  const [savingPreference, setSavingPreference] = useState(false);
+  
+  // Carregar preferência atual do usuário
+  useEffect(() => {
+    if (user?.ticketViewPreference) {
+      setViewPreference(user.ticketViewPreference);
+    }
+  }, [user?.ticketViewPreference]);
+  
+  // Salvar preferência de visualização
+  const handleViewPreferenceChange = async (newPreference: 'list' | 'board' | 'users') => {
+    if (!user?.id) return;
+    
+    setSavingPreference(true);
+    try {
+      const success = await UserService.updateTicketViewPreference(user.id, newPreference);
+      if (success) {
+        setViewPreference(newPreference);
+        await refreshUserProfile(); // Atualizar o contexto do usuário
+        toast.success('Preferência de visualização salva com sucesso!');
+      } else {
+        toast.error('Erro ao salvar preferência. Tente novamente.');
+      }
+    } catch (error) {
+      console.error('Erro ao salvar preferência:', error);
+      toast.error('Erro ao salvar preferência. Tente novamente.');
+    } finally {
+      setSavingPreference(false);
+    }
+  };
 
   // Gradiente oficial da marca Responsum
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
@@ -253,6 +287,76 @@ const Profile: React.FC = () => {
                 <Lock className="h-4 w-4 mr-2" />
                 Alterar Senha
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Preferências de Visualização */}
+        <Card className="border-[#F69F19]/10 shadow-sm hover:shadow-md transition-shadow duration-300 bg-white">
+          <CardHeader className="border-b border-slate-100 pb-4">
+            <CardTitle className="flex items-center gap-2 text-[#2C2D2F]">
+              <div className="p-2 rounded-lg bg-[#F69F19]/10">
+                <LayoutGrid className="h-5 w-5 text-[#F69F19]" />
+              </div>
+              Preferências de Visualização
+            </CardTitle>
+            <CardDescription>
+              Escolha como você prefere visualizar os tickets
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6 pt-6">
+            <div className="space-y-4">
+              <Label className="text-sm font-medium text-[#2C2D2F]">
+                Visualização padrão de tickets
+              </Label>
+              <RadioGroup
+                value={viewPreference}
+                onValueChange={(value) => handleViewPreferenceChange(value as 'list' | 'board' | 'users')}
+                disabled={savingPreference}
+                className="space-y-3"
+              >
+                <div className="flex items-center space-x-3 p-4 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <RadioGroupItem value="list" id="list" className="border-[#F69F19] text-[#F69F19]" />
+                  <Label htmlFor="list" className="flex-1 cursor-pointer flex items-center gap-3">
+                    <List className="h-5 w-5 text-[#F69F19]" />
+                    <div>
+                      <div className="font-medium text-[#2C2D2F]">Lista</div>
+                      <div className="text-xs text-slate-500">Visualização em lista de cards</div>
+                    </div>
+                  </Label>
+                </div>
+                
+                <div className="flex items-center space-x-3 p-4 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <RadioGroupItem value="board" id="board" className="border-[#F69F19] text-[#F69F19]" />
+                  <Label htmlFor="board" className="flex-1 cursor-pointer flex items-center gap-3">
+                    <LayoutGrid className="h-5 w-5 text-[#F69F19]" />
+                    <div>
+                      <div className="font-medium text-[#2C2D2F]">Quadro (Kanban)</div>
+                      <div className="text-xs text-slate-500">Organização por status em colunas</div>
+                    </div>
+                  </Label>
+                </div>
+                
+                {(user?.role === 'admin' || user?.role === 'support' || user?.role === 'lawyer') && (
+                  <div className="flex items-center space-x-3 p-4 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                    <RadioGroupItem value="users" id="users" className="border-[#F69F19] text-[#F69F19]" />
+                    <Label htmlFor="users" className="flex-1 cursor-pointer flex items-center gap-3">
+                      <Users className="h-5 w-5 text-[#F69F19]" />
+                      <div>
+                        <div className="font-medium text-[#2C2D2F]">Por Usuário</div>
+                        <div className="text-xs text-slate-500">Organização por usuário atribuído</div>
+                      </div>
+                    </Label>
+                  </div>
+                )}
+              </RadioGroup>
+              
+              {savingPreference && (
+                <div className="text-sm text-slate-500 flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F69F19]"></div>
+                  Salvando preferência...
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
