@@ -9,6 +9,7 @@ import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Imag
 import FinishTicketButton from './FinishTicketButton';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
+import { getSlaHours, CATEGORIES_CONFIG } from '@/services/dashboardService';
 import NPSChatFeedback from './NPSChatFeedback';
 import { 
   DropdownMenu,
@@ -276,6 +277,23 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     });
   };
 
+  // Função para obter o label formatado da categoria
+  const getCategoryLabel = (category: string): string => {
+    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    return categoryConfig?.label || category || 'Geral';
+  };
+
+  // Função para obter o label formatado da subcategoria
+  const getSubcategoryLabel = (category: string, subcategory: string): string => {
+    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    if (!categoryConfig || !subcategory) return subcategory || '';
+    
+    const subcategoryConfig = categoryConfig.subcategories.find(
+      sub => sub.value === subcategory
+    );
+    return subcategoryConfig?.label || subcategory;
+  };
+
   const renderAttachments = (attachments: any[]) => {
     if (!attachments || attachments.length === 0) return null;
     
@@ -517,8 +535,22 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <Tag className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-[#2C2D2F]">Categoria:</span> {selectedTicket.category || 'Geral'} 
-                {selectedTicket.subcategory && <span> / {selectedTicket.subcategory}</span>}
+                <span className="font-semibold text-[#2C2D2F]">Categoria:</span> 
+                {getCategoryLabel(selectedTicket.category || 'outros')}
+                {selectedTicket.subcategory && (
+                  <span> / {getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-slate-600">
+                <Clock className="h-3.5 w-3.5 text-slate-400" />
+                <span className="font-semibold text-[#2C2D2F]">SLA Estimado:</span> 
+                <span className="text-[#F69F19] font-medium">
+                  {(() => {
+                    const slaHours = getSlaHours(selectedTicket.category || 'outros', selectedTicket.subcategory || 'outros');
+                    if (slaHours === 1) return '1 hora';
+                    return `${slaHours} horas`;
+                  })()}
+                </span>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
