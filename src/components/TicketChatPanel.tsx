@@ -11,6 +11,7 @@ import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
 import { getSlaHours, CATEGORIES_CONFIG } from '@/services/dashboardService';
 import NPSChatFeedback from './NPSChatFeedback';
+import QuickReplyTemplates from './QuickReplyTemplates';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -760,6 +761,19 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
           )}
 
           <div className="flex gap-2 items-end">
+            {/* Botão de templates de resposta rápida - apenas para atendentes */}
+            {(user?.role === 'support' || user?.role === 'lawyer' || user?.role === 'admin') && !isTicketFinalized(selectedTicket) && (
+              <QuickReplyTemplates
+                onSelectTemplate={(message) => {
+                  setNewMessage(message);
+                  // Focar o input após inserir o template
+                  setTimeout(() => {
+                    inputRef.current?.focus();
+                  }, 100);
+                }}
+                disabled={sending || isTicketFinalized(selectedTicket)}
+              />
+            )}
             <div className="flex-1 relative">
               <Input
                 ref={inputRef}

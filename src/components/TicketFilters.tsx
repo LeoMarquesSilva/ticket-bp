@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, X } from 'lucide-react';
+import { CATEGORIES_CONFIG } from '@/services/dashboardService';
 
 interface TicketFiltersProps {
   searchTerm: string;
@@ -78,12 +79,11 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as Categorias</SelectItem>
-            <SelectItem value="Protocolo">Protocolo</SelectItem>
-            <SelectItem value="Cadastro">Cadastro</SelectItem>
-            <SelectItem value="Agendamento">Agendamento</SelectItem>
-            <SelectItem value="Publicacoes">Publicações</SelectItem>
-            <SelectItem value="Assinatura Digital">Assinatura Digital</SelectItem>
-            <SelectItem value="Outros">Outros</SelectItem>
+            {Object.entries(CATEGORIES_CONFIG).map(([key, config]) => (
+              <SelectItem key={key} value={key}>
+                {config.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
