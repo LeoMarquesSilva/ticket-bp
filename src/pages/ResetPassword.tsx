@@ -10,6 +10,10 @@ import { supabase } from '@/lib/supabase';
 import { passwordService } from '@/services/passwordService';
 import { toast } from 'sonner';
 
+// Constantes do Supabase para uso na API REST
+const SUPABASE_URL = 'https://jhgbrbarfpvgdaaznldj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoZ2JyYmFyZnB2Z2RhYXpubGRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwNDU4MDMsImV4cCI6MjA3MzYyMTgwM30.QaaMs2MNbD05Lpm_H1qP25FJT3pT_mmPGvhZ1wsJNcA';
+
 const ResetPassword = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -77,42 +81,70 @@ const ResetPassword = () => {
           }
         }
 
-        // Método 2: Se temos um código (code) - formato mais comum do Supabase
+        // Método 2: Se temos um código (code) - usar verifyOtp com type recovery
+        // Para reset de senha, o Supabase envia um código que deve ser usado com verifyOtp
         if (code) {
-          console.log('🔄 Método 2: Usando código (code) para trocar por sessão...');
+          console.log('🔄 Método 2: Usando código (code) com verifyOtp recovery...');
           try {
-            // Trocar código por sessão usando exchangeCodeForSession
-            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            // Para reset de senha, usar verifyOtp com token_hash
+            // O código que vem na URL é um token_hash para recovery
+            const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
+              token_hash: code,
+              type: 'recovery'
+            });
             
-            if (!error && data.session && data.user) {
-              console.log('✅ Sucesso ao trocar código por sessão!');
+            if (!otpError && otpData.session && otpData.user) {
+              console.log('✅ Sucesso com verifyOtp recovery!');
               setSessionValid(true);
               setValidatingToken(false);
               window.history.replaceState({}, document.title, '/reset-password');
               toast.success('Link válido! Você pode redefinir sua senha agora.');
               return;
             } else {
-              console.log('❌ Erro ao trocar código:', error?.message);
-              // Tentar também como OTP recovery
-              if (error?.message?.includes('invalid') || error?.message?.includes('expired')) {
-                console.log('🔄 Tentando como OTP recovery...');
-                try {
-                  const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
+              console.log('❌ Erro ao verificar OTP recovery:', otpError?.message);
+              
+              // Se verifyOtp falhar, o código pode ser um código PKCE que precisa de tratamento especial
+              // Tentar usar a API REST com o endpoint correto para recovery
+              console.log('🔄 Tentando via API REST (recovery endpoint)...');
+              try {
+                // Tentar o endpoint de verify com recovery
+                const response = await fetch(`${SUPABASE_URL}/auth/v1/verify`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY,
+                  },
+                  body: JSON.stringify({
                     token_hash: code,
                     type: 'recovery'
+                  }),
+                });
+                
+                const result = await response.json();
+                console.log('📨 Resposta da API REST:', { ok: response.ok, result });
+                
+                if (response.ok && result.access_token) {
+                  console.log('✅ Sucesso via API REST!');
+                  // Criar sessão com os tokens recebidos
+                  const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+                    access_token: result.access_token,
+                    refresh_token: result.refresh_token,
                   });
                   
-                  if (!otpError && otpData.session && otpData.user) {
-                    console.log('✅ Sucesso com OTP recovery!');
+                  if (!sessionError && sessionData.session && sessionData.user) {
                     setSessionValid(true);
                     setValidatingToken(false);
                     window.history.replaceState({}, document.title, '/reset-password');
                     toast.success('Link válido! Você pode redefinir sua senha agora.');
                     return;
+                  } else {
+                    console.log('❌ Erro ao criar sessão:', sessionError?.message);
                   }
-                } catch (otpE: any) {
-                  console.log('❌ Falha OTP recovery:', otpE?.message || otpE);
+                } else {
+                  console.log('❌ Erro na API REST:', result.error || result);
                 }
+              } catch (apiE: any) {
+                console.log('❌ Falha API REST:', apiE?.message || apiE);
               }
             }
           } catch (e: any) {
