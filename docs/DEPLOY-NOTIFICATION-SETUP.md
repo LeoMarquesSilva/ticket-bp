@@ -13,11 +13,30 @@ Este documento explica como configurar notificações automáticas via WhatsApp 
 
 ### Passo 1: Configurar Secret no GitHub
 
-1. No seu repositório GitHub, vá em **Settings** → **Secrets and variables** → **Actions**
-2. Clique em **New repository secret**
-3. Adicione:
+**Opção A - Via Interface Web:**
+
+1. Acesse seu repositório no GitHub: `https://github.com/LeoMarquesSilva/ticket-bp`
+2. Clique na aba **"Settings"** (no topo do repositório, ao lado de Code, Issues, etc.)
+3. No menu lateral esquerdo, procure por **"Secrets and variables"**
+4. Clique em **"Actions"** (dentro de Secrets and variables)
+5. Clique no botão **"New repository secret"** (botão verde no canto superior direito)
+6. Preencha:
    - **Name**: `N8N_DEPLOY_WEBHOOK_URL`
-   - **Value**: URL do webhook do n8n (ex: `https://seu-n8n.com/webhook/deploy-notification`)
+   - **Secret**: Cole a URL do webhook do n8n (ex: `https://seu-n8n.com/webhook/deploy-notification`)
+7. Clique em **"Add secret"**
+
+**Opção B - Se não encontrar "Secrets and variables":**
+
+Alguns repositórios podem ter um caminho ligeiramente diferente:
+
+1. **Settings** → **Secrets** → **Actions** → **New repository secret**
+
+Ou também pode estar em:
+2. **Settings** → **Security** → **Secrets and variables** → **Actions**
+
+**⚠️ Importante:** 
+- Você precisa ter permissões de administrador no repositório
+- Secrets só aparecem para repositórios privados ou para administradores em repositórios públicos
 
 ### Passo 2: Criar Webhook no n8n
 
