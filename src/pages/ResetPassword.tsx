@@ -24,7 +24,7 @@ const ResetPassword = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    let authListener: { data: { subscription: any } } | null = null;
+    let authListener: { subscription: { unsubscribe: () => void } } | null = null;
     
     const processResetLink = async () => {
       try {
@@ -120,7 +120,7 @@ const ResetPassword = () => {
             
             // Remover listener após sucesso
             if (authListener) {
-              authListener.data.subscription.unsubscribe();
+              authListener.subscription.unsubscribe();
               authListener = null;
             }
           }
@@ -153,7 +153,7 @@ const ResetPassword = () => {
             
             // Remover listener após sucesso
             if (authListener) {
-              authListener.data.subscription.unsubscribe();
+              authListener.subscription.unsubscribe();
               authListener = null;
             }
             
@@ -177,7 +177,7 @@ const ResetPassword = () => {
         
         // Remover listener se ainda estiver ativo
         if (authListener) {
-          authListener.data.subscription.unsubscribe();
+          authListener.subscription.unsubscribe();
           authListener = null;
         }
         
@@ -191,7 +191,7 @@ const ResetPassword = () => {
         
         // Limpar listener em caso de erro
         if (authListener) {
-          authListener.data.subscription.unsubscribe();
+          authListener.subscription.unsubscribe();
           authListener = null;
         }
       }
@@ -204,7 +204,7 @@ const ResetPassword = () => {
     // Cleanup: remover listener quando componente desmontar
     return () => {
       if (authListener) {
-        authListener.data.subscription.unsubscribe();
+        authListener.subscription.unsubscribe();
       }
     };
   }, [success]);
