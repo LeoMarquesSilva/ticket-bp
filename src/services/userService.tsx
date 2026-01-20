@@ -18,6 +18,7 @@ export class UserService {
         .from(TABLES.USERS)
         .select('*')
         .in('role', ['support', 'lawyer'])
+        .eq('is_active', true) // Apenas usuários ativos
         .order('role', { ascending: false }) // Advogados primeiro, depois suporte
         .order('is_online', { ascending: false }); // Online primeiro
 
@@ -40,6 +41,7 @@ export class UserService {
         .from(TABLES.USERS)
         .select('*')
         .eq('role', 'lawyer')
+        .eq('is_active', true) // Apenas usuários ativos
         .order('is_online', { ascending: false }); // Online primeiro
 
       if (error) {
@@ -54,12 +56,20 @@ export class UserService {
     }
   }
 
-  // Obter todos os usuários
-  static async getAllUsers(): Promise<User[]> {
+  // Obter todos os usuários (incluindo inativos para administração)
+  static async getAllUsers(includeInactive: boolean = true): Promise<User[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from(TABLES.USERS)
-        .select('*')
+        .select('*');
+
+      // Se não incluir inativos, filtrar apenas ativos
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+
+      const { data, error } = await query
+        .order('is_active', { ascending: false }) // Ativos primeiro
         .order('role')
         .order('name');
 
@@ -197,6 +207,7 @@ export class UserService {
         role: userData.role,
         department: department,
         is_online: false,
+        is_active: true, // ✅ Novo campo - usuários criados são ativos por padrão
         first_login: true, // ✅ Novo campo - primeiro login
         must_change_password: true, // ✅ Novo campo - deve alterar senha
         created_at: new Date().toISOString(),
@@ -507,11 +518,12 @@ static async deleteUser(userId: string): Promise<boolean> {
   // Obter o próximo advogado disponível para atribuição de ticket
   static async getNextAvailableLawyer(): Promise<User | null> {
     try {
-      // Primeiro tenta encontrar um advogado online
+      // Primeiro tenta encontrar um advogado online e ativo
       const { data, error } = await supabase
         .from(TABLES.USERS)
         .select('*')
         .eq('role', 'lawyer')
+        .eq('is_active', true) // Apenas usuários ativos
         .eq('is_online', true)
         .order('last_active_at', { ascending: true }) // Distribui de forma justa
         .limit(1)
@@ -526,11 +538,12 @@ static async deleteUser(userId: string): Promise<boolean> {
         return this.mapFromDatabase(data);
       }
 
-      // Se não encontrar nenhum advogado online, tenta encontrar qualquer advogado
+      // Se não encontrar nenhum advogado online, tenta encontrar qualquer advogado ativo
       const { data: offlineData, error: offlineError } = await supabase
         .from(TABLES.USERS)
         .select('*')
         .eq('role', 'lawyer')
+        .eq('is_active', true) // Apenas usuários ativos
         .order('last_active_at', { ascending: true }) // Distribui de forma justa
         .limit(1)
         .single();
@@ -554,6 +567,7 @@ static async deleteUser(userId: string): Promise<boolean> {
         .from(TABLES.USERS)
         .select('*')
         .eq('department', department)
+        .eq('is_active', true) // Apenas usuários ativos
         .order('role')
         .order('name');
 
@@ -565,6 +579,31 @@ static async deleteUser(userId: string): Promise<boolean> {
       return data ? data.map(this.mapFromDatabase) : [];
     } catch (error) {
       console.error('Error in getUsersByDepartment:', error);
+      throw error;
+    }
+  }
+
+  // ✅ NOVO: Ativar/Desativar usuário
+  static async toggleUserActiveStatus(userId: string, isActive: boolean): Promise<User> {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.USERS)
+        .update({
+          is_active: isActive,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error toggling user active status:', error);
+        throw error;
+      }
+
+      return this.mapFromDatabase(data);
+    } catch (error) {
+      console.error('Error in toggleUserActiveStatus:', error);
       throw error;
     }
   }
@@ -582,7 +621,8 @@ static async deleteUser(userId: string): Promise<boolean> {
       firstLogin: data.first_login, // ✅ Novo campo
       mustChangePassword: data.must_change_password, // ✅ Novo campo
       passwordChangedAt: data.password_changed_at, // ✅ Novo campo
-      ticketViewPreference: data.ticket_view_preference || 'list' // ✅ Preferência de visualização
+      ticketViewPreference: data.ticket_view_preference || 'list', // ✅ Preferência de visualização
+      isActive: data.is_active !== undefined ? data.is_active : true // ✅ Novo campo - padrão é true
     };
   }
 

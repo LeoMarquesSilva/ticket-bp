@@ -24,6 +24,7 @@ export interface User {
   mustChangePassword?: boolean; // ✅ Novo campo - indica se deve alterar senha
   passwordChangedAt?: string; // ✅ Novo campo - data da última alteração de senha
   ticketViewPreference?: 'list' | 'board' | 'users'; // ✅ Preferência de visualização de tickets
+  isActive?: boolean; // ✅ Novo campo - indica se o usuário está ativo
   createdAt?: string;
 }
 

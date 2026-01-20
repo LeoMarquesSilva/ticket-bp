@@ -225,10 +225,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       try {
-        // Selecionar campos específicos incluindo ticket_view_preference
+        // Selecionar campos específicos incluindo ticket_view_preference e is_active
         const { data: userProfile, error } = await supabase
           .from(TABLES.USERS)
-          .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, created_at, auth_user_id')
+          .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
           .eq('auth_user_id', authUserId)
           .abortSignal(controller.signal)
           .single();
@@ -244,6 +244,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Carregar preferência de visualização do banco
           const ticketViewPref = (userProfile.ticket_view_preference as 'list' | 'board' | 'users' | null) || 'list';
           
+          // Verificar se o usuário está ativo
+          const isActive = userProfile.is_active !== undefined ? userProfile.is_active : true;
+          
+          if (!isActive) {
+            console.error('❌ Usuário inativo. Login bloqueado.');
+            await supabase.auth.signOut();
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+
           const userData: User = {
             id: userProfile.id,
             name: userProfile.name,
@@ -256,6 +267,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             mustChangePassword: userProfile.must_change_password || false,
             passwordChangedAt: userProfile.password_changed_at,
             ticketViewPreference: ticketViewPref,
+            isActive: isActive,
             createdAt: userProfile.created_at 
           };
 
@@ -272,10 +284,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { user: authUser } } = await supabase.auth.getUser();
         
         if (authUser?.email) {
-          // Selecionar campos específicos incluindo ticket_view_preference
+          // Selecionar campos específicos incluindo ticket_view_preference e is_active
           const { data: emailProfile, error: emailError } = await supabase
             .from(TABLES.USERS)
-            .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, created_at, auth_user_id')
+            .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
             .eq('email', authUser.email)
             .single();
           
@@ -285,6 +297,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .update({ auth_user_id: authUserId })
               .eq('id', emailProfile.id);
             
+            // Verificar se o usuário está ativo
+            const isActive = emailProfile.is_active !== undefined ? emailProfile.is_active : true;
+            
+            if (!isActive) {
+              console.error('❌ Usuário inativo. Login bloqueado.');
+              await supabase.auth.signOut();
+              setUser(null);
+              setLoading(false);
+              return;
+            }
+
             // Carregar preferência de visualização do banco
             const ticketViewPref = (emailProfile.ticket_view_preference as 'list' | 'board' | 'users' | null) || 'list';
             
@@ -300,6 +323,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               mustChangePassword: emailProfile.must_change_password || false,
               passwordChangedAt: emailProfile.password_changed_at,
               ticketViewPreference: ticketViewPref,
+              isActive: isActive,
               createdAt: emailProfile.created_at
             };
 
@@ -358,6 +382,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: 'user',
           department: 'Geral',
           is_online: false,
+          is_active: true, // Usuários criados são ativos por padrão
           first_login: true,
           must_change_password: true,
         })
