@@ -9,7 +9,8 @@ import {
   Menu,
   Building2,
   Database,
-  ChevronRight
+  ChevronRight,
+  Tag
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
@@ -63,6 +64,13 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
       name: "Gerenciar Usuários",
       href: "/users",
       icon: <Users className="h-5 w-5" />,
+      roles: ["admin"],
+      badge: null
+    },
+    {
+      name: "Gerenciar Categorias",
+      href: "/categories",
+      icon: <Tag className="h-5 w-5" />,
       roles: ["admin"],
       badge: null
     }

@@ -28,7 +28,7 @@ import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { format, subDays, endOfDay, startOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, startOfWeek, endOfWeek, differenceInHours, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import RecentFeedbackList from '@/components/RecentFeedbackList';
-import { CATEGORIES_CONFIG } from '@/services/dashboardService';
+import { CategoryService } from '@/services/categoryService';
 
 // Cores da Marca
 const BRAND = {
@@ -75,6 +75,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   const [timeRange, setTimeRange] = useState('30');
+  const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
   
   // Estados para o Chat Modal
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -128,6 +129,20 @@ const Dashboard = () => {
     
     return sorted;
   };
+
+  // Carregar categorias do banco de dados
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const config = await CategoryService.getCategoriesConfig();
+        setCategoriesConfig(config);
+      } catch (error) {
+        console.error('Erro ao carregar categorias do banco:', error);
+      }
+    };
+
+    loadCategories();
+  }, []);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -243,14 +258,25 @@ const Dashboard = () => {
     try {
       // Se for um feedback (tem apenas id, title, etc), buscar o ticket completo
       let fullTicket = ticket;
-      if (ticket.id && !ticket.createdBy) {
+      if (ticket.id && (!ticket.createdBy || !ticket.category || !ticket.createdAt)) {
         const ticketData = await TicketService.getTicket(ticket.id);
         if (ticketData) {
-          fullTicket = ticketData;
+          fullTicket = {
+            ...ticket,
+            ...ticketData,
+            createdBy: ticketData.createdBy || ticket.createdBy,
+            createdByName: ticketData.createdByName || ticket.createdByName,
+            category: ticketData.category || ticket.category,
+            subcategory: ticketData.subcategory || ticket.subcategory,
+            createdAt: ticketData.createdAt || ticket.createdAt,
+            resolvedAt: ticketData.resolvedAt || ticket.resolvedAt
+          };
         }
       }
       
       setChatTicket(fullTicket);
+      // Resetar o estado de detalhes ao abrir um novo ticket
+      setShowTicketDetails(false);
       const messages = await TicketService.getTicketMessages(fullTicket.id);
       setChatMessages(messages);
     } catch (error) {
@@ -336,14 +362,16 @@ const Dashboard = () => {
 
   // Função para obter o label formatado da categoria
   const getCategoryLabel = (category: string): string => {
-    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    if (Object.keys(categoriesConfig).length === 0) return category || 'Geral';
+    const categoryConfig = categoriesConfig[category];
     return categoryConfig?.label || category || 'Geral';
   };
 
   // Função para obter o label formatado da subcategoria
   const getSubcategoryLabel = (category: string, subcategory: string): string => {
-    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
-    if (!categoryConfig || !subcategory) return subcategory || '';
+    if (Object.keys(categoriesConfig).length === 0 || !category || !subcategory) return subcategory || '';
+    const categoryConfig = categoriesConfig[category];
+    if (!categoryConfig) return subcategory || '';
     
     const subcategoryConfig = categoryConfig.subcategories.find(
       sub => sub.value === subcategory
@@ -929,6 +957,7 @@ const Dashboard = () => {
                       <TableRow>
                         <TableHead className="w-[300px]">Ticket</TableHead>
                         <TableHead>Data</TableHead>
+                        <TableHead>Solicitante</TableHead>
                         <TableHead>Atendente</TableHead>
                         <TableHead className="text-center">
                           <button
@@ -971,7 +1000,7 @@ const Dashboard = () => {
                     <TableBody>
                       {(!stats.recentFeedback || stats.recentFeedback.length === 0) ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center text-slate-500">
+                          <TableCell colSpan={8} className="h-24 text-center text-slate-500">
                             Nenhuma avaliação encontrada neste período.
                           </TableCell>
                         </TableRow>
@@ -988,6 +1017,9 @@ const Dashboard = () => {
                             </TableCell>
                             <TableCell className="text-slate-500 text-sm">
                               {formatDate(feedback.resolvedAt)}
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm text-slate-700">{feedback.createdByName || 'Não informado'}</span>
                             </TableCell>
                             <TableCell>
                               <span className="text-sm text-slate-700">{feedback.assignedToName || 'Não atribuído'}</span>
@@ -1103,6 +1135,19 @@ const Dashboard = () => {
             {/* Detalhes do Ticket (expandível) */}
             {showTicketDetails && chatTicket && (
               <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 animate-in slide-in-from-top-2">
+                {/* Data e Hora de Criação - Sempre mostrar se ticket existe */}
+                <div className="flex items-center gap-2 text-xs text-slate-600">
+                  <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span className="font-semibold text-[#2C2D2F]">Criado em:</span>
+                  <span className="text-slate-700">
+                    {chatTicket.createdAt ? (
+                      format(new Date(chatTicket.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                    ) : (
+                      <span className="text-slate-400 italic">Não informado</span>
+                    )}
+                  </span>
+                </div>
+                
                 {/* Tempo de Resolução */}
                 {chatTicket.createdAt && chatTicket.resolvedAt && (
                   <div className="flex items-center gap-2 text-xs text-slate-600">
@@ -1113,18 +1158,22 @@ const Dashboard = () => {
                 )}
                 
                 {/* Categoria e Subcategoria */}
-                {(chatTicket.category || chatTicket.subcategory) && (
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    <Tag className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span className="font-semibold text-[#2C2D2F]">Categoria:</span>
-                    <span className="text-slate-700">
-                      {getCategoryLabel(chatTicket.category || 'outros')}
-                      {chatTicket.subcategory && (
-                        <span> / {getSubcategoryLabel(chatTicket.category || 'outros', chatTicket.subcategory)}</span>
-                      )}
-                    </span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 text-xs text-slate-600">
+                  <Tag className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span className="font-semibold text-[#2C2D2F]">Categoria:</span>
+                  <span className="text-slate-700">
+                    {(chatTicket.category || chatTicket.subcategory) ? (
+                      <>
+                        {getCategoryLabel(chatTicket.category || 'outros')}
+                        {chatTicket.subcategory && (
+                          <span> / {getSubcategoryLabel(chatTicket.category || 'outros', chatTicket.subcategory)}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-400 italic">Não informado</span>
+                    )}
+                  </span>
+                </div>
               </div>
             )}
             

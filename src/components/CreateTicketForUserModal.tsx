@@ -18,7 +18,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { TicketService } from '@/services/ticketService';
 import { useAuth } from '@/contexts/AuthContext';
-import { CATEGORIES_CONFIG } from '@/components/TicketForm';
+import { CategoryService } from '@/services/categoryService';
 import { toast } from 'sonner';
 
 interface CreateTicketForUserModalProps {
@@ -58,9 +58,31 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [slaHours, setSlaHours] = useState<number | null>(null);
   const [step, setStep] = useState<'user' | 'ticket'>('user');
+  const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
+  const [loadingCategories, setLoadingCategories] = useState(true);
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
+
+  // Carregar categorias do banco de dados
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setLoadingCategories(true);
+        const config = await CategoryService.getCategoriesConfig();
+        setCategoriesConfig(config);
+      } catch (error) {
+        console.error('Erro ao carregar categorias do banco:', error);
+        setCategoriesConfig({});
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
+    if (isOpen) {
+      loadCategories();
+    }
+  }, [isOpen]);
 
   // Carregar usuários quando o modal abrir
   useEffect(() => {
@@ -81,7 +103,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   // Atualizar SLA quando subcategoria muda
   useEffect(() => {
     if (category && subcategory) {
-      const selectedSubcategory = CATEGORIES_CONFIG[category]?.subcategories.find(
+      const selectedSubcategory = categoriesConfig[category]?.subcategories.find(
         sub => sub.value === subcategory
       );
       
@@ -93,7 +115,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     } else {
       setSlaHours(null);
     }
-  }, [category, subcategory]);
+  }, [category, subcategory, categoriesConfig]);
 
   const resetForm = () => {
     setSelectedUser(null);
@@ -401,11 +423,15 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.entries(CATEGORIES_CONFIG).map(([key, config]) => (
-                        <SelectItem key={key} value={key}>
-                          {config.label}
-                        </SelectItem>
-                      ))}
+                      {loadingCategories ? (
+                        <div className="px-2 py-1.5 text-sm text-slate-500">Carregando categorias...</div>
+                      ) : (
+                        Object.entries(categoriesConfig).map(([key, config]) => (
+                          <SelectItem key={key} value={key}>
+                            {config.label}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   {errors.category && (
@@ -427,7 +453,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
-                      {category && CATEGORIES_CONFIG[category]?.subcategories.map((sub) => (
+                      {category && categoriesConfig[category]?.subcategories.map((sub) => (
                         <SelectItem key={sub.value} value={sub.value}>
                           {sub.label}
                         </SelectItem>

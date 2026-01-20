@@ -5,13 +5,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useAuth } from '@/contexts/AuthContext';
 import { TicketService } from '@/services/ticketService';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, ChevronDown, ChevronUp, Tag, Clock } from 'lucide-react';
+import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, ChevronDown, ChevronUp, Tag, Clock, Calendar } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { CATEGORIES_CONFIG } from '@/services/dashboardService';
-import { differenceInHours, differenceInDays } from 'date-fns';
+import { CategoryService } from '@/services/categoryService';
+import { differenceInHours, differenceInDays, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface RecentFeedbackItem {
   id: string;
@@ -56,6 +57,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
   const [attendants, setAttendants] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
   const [showTicketDetails, setShowTicketDetails] = useState(false);
+  const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
 
   // Processar feedbacks e agrupá-los por atendente
   useEffect(() => {
@@ -200,16 +202,32 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
     return "bg-red-50 text-red-700 border-red-200";
   };
 
+  // Carregar categorias do banco de dados
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const config = await CategoryService.getCategoriesConfig();
+        setCategoriesConfig(config);
+      } catch (error) {
+        console.error('Erro ao carregar categorias do banco:', error);
+      }
+    };
+
+    loadCategories();
+  }, []);
+
   // Função para obter o label formatado da categoria
   const getCategoryLabel = (category: string): string => {
-    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    if (Object.keys(categoriesConfig).length === 0) return category || 'Geral';
+    const categoryConfig = categoriesConfig[category];
     return categoryConfig?.label || category || 'Geral';
   };
 
   // Função para obter o label formatado da subcategoria
   const getSubcategoryLabel = (category: string, subcategory: string): string => {
-    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
-    if (!categoryConfig || !subcategory) return subcategory || '';
+    if (Object.keys(categoriesConfig).length === 0 || !category || !subcategory) return subcategory || '';
+    const categoryConfig = categoriesConfig[category];
+    if (!categoryConfig) return subcategory || '';
     
     const subcategoryConfig = categoryConfig.subcategories.find(
       sub => sub.value === subcategory
@@ -544,6 +562,17 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
               {/* Detalhes do Ticket (expandível) */}
               {showTicketDetails && selectedTicket && (
                 <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 animate-in slide-in-from-top-2">
+                  {/* Data e Hora de Criação */}
+                  {selectedTicket.createdAt && (
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span className="font-semibold text-[#2C2D2F]">Criado em:</span>
+                      <span className="text-slate-700">
+                        {format(new Date(selectedTicket.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                      </span>
+                    </div>
+                  )}
+                  
                   {/* Tempo de Resolução */}
                   {selectedTicket.createdAt && selectedTicket.resolvedAt && (
                     <div className="flex items-center gap-2 text-xs text-slate-600">

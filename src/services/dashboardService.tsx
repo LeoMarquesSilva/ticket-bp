@@ -1,4 +1,5 @@
 import { supabase, TABLES } from '@/lib/supabase';
+import { CategoryService } from './categoryService';
 
 // Interface para os dados de estatísticas
 export interface DashboardStats {
@@ -80,8 +81,8 @@ export interface DashboardStats {
   }>;
 }
 
-// Definição de categorias, subcategorias e seus SLAs
-export const CATEGORIES_CONFIG = {
+// Configuração hardcoded como fallback (caso haja erro ao buscar do banco)
+const FALLBACK_CATEGORIES_CONFIG = {
   'protocolo': {
     label: 'Protocolo',
     subcategories: [
@@ -128,6 +129,19 @@ export const CATEGORIES_CONFIG = {
   }
 };
 
+// Exportar para compatibilidade - agora é uma Promise que resolve para o config dinâmico ou fallback
+export let CATEGORIES_CONFIG: typeof FALLBACK_CATEGORIES_CONFIG = FALLBACK_CATEGORIES_CONFIG;
+
+// Função helper para obter categorias (tenta dinâmico, fallback para hardcoded)
+export async function getCategoriesConfig(): Promise<typeof FALLBACK_CATEGORIES_CONFIG> {
+  try {
+    return await CategoryService.getCategoriesConfig();
+  } catch (error) {
+    console.error('Erro ao carregar categorias do banco, usando fallback:', error);
+    return FALLBACK_CATEGORIES_CONFIG;
+  }
+}
+
 // Metas de desempenho
 export const PERFORMANCE_TARGETS = {
   NPS: 70, // Meta de NPS: 70%
@@ -135,7 +149,7 @@ export const PERFORMANCE_TARGETS = {
   CORDIALITY: 80 // Meta de cordialidade: 80%
 };
 
-// Função para obter SLA com base na categoria e subcategoria
+// Função para obter SLA com base na categoria e subcategoria (versão síncrona - usa fallback hardcoded)
 export function getSlaHours(category: string, subcategory: string): number {
   const categoryConfig = CATEGORIES_CONFIG[category];
   if (!categoryConfig) return 24; // Padrão: 24 horas
@@ -145,6 +159,34 @@ export function getSlaHours(category: string, subcategory: string): number {
   );
   
   return subcategoryConfig ? subcategoryConfig.slaHours : 24;
+}
+
+// Função assíncrona para obter SLA do banco de dados (quando disponível)
+export async function getSlaHoursFromDatabase(category: string, subcategory: string): Promise<number> {
+  try {
+    // Usar CategoryService para buscar do banco
+    const categoriesConfig = await CategoryService.getCategoriesConfig();
+    const categoryConfig = categoriesConfig[category];
+    
+    if (categoryConfig) {
+      const subcategoryConfig = categoryConfig.subcategories.find(
+        sub => sub.value === subcategory
+      );
+      
+      if (subcategoryConfig) {
+        return subcategoryConfig.slaHours;
+      }
+      
+      // Se não encontrou subcategoria, usar SLA da categoria se disponível
+      // Nota: O CategoryService não retorna slaHours da categoria diretamente,
+      // então vamos usar o fallback síncrono
+    }
+  } catch (error) {
+    console.warn('Erro ao buscar SLA do banco, usando fallback:', error);
+  }
+
+  // Fallback para função síncrona (hardcoded)
+  return getSlaHours(category, subcategory);
 }
 
 // Função para obter dados do dashboard

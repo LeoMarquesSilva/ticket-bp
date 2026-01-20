@@ -5,9 +5,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, Clock, Send } from 'lucide-react';
+import { CategoryService } from '@/services/categoryService';
 
-// Definição de categorias, subcategorias e seus SLAs
-export const CATEGORIES_CONFIG: Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }> = {
+// Configuração hardcoded como fallback (caso haja erro ao buscar do banco)
+const FALLBACK_CATEGORIES_CONFIG: Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }> = {
   'protocolo': {
     label: 'Protocolo',
     subcategories: [
@@ -54,6 +55,9 @@ export const CATEGORIES_CONFIG: Record<string, { label: string; subcategories: {
   }
 };
 
+// Exportar para compatibilidade com outros componentes que ainda podem estar usando
+export const CATEGORIES_CONFIG = FALLBACK_CATEGORIES_CONFIG;
+
 interface TicketFormProps {
   onSubmit: (data: {
     title: string;
@@ -78,9 +82,30 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [slaHours, setSlaHours] = useState<number | null>(null);
+  const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>(FALLBACK_CATEGORIES_CONFIG);
+  const [loadingCategories, setLoadingCategories] = useState(true);
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
+
+  // Carregar categorias do banco de dados
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setLoadingCategories(true);
+        const config = await CategoryService.getCategoriesConfig();
+        setCategoriesConfig(config);
+      } catch (error) {
+        console.error('Erro ao carregar categorias do banco, usando fallback:', error);
+        // Manter fallback se houver erro
+        setCategoriesConfig(FALLBACK_CATEGORIES_CONFIG);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
+  }, []);
 
   // Resetar subcategoria quando a categoria muda
   useEffect(() => {
@@ -91,7 +116,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
   // Atualizar SLA quando a subcategoria muda
   useEffect(() => {
     if (category && subcategory) {
-      const selectedSubcategory = CATEGORIES_CONFIG[category]?.subcategories.find(
+      const selectedSubcategory = categoriesConfig[category]?.subcategories.find(
         sub => sub.value === subcategory
       );
       
@@ -103,7 +128,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
     } else {
       setSlaHours(null);
     }
-  }, [category, subcategory]);
+  }, [category, subcategory, categoriesConfig]);
 
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
@@ -203,11 +228,15 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
               <SelectValue placeholder="Selecione uma categoria" />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(CATEGORIES_CONFIG).map(([key, config]) => (
-                <SelectItem key={key} value={key}>
-                  {config.label}
-                </SelectItem>
-              ))}
+              {loadingCategories ? (
+                <div className="px-2 py-1.5 text-sm text-slate-500">Carregando categorias...</div>
+              ) : (
+                Object.entries(categoriesConfig).map(([key, config]) => (
+                  <SelectItem key={key} value={key}>
+                    {config.label}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
           {errors.category && (
@@ -229,7 +258,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
               <SelectValue placeholder="Selecione uma subcategoria" />
             </SelectTrigger>
             <SelectContent>
-              {category && CATEGORIES_CONFIG[category]?.subcategories.map((sub) => (
+              {category && categoriesConfig[category]?.subcategories.map((sub) => (
                 <SelectItem key={sub.value} value={sub.value}>
                   {sub.label}
                 </SelectItem>

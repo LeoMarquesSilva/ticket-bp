@@ -15,6 +15,7 @@ export const TABLES = {
   TICKETS: 'app_c009c0e4f1_tickets',
   CHAT_MESSAGES: 'app_c009c0e4f1_chat_messages',
   CATEGORIES: 'app_c009c0e4f1_categories',
+  SUBCATEGORIES: 'app_c009c0e4f1_subcategories',
 };
 
 // Database types

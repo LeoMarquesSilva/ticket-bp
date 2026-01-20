@@ -9,7 +9,8 @@ import {
   Database,
   Menu,
   X,
-  User
+  User,
+  Tag
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -90,6 +91,13 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
       name: "Gerenciar Usuários",
       href: "/users",
       icon: <Users className="h-5 w-5" />,
+      roles: ["admin"],
+      badge: null
+    },
+    {
+      name: "Gerenciar Categorias",
+      href: "/categories",
+      icon: <Tag className="h-5 w-5" />,
       roles: ["admin"],
       badge: null
     }

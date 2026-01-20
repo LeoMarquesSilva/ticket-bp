@@ -8,6 +8,7 @@ import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
+import CategoryManagement from '@/pages/CategoryManagement';
 // Banco de Dados desabilitado
 // import DatabaseManagement from '@/pages/DatabaseManagement';
 import Profile from '@/pages/Profile';
@@ -140,6 +141,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <UserManagement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/categories"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <CategoryManagement />
           </ProtectedRoute>
         }
       />

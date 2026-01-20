@@ -4,6 +4,7 @@ import { executeWithRetry, isOnline } from '../utils/supabaseHelpers';
 import { saveForLater } from '../utils/offlineStorage';
 import ticketEventService from './ticketEventService';
 import { notifyDetractorFeedback } from './webhookService';
+import { CategoryService } from './categoryService';
 
 export interface Ticket {
   id: string;
@@ -879,14 +880,45 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
 
     console.log('Database insert data:', dbData); // Log para verificar o mapeamento
 
-    // Verificar se há um advogado disponível
-    const availableLawyer = await UserService.getNextAvailableLawyer();
+    // Verificar atribuição automática baseada em categoria/subcategoria
+    let assignedUser: any = null;
     
-    // Se houver um advogado online, atribuir o ticket a ele, mas manter status como "open"
-    if (availableLawyer) {
+    try {
+      const defaultAssignedUserId = await CategoryService.getDefaultAssignedUser(
+        ticketData.category,
+        ticketData.subcategory
+      );
+      
+      if (defaultAssignedUserId) {
+        // Buscar dados do usuário atribuído
+        const { data: userData } = await supabase
+          .from(TABLES.USERS)
+          .select('id, name, is_active')
+          .eq('id', defaultAssignedUserId)
+          .eq('is_active', true)
+          .single();
+        
+        if (userData) {
+          assignedUser = { id: userData.id, name: userData.name };
+        }
+      }
+    } catch (error) {
+      console.warn('Erro ao buscar atribuição automática, usando algoritmo padrão:', error);
+    }
+
+    // Se não encontrou atribuição automática, usar algoritmo padrão (próximo advogado disponível)
+    if (!assignedUser) {
+      const availableLawyer = await UserService.getNextAvailableLawyer();
+      if (availableLawyer) {
+        assignedUser = availableLawyer;
+      }
+    }
+    
+    // Se houver um usuário atribuído, atribuir o ticket a ele, mas manter status como "open"
+    if (assignedUser) {
       // Não alterar o status aqui, mantê-lo como "open"
-      dbData.assigned_to = availableLawyer.id;
-      dbData.assigned_to_name = availableLawyer.name;
+      dbData.assigned_to = assignedUser.id;
+      dbData.assigned_to_name = assignedUser.name;
       dbData.assigned_at = new Date().toISOString();
     }
 

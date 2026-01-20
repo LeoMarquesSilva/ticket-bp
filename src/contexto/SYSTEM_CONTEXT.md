@@ -404,3 +404,105 @@ WHERE is_active IS NULL;
 - ✅ Não afeta relatórios e análises do dashboard
 - ✅ Interface intuitiva e profissional
 - ✅ Filtros poderosos para gerenciamento eficiente
+
+**Modal de Exclusão de Usuários** (Janeiro 2025):
+- **AlertDialog Customizado**: Substituição do `confirm()` nativo do browser
+- **Identidade Visual**: Mesmo padrão dos modais de ativar/desativar
+- **Estilo de Alerta**: Cores vermelhas para indicar ação destrutiva
+- **Informações Detalhadas**: Explica consequências da exclusão permanente
+- **Recomendação**: Destaque visual sugerindo desativação em vez de exclusão
+- **Loading State**: Feedback visual durante a exclusão
+
+### Gerenciamento de Categorias e Subcategorias (Janeiro 2025)
+
+**Sistema Dinâmico de Categorias**:
+- **Banco de Dados**: Tabelas `app_c009c0e4f1_categories` e `app_c009c0e4f1_subcategories`
+- **CRUD Completo**: Criar, editar, ativar/desativar e excluir categorias e subcategorias
+- **Configuração de SLA**: Definir horas de SLA por categoria e subcategoria
+- **Atribuição Automática**: Configurar usuário padrão para receber tickets de cada categoria/subcategoria
+- **Ordenação**: Campo `order` para controlar ordem de exibição
+- **Fallback**: Sistema mantém compatibilidade com categorias hardcoded caso haja erro ao buscar do banco
+
+**Página de Gerenciamento de Categorias**:
+- **Rota**: `/categories` (apenas para admins)
+- **Header Premium**: Mesmo estilo visual do Dashboard (fundo escuro, gradientes, blur effects)
+- **Accordion**: Categorias expansíveis mostrando suas subcategorias
+- **Modais**: Criação e edição de categorias e subcategorias
+- **Atribuição**: Select para escolher usuário padrão (ou "Nenhum" para atribuição manual)
+- **Status**: Toggle para ativar/desativar categorias e subcategorias
+- **Exclusão**: Protegida - só permite excluir se não houver tickets associados
+
+**Busca e Filtros** (Janeiro 2025):
+- **Busca**: Campo de busca em tempo real por nome de categoria ou subcategoria
+- **Filtro de Status**: Filtrar por Ativos/Inativos/Todos
+- **Ordenação**: Ordenar por Nome (A-Z / Z-A), Ordem (crescente/decrescente) ou Data de criação
+- **Contador**: Mostra quantas categorias estão sendo exibidas após aplicar filtros
+- **Botão Limpar**: Remove todos os filtros aplicados de uma vez
+
+**Integração com Componentes**:
+- **TicketForm**: Busca categorias dinamicamente do banco
+- **CreateTicketForUserModal**: Busca categorias dinamicamente do banco
+- **TicketFilters**: Filtros de categoria carregados dinamicamente
+- **TicketChatPanel**: Labels de categoria/subcategoria carregados dinamicamente
+- **RecentFeedbackList**: Labels de categoria/subcategoria carregados dinamicamente
+- **Dashboard**: Labels de categoria/subcategoria carregados dinamicamente
+
+**Atribuição Automática de Tickets**:
+- **Prioridade 1**: Se subcategoria tem `default_assigned_to`, atribui ao usuário configurado
+- **Prioridade 2**: Se categoria tem `default_assigned_to`, atribui ao usuário configurado
+- **Fallback**: Se nenhum usuário configurado, usa `UserService.getNextAvailableLawyer()`
+
+**Estrutura de Banco de Dados**:
+```sql
+app_c009c0e4f1_categories:
+- id: uuid (PK)
+- key: text (unique) -- Ex: 'protocolo', 'cadastro'
+- label: text -- Ex: 'Protocolo', 'Cadastro'
+- sla_hours: integer -- SLA padrão da categoria
+- default_assigned_to: uuid (FK users) -- Usuário padrão
+- default_assigned_to_name: text -- Nome do usuário (cache)
+- is_active: boolean (default: true)
+- order: integer (default: 0)
+- created_at: timestamp
+- updated_at: timestamp
+
+app_c009c0e4f1_subcategories:
+- id: uuid (PK)
+- category_id: uuid (FK categories) -- Categoria pai
+- key: text -- Ex: 'pedido_urgencia', 'duvidas'
+- label: text -- Ex: 'Pedido de urgência', 'Dúvidas'
+- sla_hours: integer (required) -- SLA específico da subcategoria
+- default_assigned_to: uuid (FK users) -- Usuário padrão
+- default_assigned_to_name: text -- Nome do usuário (cache)
+- is_active: boolean (default: true)
+- order: integer (default: 0)
+- created_at: timestamp
+- updated_at: timestamp
+- UNIQUE(category_id, key)
+```
+
+**RLS Policies**:
+- Políticas permissivas para INSERT/UPDATE/DELETE (autorização no nível da aplicação)
+- SELECT permitido para todas as categorias (incluindo inativas) para permitir atualizações
+
+**Componentes Principais**:
+- `CategoryManagement.tsx`: Página de gerenciamento completa
+- `CategoryService`: Serviço com todos os métodos CRUD
+- `CategoryService.getCategoriesConfig()`: Retorna categorias no formato legado para compatibilidade
+- `CategoryService.getDefaultAssignedUser()`: Determina usuário padrão baseado em categoria/subcategoria
+
+### Design System - Headers Premium (Janeiro 2025)
+
+**Padrão Visual Unificado**:
+- **Páginas com Header Premium**: Dashboard, Gerenciamento de Categorias, Gerenciamento de Usuários
+- **Design**: Fundo escuro (#2C2D2F), gradientes com blur effects, bordas sutis
+- **Efeitos Visuais**: Círculos com blur de cores da marca (laranja e vermelho) posicionados estrategicamente
+- **Layout Responsivo**: Adapta-se para mobile e desktop
+- **Botões**: Estilo outline branco/transparente no header escuro, ou botões coloridos da marca
+- **Tipografia**: Títulos brancos grandes, descrições em cinza claro
+
+**Identidade Visual**:
+- Cores da marca: #F69F19 (laranja), #DE5532 (vermelho), #2C2D2F (preto)
+- Gradientes sutis com opacidade baixa
+- Sombras e bordas para profundidade
+- Animações de entrada (fade-in, slide-in)

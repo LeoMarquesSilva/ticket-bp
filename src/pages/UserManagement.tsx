@@ -41,6 +41,12 @@ export default function UserManagement() {
     userName: string;
     currentStatus: boolean;
   } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    userId: string;
+    userName: string;
+  } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -341,19 +347,21 @@ const handleConfirmToggleStatus = async () => {
   }
 };
 
-// Excluir usuário - MÉTODO CORRIGIDO (mantido para casos especiais)
-const handleDeleteUser = async (userId: string, userName: string) => {
-  if (!confirm(`Tem certeza que deseja EXCLUIR permanentemente o usuário ${userName}? 
-  
-⚠️ ATENÇÃO: Esta ação não pode ser desfeita!
+// Abrir modal de confirmação para excluir usuário
+const handleDeleteUser = (userId: string, userName: string) => {
+  setPendingDelete({ userId, userName });
+  setDeleteDialogOpen(true);
+};
 
-Nota: Usuários que criaram tickets serão anonimizados em vez de excluídos para preservar o histórico.
+// Confirmar e executar exclusão de usuário
+const handleConfirmDelete = async () => {
+  if (!pendingDelete) return;
 
-Recomendamos DESATIVAR o usuário em vez de excluí-lo.`)) {
-    return;
-  }
+  const { userId, userName } = pendingDelete;
 
   try {
+    setDeleteLoading(true);
+    setDeleteDialogOpen(false);
     await UserService.deleteUser(userId);
     toast({
       title: 'Usuário processado',
@@ -367,6 +375,9 @@ Recomendamos DESATIVAR o usuário em vez de excluí-lo.`)) {
       description: error.message || 'Não foi possível excluir ou anonimizar o usuário.',
       variant: 'destructive',
     });
+  } finally {
+    setDeleteLoading(false);
+    setPendingDelete(null);
   }
 };
 
@@ -386,23 +397,40 @@ Recomendamos DESATIVAR o usuário em vez de excluí-lo.`)) {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-[#2C2D2F]">Gerenciamento de Usuários</h1>
-
+    <div className="space-y-8 py-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header Premium - Mesmo estilo do Dashboard */}
+      <div className="relative rounded-2xl overflow-hidden bg-[#2C2D2F] shadow-lg border border-slate-800">
+        <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[#F69F19]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
+        <div className="absolute bottom-0 left-0 w-[200px] h-[200px] bg-[#DE5532]/10 rounded-full blur-2xl translate-y-1/3 -translate-x-1/4"></div>
         
-        <div className="flex gap-2">
-            <Button variant="outline" onClick={loadUsers} disabled={loading} className="border-[#F69F19] text-[#2C2D2F] hover:bg-[#F69F19]/5">
+        <div className="relative z-10 p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
+              Gerenciamento de Usuários
+            </h1>
+            <p className="text-slate-400 max-w-xl">
+              Gerencie usuários do sistema, permissões e permissões de acesso.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={loadUsers} 
+              disabled={loading} 
+              className="bg-white/5 text-white border-white/20 hover:bg-white/10"
+              size="sm"
+            >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Atualizar
             </Button>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-                <Button className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F] hover:shadow-sm">
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-[#F69F19] hover:bg-[#e08e12] text-white border-0" size="sm">
                   <PlusCircle className="h-4 w-4 mr-2" />
                   Novo Usuário
                 </Button>
-            </DialogTrigger>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle>Criar Novo Usuário</DialogTitle>
@@ -497,6 +525,7 @@ Recomendamos DESATIVAR o usuário em vez de excluí-lo.`)) {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </div>
 
@@ -935,6 +964,74 @@ Recomendamos DESATIVAR o usuário em vez de excluí-lo.`)) {
                 <>
                   <UserCheck className="h-4 w-4 mr-2" />
                   Ativar Usuário
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[500px] border-[#BD2D29]/20">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100">
+                <Trash2 className="h-6 w-6 text-red-600" />
+              </div>
+              <AlertDialogTitle className="text-xl font-semibold text-[#2C2D2F]">
+                Excluir Usuário Permanentemente
+              </AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-base text-slate-600 mt-4">
+              Tem certeza que deseja <strong className="text-red-600 font-semibold">excluir permanentemente</strong> o usuário{' '}
+              <strong className="text-[#2C2D2F]">{pendingDelete?.userName}</strong>?
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium mb-1">⚠️ ATENÇÃO: Esta ação não pode ser desfeita!</p>
+                    <p className="mb-2 text-red-700">O que acontece:</p>
+                    <ul className="list-disc list-inside space-y-1 text-red-700">
+                      <li>O usuário será removido permanentemente do sistema</li>
+                      <li>Usuários que criaram tickets serão anonimizados (não excluídos)</li>
+                      <li>O histórico de tickets será preservado</li>
+                      <li>Esta ação não pode ser revertida</li>
+                    </ul>
+                    <div className="mt-3 p-2 bg-orange-50 border border-orange-200 rounded">
+                      <p className="text-orange-800 text-xs font-medium">
+                        💡 Recomendamos <strong>DESATIVAR</strong> o usuário em vez de excluí-lo para preservar dados históricos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row sm:justify-end gap-2 mt-6">
+            <AlertDialogCancel
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setPendingDelete(null);
+              }}
+              className="border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={deleteLoading}
+              className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-600"
+            >
+              {deleteLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir Permanentemente
                 </>
               )}
             </AlertDialogAction>

@@ -9,7 +9,8 @@ import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Imag
 import FinishTicketButton from './FinishTicketButton';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
-import { getSlaHours, CATEGORIES_CONFIG } from '@/services/dashboardService';
+import { getSlaHours } from '@/services/dashboardService';
+import { CategoryService } from '@/services/categoryService';
 import NPSChatFeedback from './NPSChatFeedback';
 import QuickReplyTemplates from './QuickReplyTemplates';
 import { 
@@ -97,6 +98,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   const [pastedImages, setPastedImages] = useState<File[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
@@ -278,16 +280,32 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     });
   };
 
+  // Carregar categorias do banco de dados
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const config = await CategoryService.getCategoriesConfig();
+        setCategoriesConfig(config);
+      } catch (error) {
+        console.error('Erro ao carregar categorias do banco:', error);
+      }
+    };
+
+    loadCategories();
+  }, []);
+
   // Função para obter o label formatado da categoria
   const getCategoryLabel = (category: string): string => {
-    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
+    if (Object.keys(categoriesConfig).length === 0) return category || 'Geral';
+    const categoryConfig = categoriesConfig[category];
     return categoryConfig?.label || category || 'Geral';
   };
 
   // Função para obter o label formatado da subcategoria
   const getSubcategoryLabel = (category: string, subcategory: string): string => {
-    const categoryConfig = CATEGORIES_CONFIG[category as keyof typeof CATEGORIES_CONFIG];
-    if (!categoryConfig || !subcategory) return subcategory || '';
+    if (Object.keys(categoriesConfig).length === 0 || !category || !subcategory) return subcategory || '';
+    const categoryConfig = categoriesConfig[category];
+    if (!categoryConfig) return subcategory || '';
     
     const subcategoryConfig = categoryConfig.subcategories.find(
       sub => sub.value === subcategory
@@ -532,7 +550,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-[#2C2D2F]">Criado em:</span> {formatDate(selectedTicket.createdAt)}
+                <span className="font-semibold text-[#2C2D2F]">Criado em:</span> {formatDate(selectedTicket.createdAt)} às {formatTime(selectedTicket.createdAt)}
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <Tag className="h-3.5 w-3.5 text-slate-400" />
