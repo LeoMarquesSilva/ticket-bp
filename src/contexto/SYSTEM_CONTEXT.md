@@ -32,6 +32,9 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - **Roles**: user, support, admin, lawyer
 - **Permissões**: Controle granular por role
 - **Sessão**: Gerenciamento automático via Supabase Auth
+- **Status de Usuário**: Campo `is_active` para ativar/desativar usuários sem excluir dados históricos
+- **Bloqueio de Login**: Usuários inativos não conseguem fazer login no sistema
+- **Preservação de Dados**: Desativar usuários preserva histórico de tickets, métricas e relacionamentos
 
 ### 2. Gestão de Tickets
 - **Status**: open, in_progress, resolved *(removido "closed")*
@@ -91,6 +94,14 @@ src/ ├── components/ # Componentes reutilizáveis │ ├── ui/ # Comp
 - email: text
 - name: text
 - role: text (user|support|admin|lawyer)
+- department: text
+- is_active: boolean (default: true) -- Novo campo para ativar/desativar usuários
+- is_online: boolean
+- last_active_at: timestamp
+- first_login: boolean
+- must_change_password: boolean
+- password_changed_at: timestamp
+- ticket_view_preference: text (list|board|users)
 - created_at: timestamp
 - updated_at: timestamp
 
@@ -342,3 +353,54 @@ Notas 1-6: Comentário obrigatório
 Notas 7-10: Comentário opcional
 UX: Indicadores visuais claros
 Validação: Condicional baseada na nota
+
+## Gerenciamento de Usuários
+
+### Sistema de Ativar/Desativar Usuários (Janeiro 2025)
+
+**Funcionalidade**: Permite desativar usuários sem excluir dados históricos, preservando métricas e relacionamentos.
+
+**Implementação**:
+- **Campo `is_active`**: Novo campo booleano na tabela `users` (padrão: `true`)
+- **Método `toggleUserActiveStatus()`**: No `UserService` para alternar status
+- **Filtros Automáticos**: Usuários inativos não aparecem nas listagens de suporte/advogados
+- **Bloqueio de Login**: `AuthContext` verifica `is_active` e bloqueia login de usuários inativos
+- **Preservação de Dados**: Todos os dados históricos (tickets, mensagens, métricas) são mantidos
+
+**Interface de Gerenciamento**:
+- **Modal de Confirmação**: Dialog customizado seguindo identidade visual do sistema
+- **Ícones Visuais**: `UserX` (laranja) para desativar, `UserCheck` (verde) para ativar
+- **Informações Detalhadas**: Explica o que acontece ao ativar/desativar
+- **Lista de Consequências**: Card informativo com bullets explicando impactos
+
+**Filtros Avançados na Tabela de Usuários**:
+- **Busca**: Por nome ou email (tempo real)
+- **Departamento**: Filtro por todos os departamentos disponíveis
+- **Função (Role)**: Filtro por user, support, lawyer, admin
+- **Status**: Filtro por ativo/inativo
+- **Status Online**: Filtro por online/offline
+- **Combináveis**: Todos os filtros podem ser usados simultaneamente
+- **Contador**: Mostra quantidade de resultados filtrados
+- **Limpar Filtros**: Botão para resetar todos os filtros de uma vez
+
+**Componentes**:
+- `UserManagement.tsx`: Página principal com tabela e filtros
+- `AlertDialog`: Modal de confirmação customizado
+- `UserService.toggleUserActiveStatus()`: Método de serviço para alterar status
+
+**Migração do Banco de Dados**:
+```sql
+ALTER TABLE app_c009c0e4f1_users 
+ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+UPDATE app_c009c0e4f1_users 
+SET is_active = true 
+WHERE is_active IS NULL;
+```
+
+**Benefícios**:
+- ✅ Preservação de dados históricos e métricas
+- ✅ Usuários podem ser reativados a qualquer momento
+- ✅ Não afeta relatórios e análises do dashboard
+- ✅ Interface intuitiva e profissional
+- ✅ Filtros poderosos para gerenciamento eficiente
