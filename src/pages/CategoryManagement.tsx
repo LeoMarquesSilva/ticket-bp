@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2, RefreshCw, Pencil, Tag, Clock, User as UserIcon, ChevronDown, ChevronUp, Settings2, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { PlusCircle, Trash2, RefreshCw, Pencil, Tag, Clock, User as UserIcon, ChevronDown, ChevronUp, Settings2, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Info, HelpCircle, ArrowRight } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -633,6 +633,47 @@ export default function CategoryManagement() {
               Mostrando {filteredCategories.length} de {categories.length} categorias
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Informações sobre Atribuição Automática */}
+      <Card className="border-[#F69F19]/20 bg-gradient-to-r from-[#F69F19]/5 to-transparent">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-1">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#F69F19]/10">
+                <Info className="h-5 w-5 text-[#F69F19]" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-[#2C2D2F] mb-2 flex items-center gap-2">
+                Como Funciona a Atribuição Automática de Tickets
+              </h3>
+              <div className="space-y-3 text-sm text-slate-600">
+                <div>
+                  <p className="font-medium text-[#2C2D2F] mb-1">🎯 Quando há um usuário atribuído:</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li><strong>Prioridade 1:</strong> Se a subcategoria tem um usuário atribuído, os tickets vão <strong>direto para ele</strong>.</li>
+                    <li><strong>Prioridade 2:</strong> Se a categoria tem um usuário atribuído (mas a subcategoria não), os tickets vão para o usuário da categoria.</li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-medium text-[#2C2D2F] mb-1">📋 Quando não há ninguém atribuído:</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li><strong>Opção 1:</strong> Sistema busca um <strong>advogado online e ativo</strong> (com menor tempo de inatividade).</li>
+                    <li><strong>Opção 2:</strong> Se não houver advogados online, busca <strong>qualquer advogado ativo</strong> disponível.</li>
+                    <li>A distribuição é feita de forma justa, priorizando quem está menos ocupado.</li>
+                  </ul>
+                </div>
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-blue-800 text-xs">
+                    <strong>💡 Dica:</strong> Configure a atribuição automática quando quiser que tickets específicos sempre vão para uma pessoa ou área. 
+                    Deixe "Nenhum" quando quiser que o sistema distribua automaticamente entre os advogados disponíveis.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
