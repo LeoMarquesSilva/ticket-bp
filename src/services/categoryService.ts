@@ -15,6 +15,19 @@ export interface Subcategory {
   updatedAt: string;
 }
 
+export interface Tag {
+  id: string;
+  key: string; // Chave única (ex: 'juridico', 'ti')
+  label: string; // Nome exibido (ex: 'Jurídico', 'T.I')
+  color: string; // Cor hexadecimal (ex: '#3B82F6')
+  icon?: string; // Ícone opcional (ex: 'briefcase', 'monitor')
+  description?: string;
+  isActive: boolean;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Category {
   id: string;
   key: string; // Chave única (ex: 'protocolo')
@@ -22,6 +35,8 @@ export interface Category {
   slaHours?: number; // SLA padrão para a categoria (opcional)
   defaultAssignedTo?: string; // ID do usuário que receberá automaticamente
   defaultAssignedToName?: string;
+  tagId?: string; // ID da tag (área de negócio)
+  tag?: Tag; // Dados da tag (carregado separadamente)
   isActive: boolean;
   order: number; // Ordem de exibição
   subcategories?: Subcategory[]; // Subcategorias (carregadas separadamente)
@@ -34,6 +49,16 @@ export interface CreateCategoryData {
   label: string;
   slaHours?: number;
   defaultAssignedTo?: string;
+  tagId?: string; // ID da tag
+  order?: number;
+}
+
+export interface CreateTagData {
+  key: string;
+  label: string;
+  color: string;
+  icon?: string;
+  description?: string;
   order?: number;
 }
 
@@ -47,6 +72,111 @@ export interface CreateSubcategoryData {
 }
 
 export class CategoryService {
+  // Verificar se uma chave de categoria já existe
+  static async categoryKeyExists(key: string, excludeId?: string): Promise<boolean> {
+    try {
+      let query = supabase
+        .from('app_c009c0e4f1_categories')
+        .select('id')
+        .eq('key', key)
+        .limit(1);
+
+      if (excludeId) {
+        query = query.neq('id', excludeId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error checking category key:', error);
+        throw error;
+      }
+
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('Error in categoryKeyExists:', error);
+      throw error;
+    }
+  }
+
+  // Verificar se uma chave de subcategoria já existe na mesma categoria
+  static async subcategoryKeyExists(categoryId: string, key: string, excludeId?: string): Promise<boolean> {
+    try {
+      let query = supabase
+        .from('app_c009c0e4f1_subcategories')
+        .select('id')
+        .eq('category_id', categoryId)
+        .eq('key', key)
+        .limit(1);
+
+      if (excludeId) {
+        query = query.neq('id', excludeId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error checking subcategory key:', error);
+        throw error;
+      }
+
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('Error in subcategoryKeyExists:', error);
+      throw error;
+    }
+  }
+
+  // Validar formato de chave
+  static validateKeyFormat(key: string): { valid: boolean; error?: string } {
+    if (!key || key.trim() === '') {
+      return { valid: false, error: 'A chave não pode estar vazia.' };
+    }
+
+    // Verificar se contém apenas letras minúsculas, números e underscores
+    const keyRegex = /^[a-z0-9_]+$/;
+    if (!keyRegex.test(key)) {
+      return { 
+        valid: false, 
+        error: 'A chave deve conter apenas letras minúsculas, números e underscores (_). Sem espaços ou caracteres especiais.' 
+      };
+    }
+
+    // Verificar se não começa ou termina com underscore
+    if (key.startsWith('_') || key.endsWith('_')) {
+      return { 
+        valid: false, 
+        error: 'A chave não pode começar ou terminar com underscore (_).' 
+      };
+    }
+
+    // Verificar se não tem underscores consecutivos
+    if (key.includes('__')) {
+      return { 
+        valid: false, 
+        error: 'A chave não pode conter underscores consecutivos (__).' 
+      };
+    }
+
+    // Verificar tamanho mínimo
+    if (key.length < 2) {
+      return { 
+        valid: false, 
+        error: 'A chave deve ter pelo menos 2 caracteres.' 
+      };
+    }
+
+    // Verificar tamanho máximo
+    if (key.length > 50) {
+      return { 
+        valid: false, 
+        error: 'A chave não pode ter mais de 50 caracteres.' 
+      };
+    }
+
+    return { valid: true };
+  }
+
   // Obter todas as categorias ativas com suas subcategorias
   static async getAllCategories(includeInactive: boolean = false): Promise<Category[]> {
     try {
@@ -70,13 +200,26 @@ export class CategoryService {
         return [];
       }
 
-      // Buscar subcategorias para cada categoria
+      // Buscar subcategorias e tags para cada categoria
       const categoriesWithSubcategories = await Promise.all(
         categories.map(async (cat) => {
           const subcategories = await this.getSubcategoriesByCategory(cat.id, includeInactive);
+          let tag: Tag | undefined;
+          
+          // Carregar tag se existir
+          if (cat.tag_id) {
+            try {
+              const tagData = await this.getTagById(cat.tag_id);
+              if (tagData) tag = tagData;
+            } catch (error) {
+              console.warn('Error loading tag for category:', error);
+            }
+          }
+          
           return {
             ...this.mapCategoryFromDatabase(cat),
-            subcategories
+            subcategories,
+            tag
           };
         })
       );
@@ -105,9 +248,22 @@ export class CategoryService {
       if (!data) return null;
 
       const subcategories = await this.getSubcategoriesByCategory(categoryId, true);
+      let tag: Tag | undefined;
+      
+      // Carregar tag se existir
+      if (data.tag_id) {
+        try {
+          const tagData = await this.getTagById(data.tag_id);
+          if (tagData) tag = tagData;
+        } catch (error) {
+          console.warn('Error loading tag for category:', error);
+        }
+      }
+      
       return {
         ...this.mapCategoryFromDatabase(data),
-        subcategories
+        subcategories,
+        tag
       };
     } catch (error) {
       console.error('Error in getCategoryById:', error);
@@ -145,6 +301,18 @@ export class CategoryService {
   // Criar uma nova categoria
   static async createCategory(data: CreateCategoryData): Promise<Category> {
     try {
+      // Validar formato da chave
+      const keyValidation = this.validateKeyFormat(data.key);
+      if (!keyValidation.valid) {
+        throw new Error(keyValidation.error || 'Formato de chave inválido.');
+      }
+
+      // Verificar se a chave já existe
+      const keyExists = await this.categoryKeyExists(data.key);
+      if (keyExists) {
+        throw new Error(`A chave "${data.key}" já está em uso por outra categoria. Por favor, escolha uma chave diferente.`);
+      }
+
       // Obter o próximo order se não fornecido
       const { data: lastCategory } = await supabase
         .from('app_c009c0e4f1_categories')
@@ -174,6 +342,7 @@ export class CategoryService {
           sla_hours: data.slaHours || null,
           default_assigned_to: data.defaultAssignedTo || null,
           default_assigned_to_name: assignedToName || null,
+          tag_id: data.tagId || null,
           is_active: true,
           order: order,
           created_at: new Date().toISOString(),
@@ -205,6 +374,7 @@ export class CategoryService {
       if (data.label !== undefined) updateData.label = data.label;
       if (data.slaHours !== undefined) updateData.sla_hours = data.slaHours || null;
       if (data.order !== undefined) updateData.order = data.order;
+      if (data.tagId !== undefined) updateData.tag_id = data.tagId || null;
 
       // Buscar nome do usuário se defaultAssignedTo foi alterado
       if (data.defaultAssignedTo !== undefined) {
@@ -351,6 +521,18 @@ export class CategoryService {
   // Criar uma nova subcategoria
   static async createSubcategory(data: CreateSubcategoryData): Promise<Subcategory> {
     try {
+      // Validar formato da chave
+      const keyValidation = this.validateKeyFormat(data.key);
+      if (!keyValidation.valid) {
+        throw new Error(keyValidation.error || 'Formato de chave inválido.');
+      }
+
+      // Verificar se a chave já existe na mesma categoria
+      const keyExists = await this.subcategoryKeyExists(data.categoryId, data.key);
+      if (keyExists) {
+        throw new Error(`A chave "${data.key}" já está em uso por outra subcategoria nesta categoria. Por favor, escolha uma chave diferente.`);
+      }
+
       // Obter o próximo order se não fornecido
       const { data: lastSubcategory } = await supabase
         .from('app_c009c0e4f1_subcategories')
@@ -622,6 +804,23 @@ export class CategoryService {
       slaHours: data.sla_hours,
       defaultAssignedTo: data.default_assigned_to,
       defaultAssignedToName: data.default_assigned_to_name,
+      tagId: data.tag_id,
+      isActive: data.is_active,
+      order: data.order,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at
+    };
+  }
+  
+  // Mapear tag do banco para o formato do frontend
+  private static mapTagFromDatabase(data: any): Tag {
+    return {
+      id: data.id,
+      key: data.key,
+      label: data.label,
+      color: data.color,
+      icon: data.icon,
+      description: data.description,
       isActive: data.is_active,
       order: data.order,
       createdAt: data.created_at,
@@ -708,6 +907,202 @@ export class CategoryService {
     } catch (error) {
       console.error('Error getting default assigned user:', error);
       return null;
+    }
+  }
+
+  // ========== MÉTODOS PARA TAGS ==========
+  
+  // Obter todas as tags
+  static async getAllTags(includeInactive: boolean = false): Promise<Tag[]> {
+    try {
+      let query = supabase
+        .from('app_c009c0e4f1_tags')
+        .select('*')
+        .order('order', { ascending: true });
+
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching tags:', error);
+        throw error;
+      }
+
+      return data ? data.map(this.mapTagFromDatabase) : [];
+    } catch (error) {
+      console.error('Error in getAllTags:', error);
+      throw error;
+    }
+  }
+
+  // Obter uma tag específica
+  static async getTagById(tagId: string): Promise<Tag | null> {
+    try {
+      const { data, error } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .select('*')
+        .eq('id', tagId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching tag:', error);
+        throw error;
+      }
+
+      return data ? this.mapTagFromDatabase(data) : null;
+    } catch (error) {
+      console.error('Error in getTagById:', error);
+      throw error;
+    }
+  }
+
+  // Criar uma nova tag
+  static async createTag(data: CreateTagData): Promise<Tag> {
+    try {
+      // Obter o próximo order se não fornecido
+      const { data: lastTag } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .select('order')
+        .order('order', { ascending: false })
+        .limit(1)
+        .single();
+
+      const order = data.order ?? ((lastTag?.order || 0) + 1);
+
+      const { data: tag, error } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .insert([{
+          key: data.key,
+          label: data.label,
+          color: data.color,
+          icon: data.icon || null,
+          description: data.description || null,
+          is_active: true,
+          order: order,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating tag:', error);
+        throw error;
+      }
+
+      return this.mapTagFromDatabase(tag);
+    } catch (error) {
+      console.error('Error in createTag:', error);
+      throw error;
+    }
+  }
+
+  // Atualizar uma tag
+  static async updateTag(tagId: string, data: Partial<CreateTagData>): Promise<Tag> {
+    try {
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (data.key !== undefined) updateData.key = data.key;
+      if (data.label !== undefined) updateData.label = data.label;
+      if (data.color !== undefined) updateData.color = data.color;
+      if (data.icon !== undefined) updateData.icon = data.icon || null;
+      if (data.description !== undefined) updateData.description = data.description || null;
+      if (data.order !== undefined) updateData.order = data.order;
+
+      const { error: updateError } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .update(updateData)
+        .eq('id', tagId);
+
+      if (updateError) {
+        console.error('Error updating tag:', updateError);
+        throw updateError;
+      }
+
+      // Buscar a tag atualizada
+      const { data: tag, error: fetchError } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .select('*')
+        .eq('id', tagId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching updated tag:', fetchError);
+        throw fetchError;
+      }
+
+      if (!tag) {
+        throw new Error('Tag não encontrada após atualização');
+      }
+
+      return this.mapTagFromDatabase(tag);
+    } catch (error) {
+      console.error('Error in updateTag:', error);
+      throw error;
+    }
+  }
+
+  // Excluir uma tag
+  static async deleteTag(tagId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .delete()
+        .eq('id', tagId);
+
+      if (error) {
+        console.error('Error deleting tag:', error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error in deleteTag:', error);
+      throw error;
+    }
+  }
+
+  // Ativar/Desativar tag
+  static async toggleTagStatus(tagId: string, isActive: boolean): Promise<Tag> {
+    try {
+      const { error: updateError } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .update({
+          is_active: isActive,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', tagId);
+
+      if (updateError) {
+        console.error('Error toggling tag status:', updateError);
+        throw updateError;
+      }
+
+      // Buscar a tag atualizada
+      const { data, error: fetchError } = await supabase
+        .from('app_c009c0e4f1_tags')
+        .select('*')
+        .eq('id', tagId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching toggled tag:', fetchError);
+        throw fetchError;
+      }
+
+      if (!data) {
+        throw new Error('Tag não encontrada após alteração de status');
+      }
+
+      return this.mapTagFromDatabase(data);
+    } catch (error) {
+      console.error('Error in toggleTagStatus:', error);
+      throw error;
     }
   }
 }

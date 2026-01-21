@@ -16,6 +16,7 @@ export const TABLES = {
   CHAT_MESSAGES: 'app_c009c0e4f1_chat_messages',
   CATEGORIES: 'app_c009c0e4f1_categories',
   SUBCATEGORIES: 'app_c009c0e4f1_subcategories',
+  TAGS: 'app_c009c0e4f1_tags',
 };
 
 // Database types
