@@ -73,6 +73,7 @@ export interface DashboardStats {
     npsScore?: number;
     serviceScore?: number;
     requestFulfilled?: boolean;
+    notFulfilledReason?: string;
     comment?: string;
     resolvedAt?: string;
     ticketUrl: string; // URL para navegar para o ticket
@@ -721,6 +722,7 @@ async function processFeedbackFromTickets(tickets: any[]) {
       npsScore: ticket.service_score, // Usar service_score como NPS
       serviceScore: ticket.service_score,
       requestFulfilled: ticket.request_fulfilled,
+      notFulfilledReason: ticket.not_fulfilled_reason || null,
       comment: ticket.comment || null, 
       resolvedAt: ticket.resolved_at,
       ticketUrl: `/tickets/${ticket.id}`,

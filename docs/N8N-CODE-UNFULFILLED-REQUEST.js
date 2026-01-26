@@ -1,8 +1,6 @@
 // Código para nó "Code" no n8n - Formatar mensagem para Evolution API (WhatsApp)
 // Este código deve ser colocado em um nó "Code" após o nó "Webhook"
-// Suporta dois eventos: 
-//   - detractor_feedback: Quando nota do atendimento é 0-7
-//   - unfulfilled_request: Quando solicitação não foi atendida
+// Evento: unfulfilled_request - Quando um feedback indica que a solicitação não foi atendida
 
 // Extrair dados do payload recebido do webhook
 const webhookData = $input.item.json.body;
@@ -18,14 +16,12 @@ if (!webhookData || !webhookData.data) {
 
 const { event, data, timestamp } = webhookData;
 
-// Verificar se é um evento suportado
-const supportedEvents = ['detractor_feedback', 'unfulfilled_request'];
-if (!supportedEvents.includes(event)) {
+// Verificar se é o evento correto
+if (event !== 'unfulfilled_request') {
   return {
     json: {
-      error: 'Evento não suportado',
-      receivedEvent: event,
-      supportedEvents: supportedEvents
+      error: 'Evento não corresponde a unfulfilled_request',
+      receivedEvent: event
     }
   };
 }
@@ -74,18 +70,10 @@ const formatCategory = (category, subcategory) => {
   return subcatLabel ? `${catLabel} / ${subcatLabel}` : catLabel;
 };
 
-// Determinar tipo de alerta e montar mensagem
-let alertTitle = '';
-let alertEmoji = '';
-let messageBody = '';
-let actionMessage = '';
+// Montar mensagem formatada para WhatsApp
+const message = `
+❌ *ALERTA: Solicitação NÃO Foi Atendida*
 
-if (event === 'unfulfilled_request') {
-  // Evento: Solicitação não foi atendida
-  alertTitle = '❌ *ALERTA: Solicitação NÃO Foi Atendida*';
-  alertEmoji = '❌';
-  
-  messageBody = `
 📋 *Ticket:* ${ticket.title || 'Sem título'}
 🆔 *ID:* ${ticket.id?.slice(-8) || 'N/A'}
 📁 *Categoria:* ${formatCategory(ticket.category, ticket.subcategory)}
@@ -106,48 +94,14 @@ ${feedback.comment || 'Nenhum comentário adicional'}
 
 📅 *Criado em:* ${formatDate(ticket.createdAt)}
 📅 *Resolvido em:* ${formatDate(ticket.resolvedAt)}
-📅 *Avaliado em:* ${formatDate(feedback.submittedAt)}`;
+📅 *Avaliado em:* ${formatDate(feedback.submittedAt)}
 
-  actionMessage = `
 🚨 *AÇÃO URGENTE NECESSÁRIA:*
    • Entre em contato imediato com o cliente
    • Verifique o motivo da não atendimento
    • Tome medidas corretivas para resolver a situação
-   • Reabra o ticket se necessário`;
-
-} else if (event === 'detractor_feedback') {
-  // Evento: Feedback de detrator (nota 0-7)
-  alertTitle = '🚨 *ALERTA: Feedback de Detrator Recebido*';
-  alertEmoji = '🚨';
-  
-  messageBody = `
-📋 *Ticket:* ${ticket.title || 'Sem título'}
-🆔 *ID:* ${ticket.id?.slice(-8) || 'N/A'}
-📁 *Categoria:* ${formatCategory(ticket.category, ticket.subcategory)}
-
-${getScoreEmoji(feedback.serviceScore)} *Nota:* ${feedback.serviceScore}/10
-
-👤 *Cliente:*
-   • Nome: ${user.name || 'Não informado'}
-   • Email: ${user.email || 'Não informado'}
-
-👨‍💼 *Atendente:* ${assignedTo}
-
-✅ *Solicitação Atendida:* ${feedback.requestFulfilled ? 'Sim' : 'Não'}
-${feedback.requestFulfilled === false && feedback.notFulfilledReason ? `\n❌ *Motivo da Não Atendimento:*\n${feedback.notFulfilledReason}` : ''}
-
-💬 *Comentário:*
-${feedback.comment || 'Nenhum comentário'}
-
-📅 *Resolvido em:* ${formatDate(ticket.resolvedAt)}
-📅 *Avaliado em:* ${formatDate(feedback.submittedAt)}`;
-
-  actionMessage = `
-⚠️ *Ação necessária:* Entre em contato com o cliente para melhorar a experiência.`;
-}
-
-// Montar mensagem final formatada para WhatsApp
-const message = `${alertTitle}${messageBody}${actionMessage}`.trim();
+   • Reabra o ticket se necessário
+`.trim();
 
 // Retornar objeto formatado para Evolution API
 return {
@@ -166,7 +120,7 @@ return {
       userId: user.email,
       userName: user.name,
       serviceScore: feedback.serviceScore,
-      requestFulfilled: feedback.requestFulfilled,
+      requestFulfilled: false,
       notFulfilledReason: feedback.notFulfilledReason,
       timestamp: timestamp
     }

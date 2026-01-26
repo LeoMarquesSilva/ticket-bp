@@ -95,6 +95,22 @@ const Dashboard = () => {
   const [sortColumn, setSortColumn] = useState<'nps' | 'requestFulfilled' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
+  // Estado para controlar quais comentários estão expandidos
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  
+  // Função para alternar expansão de comentário
+  const toggleCommentExpansion = (feedbackId: string) => {
+    setExpandedComments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(feedbackId)) {
+        newSet.delete(feedbackId);
+      } else {
+        newSet.add(feedbackId);
+      }
+      return newSet;
+    });
+  };
+  
   // Função para lidar com ordenação
   const handleSort = (column: 'nps' | 'requestFulfilled') => {
     if (sortColumn === column) {
@@ -1046,11 +1062,86 @@ const Dashboard = () => {
                               ) : <span className="text-slate-300">-</span>}
                             </TableCell>
                             <TableCell className="max-w-[300px]">
-                              {feedback.comment ? (
-                                <span className="text-sm text-slate-600 line-clamp-2 italic" title={feedback.comment}>
-                                  "{feedback.comment}"
-                                </span>
-                              ) : <span className="text-xs text-slate-300 italic">Sem comentário</span>}
+                              {(() => {
+                                const isExpanded = expandedComments.has(feedback.id);
+                                
+                                // Se a solicitação não foi atendida, mostrar o motivo primeiro
+                                if (feedback.requestFulfilled === false && feedback.notFulfilledReason) {
+                                  const hasLongContent = feedback.notFulfilledReason.length > 100 || (feedback.comment && feedback.comment.length > 100);
+                                  
+                                  return (
+                                    <div className="space-y-1">
+                                      <div className={`text-sm text-red-600 ${!isExpanded ? 'line-clamp-2' : ''}`}>
+                                        <span className="font-semibold">❌ Motivo:</span> {feedback.notFulfilledReason}
+                                      </div>
+                                      {feedback.comment && (
+                                        <div className={`text-sm text-slate-600 ${!isExpanded ? 'line-clamp-2' : ''} italic`}>
+                                          💬 "{feedback.comment}"
+                                        </div>
+                                      )}
+                                      {hasLongContent && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleCommentExpansion(feedback.id);
+                                          }}
+                                          className="h-6 px-2 text-xs text-slate-500 hover:text-slate-700 mt-1"
+                                        >
+                                          {isExpanded ? (
+                                            <>
+                                              <ChevronUp className="h-3 w-3 mr-1" />
+                                              Ver menos
+                                            </>
+                                          ) : (
+                                            <>
+                                              <ChevronDown className="h-3 w-3 mr-1" />
+                                              Ver mais
+                                            </>
+                                          )}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                // Caso contrário, mostrar apenas o comentário normal
+                                if (feedback.comment) {
+                                  const hasLongContent = feedback.comment.length > 100;
+                                  
+                                  return (
+                                    <div className="space-y-1">
+                                      <div className={`text-sm text-slate-600 ${!isExpanded ? 'line-clamp-2' : ''} italic`}>
+                                        "{feedback.comment}"
+                                      </div>
+                                      {hasLongContent && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleCommentExpansion(feedback.id);
+                                          }}
+                                          className="h-6 px-2 text-xs text-slate-500 hover:text-slate-700 mt-1"
+                                        >
+                                          {isExpanded ? (
+                                            <>
+                                              <ChevronUp className="h-3 w-3 mr-1" />
+                                              Ver menos
+                                            </>
+                                          ) : (
+                                            <>
+                                              <ChevronDown className="h-3 w-3 mr-1" />
+                                              Ver mais
+                                            </>
+                                          )}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                return <span className="text-xs text-slate-300 italic">Sem comentário</span>;
+                              })()}
                             </TableCell>
                             <TableCell className="text-right">
                               <Button 

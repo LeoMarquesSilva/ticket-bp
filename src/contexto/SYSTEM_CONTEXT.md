@@ -439,6 +439,15 @@ WHERE is_active IS NULL;
 - **Contador**: Mostra quantas categorias estão sendo exibidas após aplicar filtros
 - **Botão Limpar**: Remove todos os filtros aplicados de uma vez
 
+**Explicação de Atribuição Automática** (Janeiro 2025):
+- **Card Informativo**: Card colapsável com explicação detalhada sobre atribuição automática
+- **Conteúdo**:
+  - Quando há usuário atribuído: Prioridade 1 (subcategoria) > Prioridade 2 (categoria)
+  - Quando não há atribuição: Advogado online > Qualquer advogado ativo
+  - Distribuição justa priorizando quem está menos ocupado
+- **Dica**: Sugestão de quando usar atribuição automática vs. distribuição manual
+- **Visual**: Fundo laranja com ícone de informação, estilo consistente com o sistema
+
 **Integração com Componentes**:
 - **TicketForm**: Busca categorias dinamicamente do banco
 - **CreateTicketForUserModal**: Busca categorias dinamicamente do banco
@@ -461,6 +470,7 @@ app_c009c0e4f1_categories:
 - sla_hours: integer -- SLA padrão da categoria
 - default_assigned_to: uuid (FK users) -- Usuário padrão
 - default_assigned_to_name: text -- Nome do usuário (cache)
+- tag_id: uuid (FK tags) -- Tag (área de negócio) - NOVO
 - is_active: boolean (default: true)
 - order: integer (default: 0)
 - created_at: timestamp
@@ -479,6 +489,18 @@ app_c009c0e4f1_subcategories:
 - created_at: timestamp
 - updated_at: timestamp
 - UNIQUE(category_id, key)
+
+app_c009c0e4f1_tags:
+- id: uuid (PK)
+- key: text (unique) -- Ex: 'juridico', 'ti'
+- label: text -- Ex: 'Jurídico', 'T.I'
+- color: text -- Cor hexadecimal (ex: '#3B82F6')
+- icon: text -- Ícone opcional (ex: 'briefcase')
+- description: text -- Descrição opcional
+- is_active: boolean (default: true)
+- order: integer (default: 0)
+- created_at: timestamp
+- updated_at: timestamp
 ```
 
 **RLS Policies**:
@@ -490,6 +512,57 @@ app_c009c0e4f1_subcategories:
 - `CategoryService`: Serviço com todos os métodos CRUD
 - `CategoryService.getCategoriesConfig()`: Retorna categorias no formato legado para compatibilidade
 - `CategoryService.getDefaultAssignedUser()`: Determina usuário padrão baseado em categoria/subcategoria
+
+**Sistema de Tags para Categorias** (Janeiro 2025):
+- **Objetivo**: Organizar categorias por área de negócio (Jurídico, T.I, Marketing, Financeiro)
+- **Tabela**: `app_c009c0e4f1_tags` com campos `key`, `label`, `color`, `icon`, `description`, `order`, `is_active`
+- **Relacionamento**: Campo `tag_id` na tabela `categories` (FK para tags)
+- **Tags Padrão**: Jurídico (#3B82F6), T.I (#10B981), Marketing (#8B5CF6), Financeiro (#F59E0B)
+- **UI**: Campo select com badges coloridos para atribuir tags às categorias
+- **Visualização**: Badges coloridos nas categorias mostrando a tag associada
+- **Agrupamento**: Categorias agrupadas por tag em accordions expansíveis
+- **Grupo "Sem Tag"**: Categorias sem tag aparecem em grupo separado no topo
+
+**Agrupamento por Tags** (Janeiro 2025):
+- **Estrutura Hierárquica**: Tags (nível 1) → Categorias (nível 2) → Subcategorias (nível 3)
+- **Accordions Aninhados**: Tags expansíveis mostrando categorias, categorias expansíveis mostrando subcategorias
+- **Contador**: Cada grupo de tag mostra quantidade de categorias
+- **Ordenação**: Tags ordenadas por `order` (Sem Tag aparece primeiro)
+- **Visual**: Badges coloridos com cores da tag, ícones visuais
+
+**Validação de Chaves** (Janeiro 2025):
+- **Validação de Formato**: 
+  - Apenas letras minúsculas, números e underscores
+  - Não pode começar/terminar com underscore
+  - Não pode ter underscores consecutivos
+  - Mínimo 2 caracteres, máximo 50
+- **Verificação de Duplicatas**: 
+  - Método `categoryKeyExists()` verifica se chave já existe
+  - Método `subcategoryKeyExists()` verifica duplicatas na mesma categoria
+- **Validação em Tempo Real**: 
+  - Valida ao digitar (delay de 500ms)
+  - Feedback visual: vermelho (erro), verde (disponível), cinza (texto de ajuda)
+  - Indicador de carregamento durante verificação
+  - Botão desabilitado quando há erro
+- **Sanitização Automática**: Remove caracteres especiais, converte para minúsculas, substitui espaços por underscores
+- **Mensagens de Erro Claras**: Explicam exatamente o que está errado
+
+**Modais de Confirmação Customizados** (Janeiro 2025):
+- **Substituição**: `confirm()` nativo substituído por `AlertDialog` customizados
+- **Identidade Visual**: Mesmo padrão do modal de exclusão de usuários
+- **Design**:
+  - Ícone de lixeira em círculo vermelho
+  - Título claro e descritivo
+  - Caixa vermelha com lista de consequências
+  - Dica laranja recomendando desativação em vez de exclusão
+- **Modais**: Exclusão de categoria e exclusão de subcategoria
+- **Informações**: Explicam claramente o que acontece ao excluir (subcategorias excluídas, tickets preservados, etc.)
+
+**Modal Colapsável de Informações** (Janeiro 2025):
+- **Card de Atribuição Automática**: Informações sobre como funciona a atribuição automática
+- **Accordion**: Pode ser expandido/minimizado para economizar espaço
+- **Conteúdo**: Explica prioridades (subcategoria > categoria > advogado online > qualquer advogado)
+- **Dica Visual**: Card com fundo laranja e ícone de informação
 
 ### Design System - Headers Premium (Janeiro 2025)
 

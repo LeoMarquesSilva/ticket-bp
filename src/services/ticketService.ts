@@ -3,7 +3,7 @@ import { UserService } from './userService';
 import { executeWithRetry, isOnline } from '../utils/supabaseHelpers';
 import { saveForLater } from '../utils/offlineStorage';
 import ticketEventService from './ticketEventService';
-import { notifyDetractorFeedback } from './webhookService';
+import { notifyDetractorFeedback, notifyUnfulfilledRequest } from './webhookService';
 import { CategoryService } from './categoryService';
 
 export interface Ticket {
@@ -434,16 +434,46 @@ static async submitTicketFeedback(ticketId: string, feedbackData: TicketFeedback
       throw error;
     }
 
-            // Se o feedback for de detrator (0-7), enviar webhook para n8n
-            if (feedbackData.serviceScore <= 7) {
-      try {
-        // Buscar email do usuário criador
-        const { data: userData } = await supabase
-          .from(TABLES.USERS)
-          .select('email')
-          .eq('id', ticketData.created_by)
-          .single();
+    // Buscar email do usuário criador (reutilizado para ambos os webhooks)
+    let userData: { email?: string } | null = null;
+    try {
+      const { data } = await supabase
+        .from(TABLES.USERS)
+        .select('email')
+        .eq('id', ticketData.created_by)
+        .single();
+      userData = data;
+    } catch (userError) {
+      console.warn('Erro ao buscar email do usuário:', userError);
+    }
 
+    // Se a solicitação não foi atendida, enviar webhook para n8n
+    if (feedbackData.requestFulfilled === false) {
+      try {
+        await notifyUnfulfilledRequest({
+          ticketId: ticketId,
+          ticketTitle: ticketData.title || `Ticket #${ticketId.slice(-8)}`,
+          serviceScore: feedbackData.serviceScore,
+          comment: feedbackData.comment,
+          notFulfilledReason: feedbackData.notFulfilledReason,
+          createdByName: ticketData.created_by_name || 'Não informado',
+          createdByEmail: userData?.email,
+          assignedToName: ticketData.assigned_to_name || 'Não atribuído',
+          category: ticketData.category,
+          subcategory: ticketData.subcategory,
+          createdAt: ticketData.created_at,
+          resolvedAt: ticketData.resolved_at,
+          feedbackSubmittedAt: now,
+        });
+      } catch (webhookError) {
+        // Não falhar o processo se o webhook falhar
+        console.error('Erro ao enviar webhook de solicitação não atendida:', webhookError);
+      }
+    }
+
+    // Se o feedback for de detrator (0-7), enviar webhook para n8n
+    if (feedbackData.serviceScore <= 7) {
+      try {
         await notifyDetractorFeedback({
           ticketId: ticketId,
           ticketTitle: ticketData.title || `Ticket #${ticketId.slice(-8)}`,

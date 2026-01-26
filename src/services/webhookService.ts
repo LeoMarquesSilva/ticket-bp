@@ -91,3 +91,52 @@ export async function notifyDetractorFeedback(ticketData: {
 
   await sendWebhook(payload);
 }
+
+/**
+ * Envia notificação quando um feedback indica que a solicitação não foi atendida
+ * @param ticketData - Dados do ticket e feedback
+ */
+export async function notifyUnfulfilledRequest(ticketData: {
+  ticketId: string;
+  ticketTitle: string;
+  serviceScore: number;
+  comment?: string;
+  notFulfilledReason?: string;
+  createdByName: string;
+  createdByEmail?: string;
+  assignedToName?: string;
+  category?: string;
+  subcategory?: string;
+  createdAt: string;
+  resolvedAt?: string;
+  feedbackSubmittedAt: string;
+}): Promise<void> {
+  const payload: WebhookPayload = {
+    event: 'unfulfilled_request',
+    data: {
+      ticket: {
+        id: ticketData.ticketId,
+        title: ticketData.ticketTitle,
+        category: ticketData.category,
+        subcategory: ticketData.subcategory,
+        createdAt: ticketData.createdAt,
+        resolvedAt: ticketData.resolvedAt,
+      },
+      feedback: {
+        serviceScore: ticketData.serviceScore,
+        comment: ticketData.comment,
+        requestFulfilled: false,
+        notFulfilledReason: ticketData.notFulfilledReason,
+        submittedAt: ticketData.feedbackSubmittedAt,
+      },
+      user: {
+        name: ticketData.createdByName,
+        email: ticketData.createdByEmail,
+      },
+      assignedTo: ticketData.assignedToName,
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  await sendWebhook(payload);
+}
