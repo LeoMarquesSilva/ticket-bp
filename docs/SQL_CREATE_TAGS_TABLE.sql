@@ -57,7 +57,8 @@ INSERT INTO app_c009c0e4f1_tags (key, label, color, icon, description, "order") 
   ('juridico', 'Jurídico', '#3B82F6', 'briefcase', 'Questões jurídicas e legais', 1),
   ('ti', 'T.I', '#10B981', 'monitor', 'Questões de tecnologia da informação', 2),
   ('marketing', 'Marketing', '#8B5CF6', 'megaphone', 'Questões de marketing e comunicação', 3),
-  ('financeiro', 'Financeiro', '#F59E0B', 'dollar-sign', 'Questões financeiras e contábeis', 4)
+  ('financeiro', 'Financeiro', '#F59E0B', 'dollar-sign', 'Questões financeiras e contábeis', 4),
+  ('projetos', 'Projetos', '#6366F1', 'folder', 'Área de projetos', 5)
 ON CONFLICT (key) DO NOTHING;
 
 -- 7. Atualizar timestamp na atualização

@@ -598,6 +598,15 @@ export default function CategoryManagement() {
     setSortDirection('asc');
   };
 
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'admin': return 'Admin';
+      case 'lawyer': return 'Advogado';
+      case 'support': return 'Suporte';
+      default: return 'Suporte';
+    }
+  };
+
   if (!user || user.role !== 'admin') {
     return null;
   }
@@ -712,7 +721,7 @@ export default function CategoryManagement() {
                       <SelectItem value="none">Nenhum (Atribuição Manual)</SelectItem>
                       {supportUsers.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
-                          {user.name} ({user.role === 'lawyer' ? 'Advogado' : 'Suporte'})
+                          {user.name} ({getRoleLabel(user.role)})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1191,7 +1200,7 @@ export default function CategoryManagement() {
                     <SelectItem value="none">Nenhum (Atribuição Manual)</SelectItem>
                     {supportUsers.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
-                        {user.name} ({user.role === 'lawyer' ? 'Advogado' : 'Suporte'})
+                        {user.name} ({getRoleLabel(user.role)})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1321,7 +1330,7 @@ export default function CategoryManagement() {
                   <SelectItem value="none">Nenhum (Atribuição Manual ou Padrão da Categoria)</SelectItem>
                   {supportUsers.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
-                      {user.name} ({user.role === 'lawyer' ? 'Advogado' : 'Suporte'})
+                      {user.name} ({getRoleLabel(user.role)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1411,7 +1420,7 @@ export default function CategoryManagement() {
                     <SelectItem value="none">Nenhum (Atribuição Manual ou Padrão da Categoria)</SelectItem>
                     {supportUsers.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
-                        {user.name} ({user.role === 'lawyer' ? 'Advogado' : 'Suporte'})
+                        {user.name} ({getRoleLabel(user.role)})
                       </SelectItem>
                     ))}
                   </SelectContent>

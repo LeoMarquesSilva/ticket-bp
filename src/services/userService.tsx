@@ -11,15 +11,15 @@ export interface CreateUserData {
 }
 
 export class UserService {
-  // Obter todos os usuários de suporte
+  // Obter todos os usuários de suporte (inclui admin para atribuição automática)
   static async getSupportUsers(): Promise<User[]> {
     try {
       const { data, error } = await supabase
         .from(TABLES.USERS)
         .select('*')
-        .in('role', ['support', 'lawyer'])
+        .in('role', ['support', 'lawyer', 'admin'])
         .eq('is_active', true) // Apenas usuários ativos
-        .order('role', { ascending: false }) // Advogados primeiro, depois suporte
+        .order('role', { ascending: true }) // Admin primeiro, depois advogados, suporte
         .order('is_online', { ascending: false }); // Online primeiro
 
       if (error) {
