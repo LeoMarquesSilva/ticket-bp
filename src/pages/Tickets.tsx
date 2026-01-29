@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
 import { UserService } from '@/services/userService';
-import TicketForm from '@/components/TicketForm';
 import TicketHeader from '@/components/TicketHeader';
 import TicketKanbanBoard from '@/components/TicketKanbanBoard';
 import TicketUserBoard from '@/components/TicketUserBoard';
@@ -19,6 +18,7 @@ import CreateTicketModal from '@/components/CreateTicketModal';
 import CreateTicketForUserModal from '@/components/CreateTicketForUserModal';
 import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
 import { useChatContext } from '@/contexts/ChatContext';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface SupportUser {
   id: string;
@@ -57,6 +57,7 @@ interface CreateTicketForUserData {
 
 const Tickets = () => {
   const { user } = useAuth();
+  const { has } = usePermissions();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,10 +94,7 @@ const Tickets = () => {
   
   // Carregar preferência do usuário quando o componente monta ou quando o usuário muda
   useEffect(() => {
-    if (user?.ticketViewPreference) {
-      console.log('🔄 Carregando preferência do usuário:', user.ticketViewPreference);
-      setViewState(user.ticketViewPreference);
-    }
+    if (user?.ticketViewPreference) setViewState(user.ticketViewPreference);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.ticketViewPreference]);
   
@@ -133,10 +131,7 @@ const Tickets = () => {
   const isMountedRef = useRef(true);
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   
-  // Verificar se o usuário é "user" para mostrar o modal em vez do formulário embutido
-// Determinar se deve usar modal ou formulário inline
-const shouldUseModal = user?.role === 'user';
-const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role === 'lawyer'; // ✅ ADICIONAR ESTA LINHA
+  const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role === 'lawyer';
   // NOVO: Função para configurar subscription de tickets em tempo real
   const setupTicketsChannel = () => {
     if (!user?.id) return;
@@ -145,8 +140,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
     if (channelsRef.current.tickets) {
       supabase.removeChannel(channelsRef.current.tickets);
     }
-    
-    console.log('🎫 Configurando canal de tickets para usuário:', user.role);
     
     // Criar novo canal para monitorar tickets
     const channel = supabase.channel('tickets-realtime');
@@ -158,9 +151,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       table: 'app_c009c0e4f1_tickets'
     }, (payload) => {
       if (!isMountedRef.current) return;
-      
-      console.log('🆕 Novo ticket detectado:', payload.new);
-      
       const newTicketData = payload.new;
       
       // Converter dados do banco para formato frontend
@@ -181,31 +171,25 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
         updatedAt: newTicketData.updated_at,
       };
       
-      // Verificar se deve mostrar este ticket baseado no papel do usuário
-      let shouldShow = false;
-      
-      if (user.role === 'user') {
-        // Usuários comuns só veem seus próprios tickets
-        shouldShow = newTicket.createdBy === user.id;
-      } else {
-        // Admins, support e lawyers veem todos os tickets
-        shouldShow = true;
-        
-        // Se não foi criado pelo próprio usuário, mostrar notificação
-        if (newTicket.createdBy !== user.id) {
-          const priorityEmoji = getPriorityEmoji(newTicket.priority);
-          toast.success(
-            `${priorityEmoji} Novo ticket criado!`,
-            {
-              description: `${newTicket.title} - por ${newTicket.createdByName}`,
-              duration: 8000,
-              action: {
-                label: 'Ver',
-                onClick: () => openChat(newTicket)
-              }
+      // Verificar se deve mostrar este ticket baseado na permissão view_all_tickets
+      const canViewAll = has('view_all_tickets');
+      const shouldShow = canViewAll
+        ? true
+        : newTicket.createdBy === user.id;
+
+      if (shouldShow && canViewAll && newTicket.createdBy !== user.id) {
+        const priorityEmoji = getPriorityEmoji(newTicket.priority);
+        toast.success(
+          `${priorityEmoji} Novo ticket criado!`,
+          {
+            description: `${newTicket.title} - por ${newTicket.createdByName}`,
+            duration: 8000,
+            action: {
+              label: 'Ver',
+              onClick: () => openChat(newTicket)
             }
-          );
-        }
+          }
+        );
       }
       
       if (shouldShow) {
@@ -227,9 +211,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       table: 'app_c009c0e4f1_tickets'
     }, (payload) => {
       if (!isMountedRef.current) return;
-      
-      console.log('📝 Ticket atualizado:', payload.new);
-      
       const updatedTicketData = payload.new;
       
       // Converter dados do banco para formato frontend
@@ -270,9 +251,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       table: 'app_c009c0e4f1_tickets'
     }, (payload) => {
       if (!isMountedRef.current) return;
-      
-      console.log('🗑️ Ticket excluído:', payload.old);
-      
       const deletedTicketId = payload.old.id;
       
       // Remover o ticket da lista
@@ -284,13 +262,8 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       }
     });
     
-    // Inscrever-se no canal
     channel.subscribe((status) => {
-      console.log('🎫 Status da subscription de tickets:', status);
-      
-      if (status === 'SUBSCRIBED') {
-        console.log('✅ Canal de tickets conectado com sucesso');
-      } else if (status === 'CHANNEL_ERROR') {
+      if (status === 'CHANNEL_ERROR') {
         console.error('❌ Erro no canal de tickets');
         
         // Tentar reconectar após um pequeno atraso
@@ -334,12 +307,8 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       }
     });
     
-    // Inscrever-se no canal
     channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('Sistema: Canal de sistema conectado');
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('Sistema: Erro no canal de sistema');
+      if (status === 'CHANNEL_ERROR') {
         
         // Tentar reconectar após um pequeno atraso
         setTimeout(() => {
@@ -363,8 +332,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       supabase.removeChannel(channelsRef.current.presence);
     }
     
-    console.log('Configurando monitoramento de presença para o usuário:', user.id, user.name);
-    
     // Criar novo canal
     const channel = supabase.channel('online-users', {
       config: {
@@ -380,13 +347,7 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       
       // Quando o estado de presença é sincronizado, atualizar a lista de usuários online
       const state = channel.presenceState() || {};
-      
-      console.log('Estado de presença recebido:', state);
-      
-      // Converter o estado de presença em uma lista de usuários online
       const onlineUserIds = Object.keys(state);
-      console.log('IDs de usuários online:', onlineUserIds);
-      
       // Criar uma lista de usuários online diretamente dos dados de presença
       const onlineSupportUsers: SupportUser[] = [];
       
@@ -422,13 +383,8 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
     
     // Inscrever-se no canal
     channel.subscribe((status) => {
-      console.log('Presença: Status da assinatura de presença:', status);
-      
       if (status === 'SUBSCRIBED') {
-        // Anunciar presença do usuário atual se for da equipe
         if (user.role === 'support' || user.role === 'lawyer' || user.role === 'admin') {
-          console.log('Anunciando presença do usuário:', user.id, user.name);
-          
           channel.track({
             id: user.id,
             name: user.name,
@@ -437,8 +393,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
           });
         }
       } else if (status === 'CHANNEL_ERROR') {
-        console.error('Presença: Erro no canal de presença');
-        
         // Tentar reconectar após um pequeno atraso
         setTimeout(() => {
           if (isMountedRef.current && channelsRef.current.presence) {
@@ -455,13 +409,10 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
   // Função para configurar um único canal de mensagens para o ticket selecionado
   const setupMessagesChannel = (ticketId: string) => {
     if (!ticketId || !user?.id) return;
-    
     // Remover canal anterior se existir
     if (channelsRef.current.messages) {
       supabase.removeChannel(channelsRef.current.messages);
     }
-    
-    console.log('Configurando canal de mensagens para o ticket:', ticketId);
     
     // Criar novo canal
     const channel = supabase.channel(`ticket-${ticketId}`);
@@ -474,9 +425,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       filter: `ticket_id=eq.${ticketId}`
     }, (payload) => {
       if (!isMountedRef.current) return;
-      
-      console.log('Mensagens: Nova mensagem recebida:', payload);
-      
       const newMessage = {
         id: payload.new.id,
         ticketId: payload.new.ticket_id,
@@ -534,9 +482,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       filter: `ticket_id=eq.${ticketId}`
     }, (payload) => {
       if (!isMountedRef.current) return;
-      
-      console.log('Mensagens: Mensagem atualizada:', payload);
-      
       // Atualizar o estado das mensagens
       setChatMessages(prevMessages => 
         prevMessages.map(msg => 
@@ -550,12 +495,8 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       );
     });
     
-    // Inscrever-se no canal
     channel.subscribe((status) => {
-      console.log('Mensagens: Status da assinatura de mensagens:', status);
-      
       if (status === 'CHANNEL_ERROR') {
-        console.error('Mensagens: Erro no canal de mensagens');
         
         // Tentar reconectar após um pequeno atraso
         setTimeout(() => {
@@ -581,8 +522,6 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
     if (channelsRef.current.typing) {
       supabase.removeChannel(channelsRef.current.typing);
     }
-    
-    console.log('Configurando canal de digitação para o ticket:', ticketId);
     
     // Criar novo canal
     const channel = supabase.channel(`typing-${ticketId}`);
@@ -613,13 +552,8 @@ const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role
       });
     });
     
-    // Inscrever-se no canal
     channel.subscribe((status) => {
-      console.log('Digitação: Status da assinatura de digitação:', status);
-      
       if (status === 'CHANNEL_ERROR') {
-        console.error('Digitação: Erro no canal de digitação');
-        
         // Tentar reconectar após um pequeno atraso
         setTimeout(() => {
           if (isMountedRef.current && channelsRef.current.typing) {
@@ -641,9 +575,6 @@ const setupGlobalMessagesChannel = () => {
   if (channelsRef.current.globalMessages) {
     supabase.removeChannel(channelsRef.current.globalMessages);
   }
-  
-  console.log('🔔 Configurando canal global de mensagens para contadores');
-  
   // Criar novo canal para monitorar todas as mensagens
   const channel = supabase.channel('global-messages-counters');
   
@@ -654,9 +585,6 @@ const setupGlobalMessagesChannel = () => {
     table: 'app_c009c0e4f1_chat_messages'
   }, (payload) => {
     if (!isMountedRef.current) return;
-    
-    console.log('🔔 Nova mensagem global detectada para contador:', payload.new);
-    
     const newMessageData = payload.new;
     
     // Converter dados do banco para formato frontend
@@ -690,8 +618,6 @@ const setupGlobalMessagesChannel = () => {
         ...prev,
         [newMessage.ticketId]: (prev[newMessage.ticketId] || 0) + 1
       }));
-      
-      console.log(`📨 Contador atualizado para ticket ${newMessage.ticketId}: +1 mensagem não lida`);
     }
   });
   
@@ -705,24 +631,13 @@ const setupGlobalMessagesChannel = () => {
     
     const updatedMessage = payload.new;
     
-    // Se a mensagem foi marcada como lida, recarregar contadores
     if (updatedMessage.read === true) {
-      console.log('📖 Mensagem marcada como lida, atualizando contadores');
-      
-      // Recarregar contadores para este ticket específico
       loadUnreadMessageCountsForTicket(updatedMessage.ticket_id);
     }
   });
   
-  // Inscrever-se no canal
   channel.subscribe((status) => {
-    console.log('🔔 Status da subscription global de mensagens:', status);
-    
-    if (status === 'SUBSCRIBED') {
-      console.log('✅ Canal global de mensagens conectado com sucesso');
-    } else if (status === 'CHANNEL_ERROR') {
-      console.error('❌ Erro no canal global de mensagens');
-      
+    if (status === 'CHANNEL_ERROR') {
       // Tentar reconectar após um pequeno atraso
       setTimeout(() => {
         if (isMountedRef.current && channelsRef.current.globalMessages) {
@@ -760,8 +675,6 @@ const loadUnreadMessageCountsForTicket = async (ticketId: string) => {
         [ticketId]: count
       }));
     }
-    
-    console.log(`📊 Contador atualizado para ticket ${ticketId}: ${count} mensagens não lidas`);
   } catch (error) {
     console.error('Erro ao carregar contador de mensagens para ticket:', ticketId, error);
   }
@@ -836,7 +749,7 @@ useEffect(() => {
     // Limpar referência aos canais
     channelsRef.current = {};
   };
-}, [user?.id]);
+}, [user?.id, has]);
 
   // Configurar canal de mensagens quando o ticket selecionado mudar
   useEffect(() => {
@@ -853,12 +766,13 @@ useEffect(() => {
       
       let tickets;
       
-      if (user?.role === 'user') {
-        // Usuários comuns veem apenas seus próprios tickets
-        tickets = await TicketService.getUserTickets(user.id);
-      } else {
-        // Admins e suporte veem todos os tickets
+      if (has('view_all_tickets')) {
         tickets = await TicketService.getAllTickets();
+      } else if (user?.id) {
+        // Quem não tem view_all_tickets vê só criados por ou atribuídos a si
+        tickets = await TicketService.getTicketsForCurrentUser(user.id);
+      } else {
+        tickets = [];
       }
       
       if (isMountedRef.current) {
@@ -887,7 +801,6 @@ useEffect(() => {
       if (isMountedRef.current) {
         setSupportUsers(users as SupportUser[]);
       }
-      console.log('Usuários de suporte carregados:', users);
     } catch (error) {
       console.error('Error loading support users:', error);
     }
@@ -1044,7 +957,6 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
   if (!user) return;
 
   try {
-    console.log('Creating ticket:', ticketData);
     const newTicket = await TicketService.createTicket({
       title: ticketData.title,
       description: ticketData.description,
@@ -1055,7 +967,6 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
       createdByDepartment: user.department,
     });
       
-    console.log('Ticket created:', newTicket);
     
     if (newTicket && newTicket.id) {
       // REMOVIDO: setTickets(prev => [newTicket, ...prev]);
@@ -1076,7 +987,6 @@ const handleCreateTicketForUser = async (ticketData: CreateTicketForUserData) =>
   }
 
   try {
-    console.log('Creating ticket for user:', ticketData);
     
     // Primeiro, criar o ticket
     const newTicket = await TicketService.createTicket({
@@ -1108,7 +1018,6 @@ const handleCreateTicketForUser = async (ticketData: CreateTicketForUserData) =>
 
 const handleUpdateTicket = async (ticketId: string, updates: Record<string, unknown>) => {
   try {
-    console.log('Updating ticket:', ticketId, updates);
     
     const updatedTicket = await TicketService.updateTicket(ticketId, updates);
     
@@ -1204,7 +1113,6 @@ const handleFileUpload = async (files: FileList) => {
     setUploadingFiles(prev => [...prev, newFile]);
     
     try {
-      console.log('🚀 Iniciando upload:', file.name, `(${(file.size / 1024 / 1024).toFixed(1)}MB)`);
       
       // Atualizar progresso para simular início do upload
       setUploadingFiles(prev => 
@@ -1216,7 +1124,6 @@ const handleFileUpload = async (files: FileList) => {
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       const filePath = `tickets/${selectedTicket.id}/${fileName}`;
       
-      console.log('📂 Caminho do arquivo:', filePath);
       
       // Simular progresso antes do upload
       setUploadingFiles(prev => 
@@ -1236,8 +1143,6 @@ const handleFileUpload = async (files: FileList) => {
         throw error;
       }
       
-      console.log('✅ Upload realizado com sucesso:', data);
-      
       // Simular progresso após upload
       setUploadingFiles(prev => 
         prev.map(f => f.id === fileId ? { ...f, progress: 70 } : f)
@@ -1248,8 +1153,6 @@ const handleFileUpload = async (files: FileList) => {
         .from('attachments')
         .getPublicUrl(filePath);
       
-      console.log('🔗 URL pública:', publicUrl);
-      
       // Atualizar arquivo na lista com URL e progresso completo
       setUploadingFiles(prev => 
         prev.map(f => f.id === fileId ? { 
@@ -1258,9 +1161,6 @@ const handleFileUpload = async (files: FileList) => {
           progress: 100 
         } : f)
       );
-      
-      console.log('🎉 Upload finalizado com sucesso!');
-      
     } catch (error) {
       console.error('❌ Erro ao fazer upload:', error);
       
@@ -1470,6 +1370,8 @@ return (
         supportUsers={supportUsers}
         user={user}
         onlineUsersCount={getOnlineStaff().length}
+        canCreateTicket={has('create_ticket')}
+        canCreateTicketForUser={has('create_ticket_for_user')}
       />
 
       {/* Filtros sempre visíveis */}
@@ -1490,21 +1392,12 @@ return (
         />
       </div>
 
-      {/* Modal para criação de ticket (para usuários comuns) */}
-      {shouldUseModal && (
-        <CreateTicketModal
-          isOpen={showCreateForm}
-          onClose={() => setShowCreateForm(false)}
-          onSubmit={handleCreateTicket}
-        />
-      )}
-
-      {/* Formulário de criação de ticket embutido (para admin, support, lawyer) */}
-      {!shouldUseModal && showCreateForm && (
-        <div className="px-4 pb-4 border-b border-slate-200 w-full">
-          <TicketForm onSubmit={handleCreateTicket} onCancel={() => setShowCreateForm(false)} />
-        </div>
-      )}
+      {/* Modal para criação de ticket - sempre modal ao clicar em Novo Ticket */}
+      <CreateTicketModal
+        isOpen={showCreateForm}
+        onClose={() => setShowCreateForm(false)}
+        onSubmit={handleCreateTicket}
+      />
 
       {/* Mensagem de erro */}
       {error && (
@@ -1523,8 +1416,8 @@ return (
       )}
     </div>
 
-        {/* Modal para criação de ticket em nome de usuário (para equipe) */}
-        {isStaff && (
+        {/* Modal para criação de ticket em nome de usuário (por permissão create_ticket_for_user) */}
+        {has('create_ticket_for_user') && (
           <CreateTicketForUserModal
             isOpen={showCreateForUserModal}
             onClose={() => setShowCreateForUserModal(false)}
@@ -1574,7 +1467,7 @@ return (
                   ticketsByUser={getTicketsByUser()}
                   supportUsers={supportUsers}
                   renderTicketCard={renderTicketCard}
-                  handleAssignTicket={handleAssignTicket}
+                  handleAssignTicket={has('assign_ticket') ? handleAssignTicket : undefined}
                 />
               )}
             </div>
@@ -1595,7 +1488,7 @@ return (
                   sendMessage={sendMessage}
                   handleKeyPress={handleKeyPress}
                   closeChat={closeChat}
-                  handleDeleteTicket={user?.role === 'admin' ? handleDeleteTicket : undefined}
+                  handleDeleteTicket={has('delete_ticket') ? handleDeleteTicket : undefined}
                   handleUpdateTicket={handleUpdateTicket}
                   isTicketFinalized={isTicketFinalized}
                   messagesEndRef={messagesEndRef}
@@ -1605,6 +1498,9 @@ return (
                   handleTyping={handleTyping}
                   supportUsers={supportUsers}
                   handleAssignTicket={handleAssignTicket}
+                  canAssignTicket={has('assign_ticket')}
+                  canDeleteTicket={has('delete_ticket')}
+                  canFinishTicket={has('finish_ticket')}
                 />
               </div>
             )}

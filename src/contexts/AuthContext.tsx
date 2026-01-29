@@ -131,20 +131,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initAuth = async () => {
       try {
-        console.log('🔄 Inicializando autenticação (única vez)...');
-        
-        // 1. Tentar carregar do cache primeiro
         const cachedUser = getUserFromStorage();
         if (cachedUser) {
-          console.log('✅ Usuário carregado do cache:', cachedUser.name);
           setUser(cachedUser);
           setRequiresPasswordChange(checkPasswordChangeRequired(cachedUser));
           setLoading(false);
           return;
         }
 
-        // 2. Se não há cache, verificar sessão do Supabase
-        console.log('🔍 Verificando sessão do Supabase...');
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
@@ -154,11 +148,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (session?.user) {
-          console.log('🔍 Sessão encontrada, carregando perfil...');
           currentAuthUserId.current = session.user.id;
           await loadUserProfile(session.user.id);
         } else {
-          console.log('ℹ️ Nenhuma sessão encontrada');
           setLoading(false);
         }
         
@@ -173,29 +165,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Configurar listener de auth APENAS UMA VEZ
     if (!authSubscription.current) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('🔄 Auth event:', event, 'Session user:', session?.user?.id);
-        
-        // CRÍTICO: Só processar eventos realmente novos
-        const newAuthUserId = session?.user?.id || null;
-        
+        const newAuthUserId = session?.user?.id ?? null;
         if (event === 'SIGNED_IN' && newAuthUserId) {
-          // Só processar se ainda não tiver carregado o perfil para este usuário
           if (newAuthUserId !== currentAuthUserId.current || !user) {
-            console.log('✅ Processando login genuíno');
             currentAuthUserId.current = newAuthUserId;
             setLoading(true);
             await loadUserProfile(newAuthUserId);
-          } else {
-            console.log('🚫 Perfil já carregado para este usuário');
           }
         } else if (event === 'SIGNED_OUT') {
-          console.log('👋 Processando logout');
           handleLogout();
-        } else if (event === 'TOKEN_REFRESHED' && newAuthUserId) {
-          // Atualizar se necessário quando o token for atualizado
-          console.log('🔄 Token atualizado');
-        } else {
-          console.log('🚫 Ignorando evento auth:', event);
         }
       });
       

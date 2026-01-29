@@ -132,11 +132,6 @@ const mapToDatabase = (data: any) => {
 };
 
 const mapFromDatabase = (data: any): Ticket => {
-  console.log('Dados do ticket do banco:', {
-    id: data.id,
-    department_field: data.created_by_department,
-  });
-
   return {
     id: data.id,
     title: data.title,
@@ -189,8 +184,6 @@ export class TicketService {
 static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
   return executeWithRetry(async () => {
     try {
-      console.log('Getting tickets for user:', userId, 'role:', userRole);
-      
       let query = supabase
         .from(TABLES.TICKETS)
         .select('*')
@@ -209,11 +202,7 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
         throw error;
       }
 
-      console.log('Raw tickets data:', data);
-
-      // Map database fields to frontend fields
       const tickets = data ? data.map(mapFromDatabase) : [];
-      console.log('Mapped tickets:', tickets);
       
       return tickets;
     } catch (error) {
@@ -226,8 +215,6 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
 // Get a specific ticket by ID
 static async getTicket(ticketId: string): Promise<Ticket | null> {
   try {
-    console.log('Getting ticket with ID:', ticketId);
-    
     const { data, error } = await supabase
       .from(TABLES.TICKETS)
       .select('*')
@@ -295,13 +282,30 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
     }
   }
 
+  /** Tickets criados por ou atribuídos ao usuário (para quem não tem view_all_tickets). */
+  static async getTicketsForCurrentUser(userId: string): Promise<Ticket[]> {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.TICKETS)
+        .select('*')
+        .or(`created_by.eq.${userId},assigned_to.eq.${userId}`)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching tickets for current user:', error);
+        throw error;
+      }
+      return (data || []).map(mapFromDatabase);
+    } catch (error) {
+      console.error('Error in getTicketsForCurrentUser:', error);
+      throw error;
+    }
+  }
+
   // Get ticket statistics
   static async getTicketStats(userId: string, userRole: string) {
     try {
-      console.log('Getting ticket stats for user:', userId, 'role:', userRole);
-      
       const tickets = await this.getTickets(userId, userRole);
-      
       const stats = {
         open: tickets.filter(t => t && t.status === 'open').length,
         assigned: tickets.filter(t => t && t.status === 'assigned').length,
@@ -310,8 +314,6 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
         // Removido closed
         total: tickets.length,
       };
-
-      console.log('Calculated stats:', stats);
       return stats;
     } catch (error) {
       console.error('Error in getTicketStats:', error);
@@ -838,8 +840,6 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
 // Obter contagem de mensagens não lidas
 static async getUnreadMessageCounts(userId: string): Promise<Record<string, number>> {
   try {
-    console.log('Getting unread message counts for user:', userId);
-    
     // Buscar todas as mensagens não lidas que não foram enviadas pelo usuário atual
     const { data, error } = await supabase
       .from(TABLES.CHAT_MESSAGES)

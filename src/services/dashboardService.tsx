@@ -195,7 +195,8 @@ export async function getDashboardStats(
   days: number = 30, 
   userId?: string, 
   startDateStr?: string, 
-  endDateStr?: string
+  endDateStr?: string,
+  frenteId?: string
 ): Promise<DashboardStats> {
   try {
     // Usar as datas fornecidas ou calcular com base nos dias
@@ -233,11 +234,26 @@ export async function getDashboardStats(
       throw new Error(`Erro ao buscar tickets: ${error.message}`);
     }
 
+    let ticketsToProcess = tickets || [];
+
+    // Filtro por Frente de Atuação (tag)
+    if (frenteId) {
+      const categoriesConfig = await CategoryService.getCategoriesConfig();
+      const categoryKeysByFrente =
+        frenteId === 'sem-frente'
+          ? Object.entries(categoriesConfig).filter(([, c]) => !c.tagId).map(([k]) => k)
+          : Object.entries(categoriesConfig).filter(([, c]) => c.tagId === frenteId).map(([k]) => k);
+      ticketsToProcess = ticketsToProcess.filter((t) => {
+        const cat = t.category || '';
+        return categoryKeysByFrente.includes(cat);
+      });
+    }
+
     // Processar os dados para as estatísticas
-    const stats = await processTicketsData(tickets || [], days);
+    const stats = await processTicketsData(ticketsToProcess, days);
     
     // Processar feedback diretamente dos tickets (já que não existe uma tabela separada)
-    stats.recentFeedback = await processFeedbackFromTickets(tickets || []);
+    stats.recentFeedback = await processFeedbackFromTickets(ticketsToProcess);
 
     return stats;
   } catch (error) {

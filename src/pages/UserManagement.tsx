@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { UserService, CreateUserData } from '@/services/userService';
+import { RoleService, PERMISSION_KEYS, type Role, type CreateRoleData, type PermissionKey } from '@/services/roleService';
+import { DepartmentService, type Department as Dept, type CreateDepartmentData } from '@/services/departmentService';
 import { User, UserRole, Department } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2, RefreshCw, Pencil, UserX, UserCheck, Filter, AlertTriangle, Search, X } from 'lucide-react';
+import { PlusCircle, Trash2, RefreshCw, Pencil, UserX, UserCheck, Filter, AlertTriangle, Search, X, Shield, Settings2, Building2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Switch } from '@/components/ui/switch';
 
 
 export default function UserManagement() {
@@ -63,28 +67,62 @@ export default function UserManagement() {
     });
 
   const resetForm = () => {
+  const defaultDept = activeDepartments.find((d) => d.name === 'Geral')?.name ?? activeDepartments[0]?.name ?? Department.GERAL;
   setNewUser({
     name: '',
     email: '',
     password: '',
     role: 'user',
-    department: Department.GERAL, // Usando o enum em vez da string literal
+    department: defaultDept,
   });
   setCreateDialogOpen(false);
 };
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const { has, loading: permissionsLoading } = usePermissions();
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [createRoleOpen, setCreateRoleOpen] = useState(false);
+  const [editRoleOpen, setEditRoleOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [rolePermissions, setRolePermissions] = useState<PermissionKey[]>([]);
+  const [newRole, setNewRole] = useState<CreateRoleData>({ key: '', label: '', permissionKeys: [] });
+  const [createRoleLoading, setCreateRoleLoading] = useState(false);
+  const [editRoleLoading, setEditRoleLoading] = useState(false);
+  const [deleteRoleOpen, setDeleteRoleOpen] = useState(false);
+  const [pendingDeleteRole, setPendingDeleteRole] = useState<Role | null>(null);
 
-  // Redirecionar se não for admin
+  const [departments, setDepartments] = useState<Dept[]>([]);
+  const [createDepartmentOpen, setCreateDepartmentOpen] = useState(false);
+  const [editDepartmentOpen, setEditDepartmentOpen] = useState(false);
+  const [editingDepartment, setEditingDepartment] = useState<Dept | null>(null);
+  const [newDepartment, setNewDepartment] = useState<CreateDepartmentData>({ name: '' });
+  const [createDepartmentLoading, setCreateDepartmentLoading] = useState(false);
+  const [editDepartmentLoading, setEditDepartmentLoading] = useState(false);
+  const [deleteDepartmentOpen, setDeleteDepartmentOpen] = useState(false);
+  const [pendingDeleteDepartment, setPendingDeleteDepartment] = useState<Dept | null>(null);
+  const isAdmin = Boolean(user && String(user.role ?? '').toLowerCase() === 'admin');
+  const activeDepartments = departments.filter((d) => d.isActive);
+  const defaultDepartmentName = activeDepartments.find((d) => d.name === 'Geral')?.name ?? activeDepartments[0]?.name ?? Department.GERAL;
+
   useEffect(() => {
-    if (user && user.role !== 'admin') {
-      toast({
-        title: 'Acesso negado',
-        description: 'Você não tem permissão para acessar esta página.',
-        variant: 'destructive',
-      });
-      navigate('/tickets');
+    if (!user) return;
+    if (permissionsLoading) return;
+    if (has('manage_users') || has('manage_roles')) return;
+    const isAdmin = String(user.role ?? '').toLowerCase() === 'admin';
+    if (isAdmin) return;
+    toast({
+      title: 'Acesso negado',
+      description: 'Você não tem permissão para acessar esta página.',
+      variant: 'destructive',
+    });
+    navigate('/tickets');
+  }, [user, has, permissionsLoading, navigate]);
+
+  useEffect(() => {
+    if (has('manage_users') || has('manage_roles') || isAdmin) {
+      RoleService.getRoles(true).then(setRoles);
+      DepartmentService.getDepartments().then(setDepartments);
     }
-  }, [user, navigate]);
+  }, [has, isAdmin]);
 
   // Carregar usuários
   const loadUsers = async () => {
@@ -167,10 +205,10 @@ export default function UserManagement() {
 
 
   useEffect(() => {
-    if (user?.role === 'admin') {
+    if (user && has('manage_users')) {
       loadUsers();
     }
-  }, [user]);
+  }, [user, has]);
 
 // Criar novo usuário
 const handleCreateUser = async () => {
@@ -381,20 +419,134 @@ const handleConfirmDelete = async () => {
   }
 };
 
-  // Traduzir role para português
-  const translateRole = (role: string) => {
-    const translations: Record<string, string> = {
-      user: 'Usuário',
-      support: 'Suporte',
-      admin: 'Administrador',
-      lawyer: 'Advogado',
-    };
-    return translations[role] || role;
+  const translateRole = (role: string) => roles.find((r) => r.key === role)?.label ?? role;
+
+  const handleCreateRole = async () => {
+    if (!newRole.key?.trim() || !newRole.label?.trim()) {
+      toast({ title: 'Campos obrigatórios', description: 'Preencha chave e nome da role.', variant: 'destructive' });
+      return;
+    }
+    const key = newRole.key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    if (!key) {
+      toast({ title: 'Chave inválida', description: 'Use apenas letras minúsculas, números e _.', variant: 'destructive' });
+      return;
+    }
+    try {
+      setCreateRoleLoading(true);
+      await RoleService.createRole({ ...newRole, key, permissionKeys: newRole.permissionKeys || [] });
+      toast({ title: 'Role criada', description: `${newRole.label} foi criada.` });
+      setNewRole({ key: '', label: '', permissionKeys: [] });
+      setCreateRoleOpen(false);
+      RoleService.getRoles(true).then(setRoles);
+    } catch (e: any) {
+      toast({ title: 'Erro ao criar role', description: e.message, variant: 'destructive' });
+    } finally {
+      setCreateRoleLoading(false);
+    }
   };
 
-  if (!user || user.role !== 'admin') {
-    return null;
-  }
+  const handleEditRole = async () => {
+    if (!editingRole) return;
+    try {
+      setEditRoleLoading(true);
+      await RoleService.updateRole(editingRole.id, { label: editingRole.label, description: editingRole.description });
+      await RoleService.setRolePermissions(editingRole.id, rolePermissions);
+      toast({ title: 'Role atualizada', description: `${editingRole.label} foi atualizada.` });
+      setEditRoleOpen(false);
+      setEditingRole(null);
+      RoleService.getRoles(true).then(setRoles);
+    } catch (e: any) {
+      toast({ title: 'Erro ao atualizar role', description: e.message, variant: 'destructive' });
+    } finally {
+      setEditRoleLoading(false);
+    }
+  };
+
+  const handleDeleteRole = async () => {
+    if (!pendingDeleteRole) return;
+    try {
+      const count = await RoleService.countUsersByRole(pendingDeleteRole.key);
+      if (count > 0) {
+        toast({ title: 'Não é possível excluir', description: `${count} usuário(s) usam esta role. Atribua outra role a eles antes.`, variant: 'destructive' });
+        return;
+      }
+      await RoleService.deleteRole(pendingDeleteRole.id);
+      toast({ title: 'Role excluída', description: `${pendingDeleteRole.label} foi excluída.` });
+      setDeleteRoleOpen(false);
+      setPendingDeleteRole(null);
+      RoleService.getRoles(true).then(setRoles);
+    } catch (e: any) {
+      toast({ title: 'Erro ao excluir', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  const loadDepartments = () => DepartmentService.getDepartments().then(setDepartments);
+
+  const handleCreateDepartment = async () => {
+    if (!newDepartment.name?.trim()) {
+      toast({ title: 'Nome obrigatório', description: 'Informe o nome do departamento.', variant: 'destructive' });
+      return;
+    }
+    try {
+      setCreateDepartmentLoading(true);
+      await DepartmentService.createDepartment({ name: newDepartment.name.trim() });
+      toast({ title: 'Departamento criado', description: `${newDepartment.name.trim()} foi adicionado.` });
+      setNewDepartment({ name: '' });
+      setCreateDepartmentOpen(false);
+      loadDepartments();
+    } catch (e: any) {
+      toast({ title: 'Erro ao criar departamento', description: e.message, variant: 'destructive' });
+    } finally {
+      setCreateDepartmentLoading(false);
+    }
+  };
+
+  const handleEditDepartment = async () => {
+    if (!editingDepartment) return;
+    try {
+      setEditDepartmentLoading(true);
+      await DepartmentService.updateDepartment(editingDepartment.id, {
+        name: editingDepartment.name.trim(),
+        order: editingDepartment.order,
+        isActive: editingDepartment.isActive,
+      });
+      toast({ title: 'Departamento atualizado', description: `${editingDepartment.name} foi atualizado.` });
+      setEditDepartmentOpen(false);
+      setEditingDepartment(null);
+      loadDepartments();
+    } catch (e: any) {
+      toast({ title: 'Erro ao atualizar departamento', description: e.message, variant: 'destructive' });
+    } finally {
+      setEditDepartmentLoading(false);
+    }
+  };
+
+  const handleDeleteDepartment = async () => {
+    if (!pendingDeleteDepartment) return;
+    try {
+      const count = await DepartmentService.countUsersByDepartment(pendingDeleteDepartment.name);
+      if (count > 0) {
+        toast({
+          title: 'Não é possível excluir',
+          description: `${count} usuário(s) usam este departamento. Altere o departamento deles antes.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+      await DepartmentService.deleteDepartment(pendingDeleteDepartment.id);
+      toast({ title: 'Departamento excluído', description: `${pendingDeleteDepartment.name} foi removido.` });
+      setDeleteDepartmentOpen(false);
+      setPendingDeleteDepartment(null);
+      loadDepartments();
+    } catch (e: any) {
+      toast({ title: 'Erro ao excluir departamento', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  if (!user) return null;
+  const canAccessPage = has('manage_users') || has('manage_roles') || String(user.role ?? '').toLowerCase() === 'admin';
+  if (!canAccessPage) return null;
+  const canManageUsers = has('manage_users') || String(user.role ?? '').toLowerCase() === 'admin';
 
   return (
     <div className="space-y-8 py-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -414,6 +566,8 @@ const handleConfirmDelete = async () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {canManageUsers && (
+              <Fragment>
             <Button 
               variant="outline" 
               onClick={loadUsers} 
@@ -469,39 +623,43 @@ const handleConfirmDelete = async () => {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="role">Função <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="role">Função (Role) <span className="text-red-500">*</span></Label>
                   <Select
                     value={newUser.role}
-                    onValueChange={(value) => setNewUser({ ...newUser, role: value as any })}
+                    onValueChange={(value) => setNewUser({ ...newUser, role: value as UserRole })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione uma função" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="user">Usuário</SelectItem>
-                      <SelectItem value="lawyer">Advogado</SelectItem>
-                      <SelectItem value="support">Suporte</SelectItem>
-                      <SelectItem value="admin">Administrador</SelectItem>
+                      {roles.length > 0
+                        ? roles.map((r) => <SelectItem key={r.id} value={r.key}>{r.label}</SelectItem>)
+                        : [
+                            { key: 'user', label: 'Usuário' },
+                            { key: 'lawyer', label: 'Advogado' },
+                            { key: 'support', label: 'Suporte' },
+                            { key: 'admin', label: 'Administrador' },
+                          ].map((r) => <SelectItem key={r.key} value={r.key}>{r.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                      {/* No formulário de criação: */}
                       <Label htmlFor="department">Departamento/Área <span className="text-red-500">*</span></Label>
                       <Select
-                        value={newUser.department || Department.GERAL}
+                        value={newUser.department || defaultDepartmentName || Department.GERAL}
                         onValueChange={(value) => setNewUser({ ...newUser, department: value })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione o departamento" />
                         </SelectTrigger>
                         <SelectContent>
-                          {/* Usar Object.values para iterar sobre o enum */}
-                          {Object.values(Department).map((dept) => (
-                            <SelectItem key={dept} value={dept}>
-                              {dept}
-                            </SelectItem>
-                          ))}
+                          {activeDepartments.length > 0
+                            ? activeDepartments.map((d) => (
+                                <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                              ))
+                            : Object.values(Department).map((dept) => (
+                                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                              ))}
                         </SelectContent>
                       </Select>
                 </div>
@@ -525,6 +683,8 @@ const handleConfirmDelete = async () => {
               </div>
             </DialogContent>
           </Dialog>
+              </Fragment>
+            )}
           </div>
         </div>
       </div>
@@ -561,24 +721,27 @@ const handleConfirmDelete = async () => {
                 <p className="text-xs text-muted-foreground">O email não pode ser alterado.</p>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="edit-role">Função <span className="text-red-500">*</span></Label>
+                <Label htmlFor="edit-role">Função (Role) <span className="text-red-500">*</span></Label>
                 <Select
                   value={editingUser.role}
-                  onValueChange={(value) => setEditingUser({ ...editingUser, role: value as any })}
+                  onValueChange={(value) => setEditingUser({ ...editingUser, role: value as UserRole })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione uma função" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">Usuário</SelectItem>
-                    <SelectItem value="lawyer">Advogado</SelectItem>
-                    <SelectItem value="support">Suporte</SelectItem>
-                    <SelectItem value="admin">Administrador</SelectItem>
+                    {roles.length > 0
+                      ? roles.map((r) => <SelectItem key={r.id} value={r.key}>{r.label}</SelectItem>)
+                      : [
+                          { key: 'user', label: 'Usuário' },
+                          { key: 'lawyer', label: 'Advogado' },
+                          { key: 'support', label: 'Suporte' },
+                          { key: 'admin', label: 'Administrador' },
+                        ].map((r) => <SelectItem key={r.key} value={r.key}>{r.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-2">
-                {/* E no formulário de edição: */}
                 <Label htmlFor="edit-department">Departamento/Área <span className="text-red-500">*</span></Label>
                 <Select
                   value={editingUser.department}
@@ -588,12 +751,13 @@ const handleConfirmDelete = async () => {
                     <SelectValue placeholder="Selecione o departamento" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Usar Object.values para iterar sobre o enum */}
-                    {Object.values(Department).map((dept) => (
-                      <SelectItem key={dept} value={dept}>
-                        {dept}
-                      </SelectItem>
-                    ))}
+                    {departments.length > 0
+                      ? departments.map((d) => (
+                          <SelectItem key={d.id} value={d.name}>{d.name}{!d.isActive ? ' (inativo)' : ''}</SelectItem>
+                        ))
+                      : Object.values(Department).map((dept) => (
+                          <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                        ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -625,7 +789,8 @@ const handleConfirmDelete = async () => {
         </DialogContent>
       </Dialog>
 
-      <Card className="border-[#F69F19]/20">
+      {canManageUsers && (
+      <Card className="border-[#F69F19]/20 mt-8">
         <CardHeader>
           <div className="flex justify-between items-start">
             <div>
@@ -683,11 +848,13 @@ const handleConfirmDelete = async () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os Departamentos</SelectItem>
-                    {Object.values(Department).map((dept) => (
-                      <SelectItem key={dept} value={dept}>
-                        {dept}
-                      </SelectItem>
-                    ))}
+                    {departments.length > 0
+                      ? departments.map((d) => (
+                          <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                        ))
+                      : Object.values(Department).map((dept) => (
+                          <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                        ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -703,10 +870,14 @@ const handleConfirmDelete = async () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas as Funções</SelectItem>
-                    <SelectItem value="user">Usuário</SelectItem>
-                    <SelectItem value="support">Suporte</SelectItem>
-                    <SelectItem value="lawyer">Advogado</SelectItem>
-                    <SelectItem value="admin">Administrador</SelectItem>
+                    {(roles.length > 0 ? roles : [
+                      { key: 'user', label: 'Usuário' },
+                      { key: 'lawyer', label: 'Advogado' },
+                      { key: 'support', label: 'Suporte' },
+                      { key: 'admin', label: 'Administrador' },
+                    ]).map((r) => (
+                      <SelectItem key={typeof r === 'object' && 'id' in r ? r.id : r.key} value={r.key}>{r.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -871,6 +1042,7 @@ const handleConfirmDelete = async () => {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Modal de Confirmação de Ativação/Desativação */}
       <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
@@ -1038,6 +1210,357 @@ const handleConfirmDelete = async () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Seção Roles e Permissões - só para quem tem manage_roles */}
+      {has('manage_roles') && (
+        <>
+          <Card className="border-[#F69F19]/20 mt-8">
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5 text-[#F69F19]" />
+                    Roles e Permissões
+                  </CardTitle>
+                  <CardDescription>
+                    Crie roles e defina o que cada uma pode ver e fazer no sistema. Ao editar um usuário, atribua uma role.
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]"
+                  onClick={() => { setNewRole({ key: '', label: '', permissionKeys: [] }); setCreateRoleOpen(true); }}
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Nova Role
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Chave</TableHead>
+                      <TableHead>Sistema</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {roles.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-medium">{r.label}</TableCell>
+                        <TableCell className="text-slate-500">{r.key}</TableCell>
+                        <TableCell>{r.isSystem ? 'Sim' : 'Não'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              setEditingRole(r);
+                              const perms = await RoleService.getRolePermissionsByRoleId(r.id);
+                              setRolePermissions(perms);
+                              setEditRoleOpen(true);
+                            }}
+                          >
+                            <Settings2 className="h-4 w-4 mr-1" />
+                            Permissões
+                          </Button>
+                          {!r.isSystem && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600"
+                              onClick={() => { setPendingDeleteRole(r); setDeleteRoleOpen(true); }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Dialog open={createRoleOpen} onOpenChange={setCreateRoleOpen}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Nova Role</DialogTitle>
+                <DialogDescription>Chave será gerada a partir do nome (ex: Minha Role → minha_role).</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={newRole.label}
+                    onChange={(e) => {
+                      const label = e.target.value;
+                      const key = label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+                      setNewRole({ ...newRole, label, key });
+                    }}
+                    placeholder="ex: Analista"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Chave</Label>
+                  <Input value={newRole.key} onChange={(e) => setNewRole({ ...newRole, key: e.target.value })} placeholder="ex: analista" className="bg-slate-50" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Permissões</Label>
+                  <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                    {PERMISSION_KEYS.map((p) => (
+                      <label key={p.key} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(newRole.permissionKeys || []).includes(p.key)}
+                          onChange={(e) => {
+                            const keys = new Set(newRole.permissionKeys || []);
+                            if (e.target.checked) keys.add(p.key); else keys.delete(p.key);
+                            setNewRole({ ...newRole, permissionKeys: Array.from(keys) });
+                          }}
+                          className="rounded border-slate-300"
+                        />
+                        <span className="text-sm">{p.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setCreateRoleOpen(false)}>Cancelar</Button>
+                <Button onClick={handleCreateRole} disabled={createRoleLoading || !newRole.key || !newRole.label} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+                  {createRoleLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Criar'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={editRoleOpen} onOpenChange={setEditRoleOpen}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Editar Permissões</DialogTitle>
+                <DialogDescription>Altere o que a role &quot;{editingRole?.label}&quot; pode ver e fazer.</DialogDescription>
+              </DialogHeader>
+              {editingRole && (
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label>Nome</Label>
+                    <Input
+                      value={editingRole.label}
+                      onChange={(e) => setEditingRole({ ...editingRole, label: e.target.value })}
+                      placeholder="Nome da role"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Permissões</Label>
+                    <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                      {PERMISSION_KEYS.map((p) => (
+                        <label key={p.key} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rolePermissions.includes(p.key)}
+                            onChange={(e) => {
+                              if (e.target.checked) setRolePermissions([...rolePermissions, p.key]);
+                              else setRolePermissions(rolePermissions.filter((k) => k !== p.key));
+                            }}
+                            className="rounded border-slate-300"
+                          />
+                          <span className="text-sm">{p.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditRoleOpen(false)}>Cancelar</Button>
+                <Button onClick={handleEditRole} disabled={editRoleLoading} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+                  {editRoleLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Salvar'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <AlertDialog open={deleteRoleOpen} onOpenChange={setDeleteRoleOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir Role</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir a role &quot;{pendingDeleteRole?.label}&quot;? Nenhum usuário pode estar usando esta role.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setPendingDeleteRole(null)}>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteRole} className="bg-red-600 hover:bg-red-700">Excluir</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
+
+      {/* Seção Departamentos - apenas admin */}
+      {isAdmin && (
+        <>
+          <Card className="border-[#F69F19]/20 mt-8">
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-[#F69F19]" />
+                    Departamentos
+                  </CardTitle>
+                  <CardDescription>
+                    Crie e gerencie departamentos/áreas. Eles aparecem ao criar ou editar usuários e nos filtros.
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]"
+                  onClick={() => { setNewDepartment({ name: '' }); setCreateDepartmentOpen(true); }}
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Novo Departamento
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Ordem</TableHead>
+                      <TableHead>Ativo</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {departments.map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell className="font-medium">{d.name}</TableCell>
+                        <TableCell className="text-slate-500">{d.order}</TableCell>
+                        <TableCell>{d.isActive ? 'Sim' : 'Não'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setEditingDepartment(d); setEditDepartmentOpen(true); }}
+                          >
+                            <Pencil className="h-4 w-4 mr-1" />
+                            Editar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600"
+                            onClick={() => { setPendingDeleteDepartment(d); setDeleteDepartmentOpen(true); }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Excluir
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Dialog open={createDepartmentOpen} onOpenChange={setCreateDepartmentOpen}>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader>
+                <DialogTitle>Novo Departamento</DialogTitle>
+                <DialogDescription>Informe o nome do departamento. A ordem pode ser ajustada depois.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="new-dept-name">Nome</Label>
+                  <Input
+                    id="new-dept-name"
+                    value={newDepartment.name}
+                    onChange={(e) => setNewDepartment({ ...newDepartment, name: e.target.value })}
+                    placeholder="ex: Operações Legais"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setCreateDepartmentOpen(false)}>Cancelar</Button>
+                <Button onClick={handleCreateDepartment} disabled={createDepartmentLoading || !newDepartment.name?.trim()} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+                  {createDepartmentLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Criar'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={editDepartmentOpen} onOpenChange={setEditDepartmentOpen}>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader>
+                <DialogTitle>Editar Departamento</DialogTitle>
+                <DialogDescription>Altere nome, ordem ou status ativo.</DialogDescription>
+              </DialogHeader>
+              {editingDepartment && (
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-dept-name">Nome</Label>
+                    <Input
+                      id="edit-dept-name"
+                      value={editingDepartment.name}
+                      onChange={(e) => setEditingDepartment({ ...editingDepartment, name: e.target.value })}
+                      placeholder="ex: Operações Legais"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-dept-order">Ordem</Label>
+                    <Input
+                      id="edit-dept-order"
+                      type="number"
+                      min={0}
+                      value={editingDepartment.order}
+                      onChange={(e) => setEditingDepartment({ ...editingDepartment, order: parseInt(e.target.value, 10) || 0 })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                      <Label>Ativo</Label>
+                      <p className="text-sm text-muted-foreground">Inativos não aparecem ao criar usuários.</p>
+                    </div>
+                    <Switch
+                      checked={editingDepartment.isActive}
+                      onCheckedChange={(checked) => setEditingDepartment({ ...editingDepartment, isActive: checked })}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditDepartmentOpen(false)}>Cancelar</Button>
+                <Button onClick={handleEditDepartment} disabled={editDepartmentLoading} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+                  {editDepartmentLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Salvar'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <AlertDialog open={deleteDepartmentOpen} onOpenChange={setDeleteDepartmentOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir Departamento</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir &quot;{pendingDeleteDepartment?.name}&quot;? Nenhum usuário pode estar usando este departamento.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setPendingDeleteDepartment(null)}>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteDepartment} className="bg-red-600 hover:bg-red-700">Excluir</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
     </div>
   );
 }

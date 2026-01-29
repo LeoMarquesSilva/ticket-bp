@@ -50,8 +50,11 @@ interface TicketHeaderProps {
   user: { role: string; id?: string } | null;
   setShowCreateForm: (show: boolean) => void;
   onlineUsersCount?: number;
-  // Novas props para criar ticket para usuário
   setShowCreateForUserModal?: (show: boolean) => void;
+  /** Criar ticket próprio (permissão create_ticket) */
+  canCreateTicket?: boolean;
+  /** Criar ticket em nome de usuário (permissão create_ticket_for_user) */
+  canCreateTicketForUser?: boolean;
 }
 
 const TicketHeader: React.FC<TicketHeaderProps> = ({
@@ -61,7 +64,9 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   user,
   setShowCreateForm,
   onlineUsersCount = 0,
-  setShowCreateForUserModal
+  setShowCreateForUserModal,
+  canCreateTicket = false,
+  canCreateTicketForUser = false
 }) => {
   const isAdmin = user?.role === 'admin';
   const isSupport = user?.role === 'support';
@@ -268,9 +273,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
       
       // Inscrever-se no canal
       channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('Inscrição em tempo real para estatísticas de tickets ativa');
-        } else if (status === 'CHANNEL_ERROR') {
+        if (status === 'CHANNEL_ERROR') {
           console.error('Erro no canal de tempo real para estatísticas de tickets');
           // Tentar reconectar após um pequeno atraso
           setTimeout(() => {
@@ -406,10 +409,10 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
               </Popover>
             )}
             
-            {/* Botões de criação de tickets */}
+            {/* Botões de criação de tickets - por permissão create_ticket */}
             <div className="flex items-center gap-2">
-              {/* Botão para criar novo ticket - APENAS para usuários comuns */}
-              {isUser && (
+              {/* Botão para criar novo ticket */}
+              {canCreateTicket && (
                 <Button
                   onClick={() => setShowCreateForm(true)}
                   size="sm"
@@ -420,32 +423,26 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                   <span className="relative z-10">Novo Ticket</span>
                 </Button>
               )}
-              
-              {/* Botões para equipe (admin, support, lawyer) */}
-              {isStaff && (
-                <>
-                  {/* Botão para criar ticket para usuário */}
-                  {setShowCreateForUserModal && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            onClick={() => setShowCreateForUserModal(true)}
-                            size="sm"
-                            className="relative overflow-hidden bg-[#F69F19] hover:bg-[#DE5532] text-white font-medium shadow-md transition-all duration-300"
-                          >
-                            <div className="absolute inset-0 bg-gradient-to-r from-[#F69F19] to-[#DE5532] opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
-                            <UserPlus className="h-4 w-4 mr-2 relative z-10" />
-                            <span className="relative z-10">+ Ticket</span>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="bg-[#2C2D2F] text-white border-[#F69F19]/20">
-                          <p>Criar ticket em nome de um usuário</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </>
+              {/* Botão para criar ticket em nome de usuário (permissão create_ticket_for_user) */}
+              {canCreateTicketForUser && setShowCreateForUserModal && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => setShowCreateForUserModal(true)}
+                        size="sm"
+                        className="relative overflow-hidden bg-[#F69F19] hover:bg-[#DE5532] text-white font-medium shadow-md transition-all duration-300"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#F69F19] to-[#DE5532] opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
+                        <UserPlus className="h-4 w-4 mr-2 relative z-10" />
+                        <span className="relative z-10">+ Ticket</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="bg-[#2C2D2F] text-white border-[#F69F19]/20">
+                      <p>Criar ticket em nome de um usuário</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
           </div>

@@ -10,8 +10,10 @@ import {
   Menu,
   X,
   User,
-  Tag
+  Tag,
+  Shield
 } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -35,6 +37,7 @@ interface HeaderProps {
 
 export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicketsUpdated }: HeaderProps) {
   const { user, logout } = useAuth();
+  const { has } = usePermissions();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -73,47 +76,19 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
   }, [pendingTickets]);
 
   const navItems = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: <LayoutDashboard className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
-    },
-    {
-      name: "Tickets",
-      href: "/tickets",
-      icon: <Ticket className="h-5 w-5" />,
-      roles: ["user", "support", "admin", "lawyer"],
-      badge: localPendingTickets > 0 ? localPendingTickets : null
-    },
-    {
-      name: "Gerenciar Usuários",
-      href: "/users",
-      icon: <Users className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
-    },
-    {
-      name: "Gerenciar Categorias",
-      href: "/categories",
-      icon: <Tag className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
-    }
-    // Banco de Dados removido - desabilitado para todos os usuários
-    // {
-    //   name: "Banco de Dados",
-    //   href: "/database",
-    //   icon: <Database className="h-5 w-5" />,
-    //   roles: ["admin"],
-    //   badge: null
-    // }
+    { name: "Dashboard", href: "/dashboard", icon: <LayoutDashboard className="h-5 w-5" />, permission: 'dashboard' as const, badge: null },
+    { name: "Tickets", href: "/tickets", icon: <Ticket className="h-5 w-5" />, permission: 'tickets' as const, badge: localPendingTickets > 0 ? localPendingTickets : null },
+    { name: "Gerenciar Usuários", href: "/users", icon: <Users className="h-5 w-5" />, permission: 'manage_users' as const, badge: null },
+    { name: "Gerenciar Categorias", href: "/categories", icon: <Tag className="h-5 w-5" />, permission: 'manage_categories' as const, badge: null },
+    { name: "Roles e Permissões", href: "/users", icon: <Shield className="h-5 w-5" />, permission: 'manage_roles' as const, badge: null, onlyWhenNoManageUsers: true },
   ];
 
-  const filteredNavItems = navItems.filter(
-    (item) => item.roles.includes(user?.role || "")
-  );
+  const filteredNavItems = navItems.filter((item) => {
+    const canSeeTickets = item.href === '/tickets' && (has('tickets') || has('create_ticket'));
+    if (!canSeeTickets && !has(item.permission)) return false;
+    if ('onlyWhenNoManageUsers' in item && item.onlyWhenNoManageUsers && has('manage_users')) return false;
+    return true;
+  });
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {

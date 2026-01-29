@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { 
   LayoutDashboard, 
   Ticket, 
@@ -10,7 +11,8 @@ import {
   Building2,
   Database,
   ChevronRight,
-  Tag
+  Tag,
+  Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
@@ -45,44 +47,22 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
 
-  const navItems = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: <LayoutDashboard className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
-    },
-    {
-      name: "Tickets",
-      href: "/tickets",
-      icon: <Ticket className="h-5 w-5" />,
-      roles: ["user", "support", "admin", "lawyer"],
-      badge: pendingTickets > 0 ? pendingTickets : null
-    },
-    {
-      name: "Gerenciar Usuários",
-      href: "/users",
-      icon: <Users className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
-    },
-    {
-      name: "Gerenciar Categorias",
-      href: "/categories",
-      icon: <Tag className="h-5 w-5" />,
-      roles: ["admin"],
-      badge: null
-    }
-    // Banco de Dados removido - desabilitado para todos os usuários
-    // {
-    //   name: "Banco de Dados",
-    //   href: "/database",
-    //   icon: <Database className="h-5 w-5" />,
-    //   roles: ["admin"],
-    //   badge: null
-    // }
+  const { has } = usePermissions();
+  const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin';
+  const navItemsRaw = [
+    { name: "Dashboard", href: "/dashboard", icon: <LayoutDashboard className="h-5 w-5" />, permission: 'dashboard' as const, badge: null },
+    { name: "Tickets", href: "/tickets", icon: <Ticket className="h-5 w-5" />, permission: 'tickets' as const, badge: pendingTickets > 0 ? pendingTickets : null },
+    { name: "Gerenciar Usuários", href: "/users", icon: <Users className="h-5 w-5" />, permission: 'manage_users' as const, badge: null },
+    { name: "Gerenciar Categorias", href: "/categories", icon: <Tag className="h-5 w-5" />, permission: 'manage_categories' as const, badge: null },
+    { name: "Roles e Permissões", href: "/users", icon: <Shield className="h-5 w-5" />, permission: 'manage_roles' as const, badge: null, onlyWhenNoManageUsers: true },
   ];
+  const navItems = navItemsRaw.filter((item) => {
+    const canSeeTickets = item.href === '/tickets' && (has('tickets') || has('create_ticket'));
+    const canSeeItem = canSeeTickets || has(item.permission) || isAdmin;
+    if (!canSeeItem) return false;
+    if ('onlyWhenNoManageUsers' in item && item.onlyWhenNoManageUsers && (has('manage_users') || isAdmin)) return false;
+    return true;
+  });
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
@@ -236,7 +216,6 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
 
         <SidebarMenu>
           {navItems
-            .filter((item) => item.roles.includes(user?.role || ""))
             .map((item) => (
               <SidebarMenuItem key={item.href}>
                 <NavLink to={item.href} className={({ isActive }) => cn(isActive ? "font-medium" : "")}>

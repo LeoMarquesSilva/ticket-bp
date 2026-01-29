@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { CategoryService, Category, Subcategory, CreateCategoryData, CreateSubcategoryData, CreateTagData, Tag as TagType } from '@/services/categoryService';
 import { UserService } from '@/services/userService';
 import { User } from '@/types';
@@ -102,17 +103,20 @@ export default function CategoryManagement() {
   const [sortBy, setSortBy] = useState<'name' | 'order' | 'created'>('order');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // Redirecionar se não for admin
+  const { has, loading: permissionsLoading } = usePermissions();
   useEffect(() => {
-    if (user && user.role !== 'admin') {
-      toast({
-        title: 'Acesso negado',
-        description: 'Você não tem permissão para acessar esta página.',
-        variant: 'destructive',
-      });
-      navigate('/tickets');
-    }
-  }, [user, navigate]);
+    if (!user) return;
+    if (permissionsLoading) return; // não redirecionar enquanto permissões carregam
+    if (has('manage_categories')) return;
+    const isAdmin = String(user.role ?? '').toLowerCase() === 'admin';
+    if (isAdmin) return;
+    toast({
+      title: 'Acesso negado',
+      description: 'Você não tem permissão para acessar esta página.',
+      variant: 'destructive',
+    });
+    navigate('/tickets');
+  }, [user, has, permissionsLoading, navigate]);
 
   // Carregar categorias e usuários
   const loadData = async () => {
@@ -141,10 +145,10 @@ export default function CategoryManagement() {
   };
 
   useEffect(() => {
-    if (user?.role === 'admin') {
+    if (user && has('manage_categories')) {
       loadData();
     }
-  }, [user]);
+  }, [user, has]);
 
   // Validar chave de categoria em tempo real
   const validateCategoryKey = async (key: string) => {
@@ -690,7 +694,7 @@ export default function CategoryManagement() {
     }
   };
 
-  if (!user || user.role !== 'admin') {
+  if (!user || !has('manage_categories')) {
     return null;
   }
 

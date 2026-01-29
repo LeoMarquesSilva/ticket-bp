@@ -65,6 +65,9 @@ interface TicketChatPanelProps {
   supportUsers?: any[];
   handleAssignTicket?: (ticketId: string, supportUserId: string) => void;
   onCreateNewTicket?: () => void;
+  canAssignTicket?: boolean;
+  canDeleteTicket?: boolean;
+  canFinishTicket?: boolean;
 }
 
 const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
@@ -89,7 +92,10 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   handleTyping,
   supportUsers = [],
   handleAssignTicket,
-  onCreateNewTicket
+  onCreateNewTicket,
+  canAssignTicket = false,
+  canDeleteTicket = false,
+  canFinishTicket = false
 }) => {
   const [showTicketDetails, setShowTicketDetails] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -442,8 +448,8 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Botão de transferência */}
-            {user?.role === 'lawyer' && !isTicketFinalized(selectedTicket) && handleAssignTicket && supportOnlyUsers.length > 0 && (
+            {/* Botão de transferência - por permissão assign_ticket */}
+            {canAssignTicket && !isTicketFinalized(selectedTicket) && handleAssignTicket && supportOnlyUsers.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -480,8 +486,8 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               </DropdownMenu>
             )}
             
-            {/* Botão de excluir ticket */}
-            {user?.role === 'admin' && handleDeleteTicket && (
+            {/* Botão de excluir ticket - por permissão delete_ticket */}
+            {canDeleteTicket && handleDeleteTicket && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
@@ -512,12 +518,12 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               </AlertDialog>
             )}
   
-            {/* Botão de finalizar ticket */}
-            {selectedTicket.status !== 'resolved' && user && handleUpdateTicket && (
+            {/* Botão de finalizar ticket - por permissão finish_ticket */}
+            {canFinishTicket && selectedTicket.status !== 'resolved' && user && handleUpdateTicket && (
               <FinishTicketButton
                 ticketId={selectedTicket.id}
                 ticketTitle={selectedTicket.title}
-                isSupport={user.role === 'support' || user.role === 'admin' || user.role === 'lawyer'}
+                isSupport={true}
                 onTicketFinished={() => {
                   handleUpdateTicket(selectedTicket.id, { status: 'resolved' });
                 }}

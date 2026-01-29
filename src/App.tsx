@@ -18,16 +18,39 @@ import { initializeConnectionHandlers } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 // import { InactivityDetector } from '@/components/InactivityDetector'; // ← REMOVIDO para permitir login persistente
 import { useTabVisibility } from '@/hooks/useTabVisibility';
+import { usePermissions } from '@/hooks/usePermissions';
+import type { PermissionKey } from '@/services/roleService';
+
+/** Retorna a primeira rota que o usuário tem permissão para acessar. */
+function useFirstAllowedPath(): string {
+  const { has } = usePermissions();
+  if (has('dashboard')) return '/dashboard';
+  if (has('tickets') || has('create_ticket')) return '/tickets';
+  if (has('manage_users') || has('manage_roles')) return '/users';
+  if (has('manage_categories')) return '/categories';
+  return '/profile';
+}
+
+function DefaultRedirect() {
+  const path = useFirstAllowedPath();
+  return <Navigate to={path} replace />;
+}
 
 const ProtectedRoute = ({
   children,
-  allowedRoles = []
+  allowedRoles = [],
+  requiredPermission,
+  requiredPermissionAny
 }: {
   children: React.ReactNode;
   allowedRoles?: string[];
+  requiredPermission?: PermissionKey;
+  requiredPermissionAny?: PermissionKey[];
 }) => {
   const { user, loading } = useAuth();
+  const { has, loading: permissionsLoading } = usePermissions();
   const location = useLocation();
+  const firstAllowedPath = useFirstAllowedPath();
   const isTabVisible = useTabVisibility();
   
   const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'profile' => {
@@ -43,9 +66,18 @@ const ProtectedRoute = ({
   const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'profile') => {
     setCurrentPage(page);
   };
+
+  const hasRequiredAccess = (): boolean => {
+    if (requiredPermissionAny?.length) {
+      return requiredPermissionAny.some((p) => has(p));
+    }
+    if (requiredPermission) return has(requiredPermission);
+    return true;
+  };
   
   // Loading mais inteligente - só mostrar se realmente necessário
-  if (loading) {
+  const needsPermissionCheck = requiredPermission != null || (requiredPermissionAny?.length ?? 0) > 0;
+  if (loading || (needsPermissionCheck && permissionsLoading)) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-blue-50">
         <div className="text-center">
@@ -60,8 +92,19 @@ const ProtectedRoute = ({
     return <Navigate to="/login" replace />;
   }
   
+  if (!hasRequiredAccess()) {
+    const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin';
+    if (isAdmin) {
+      return (
+        <Layout currentPage={currentPage} onPageChange={handlePageChange}>
+          {children}
+        </Layout>
+      );
+    }
+    return <Navigate to={firstAllowedPath} replace />;
+  }
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/tickets" replace />;
+    return <Navigate to={firstAllowedPath} replace />;
   }
   
   return (
@@ -78,8 +121,7 @@ const AppRoutes = () => {
   const { user, loading } = useAuth();
   const location = useLocation();
   const isResetPasswordPage = location.pathname === '/reset-password';
-  console.log('🔍 Current location:', location.pathname);
-  
+
   if (isResetPasswordPage) {
     return (
       <Routes>
@@ -115,7 +157,7 @@ const AppRoutes = () => {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute requiredPermission="dashboard">
             <Dashboard />
           </ProtectedRoute>
         }
@@ -123,7 +165,7 @@ const AppRoutes = () => {
       <Route
         path="/tickets"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredPermissionAny={['tickets', 'create_ticket']}>
             <Tickets />
           </ProtectedRoute>
         }
@@ -131,7 +173,7 @@ const AppRoutes = () => {
       <Route
         path="/tickets/:ticketId"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredPermissionAny={['tickets', 'create_ticket']}>
             <Tickets />
           </ProtectedRoute>
         }
@@ -139,7 +181,7 @@ const AppRoutes = () => {
       <Route
         path="/users"
         element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute requiredPermissionAny={['manage_users', 'manage_roles']}>
             <UserManagement />
           </ProtectedRoute>
         }
@@ -147,7 +189,7 @@ const AppRoutes = () => {
       <Route
         path="/categories"
         element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute requiredPermission="manage_categories">
             <CategoryManagement />
           </ProtectedRoute>
         }
@@ -170,18 +212,8 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/"
-        element={
-          <Navigate to="/tickets" replace />
-        }
-      />
-      <Route
-        path="*"
-        element={
-          <Navigate to="/tickets" replace />
-        }
-      />
+      <Route path="/" element={<DefaultRedirect />} />
+      <Route path="*" element={<DefaultRedirect />} />
     </Routes>
   );
 };
@@ -196,7 +228,7 @@ const App = () => {
   return (
     <AuthProvider>
       <ChatProvider>
-        <Router>
+        <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
           {/* Adicione o FontLoader aqui */}
           <ConnectionStatus />
           {/*

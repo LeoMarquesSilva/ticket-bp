@@ -17,6 +17,9 @@ export const TABLES = {
   CATEGORIES: 'app_c009c0e4f1_categories',
   SUBCATEGORIES: 'app_c009c0e4f1_subcategories',
   TAGS: 'app_c009c0e4f1_tags',
+  ROLES: 'app_c009c0e4f1_roles',
+  ROLE_PERMISSIONS: 'app_c009c0e4f1_role_permissions',
+  DEPARTMENTS: 'app_c009c0e4f1_departments',
 };
 
 // Database types

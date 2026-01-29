@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getDashboardStats } from '@/services/dashboardService';
 import { TicketService } from '@/services/ticketService';
 import {
@@ -15,6 +16,7 @@ import {
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -51,6 +53,7 @@ const STATUS_COLORS_MAP = {
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const { has } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<any>({
@@ -76,6 +79,8 @@ const Dashboard = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [timeRange, setTimeRange] = useState('30');
   const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
+  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
+  const [frenteFilter, setFrenteFilter] = useState<string>('all');
   
   // Estados para o Chat Modal
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -146,18 +151,22 @@ const Dashboard = () => {
     return sorted;
   };
 
-  // Carregar categorias do banco de dados
+  // Carregar categorias e frentes de atuação do banco de dados
   useEffect(() => {
-    const loadCategories = async () => {
+    const loadData = async () => {
       try {
-        const config = await CategoryService.getCategoriesConfig();
+        const [config, tags] = await Promise.all([
+          CategoryService.getCategoriesConfig(),
+          CategoryService.getAllTags(false)
+        ]);
         setCategoriesConfig(config);
+        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color })));
       } catch (error) {
         console.error('Erro ao carregar categorias do banco:', error);
       }
     };
 
-    loadCategories();
+    loadData();
   }, []);
 
   useEffect(() => {
@@ -188,7 +197,8 @@ const Dashboard = () => {
           days, 
           user?.role === 'user' ? user.id : undefined,
           startDateStr,
-          endDateStr
+          endDateStr,
+          frenteFilter && frenteFilter !== 'all' ? frenteFilter : undefined
         );
         
         setStats(data);
@@ -201,7 +211,7 @@ const Dashboard = () => {
     };
 
     fetchDashboardData();
-  }, [refreshKey, user, dateRange]);
+  }, [refreshKey, user, dateRange, frenteFilter]);
 
   useEffect(() => {
     if (dateRange?.from && dateRange?.to) {
@@ -590,6 +600,28 @@ const Dashboard = () => {
               </Button>
             </div>
             
+            {/* Filtro por Frente de Atuação */}
+            <div className="flex items-center gap-2 bg-white/5 p-1.5 rounded-lg border border-white/10 min-w-[200px]">
+              <Tag className="h-4 w-4 text-slate-400 shrink-0" />
+              <Select value={frenteFilter} onValueChange={setFrenteFilter}>
+                <SelectTrigger className="bg-transparent border-0 text-white focus:ring-0 focus:ring-offset-0 w-full [&>span]:text-left">
+                  <SelectValue placeholder="Frente de atuação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as frentes</SelectItem>
+                  <SelectItem value="sem-frente">Sem frente de atuação</SelectItem>
+                  {frentes.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                        {f.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Seleção Personalizada e Botão de Atualizar */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 bg-white/5 p-1.5 rounded-lg border border-white/10">
@@ -625,8 +657,8 @@ const Dashboard = () => {
         <StatCard title="Taxa de Resolução" value={`${stats.totalTickets > 0 ? Math.round((stats.resolvedTickets / stats.totalTickets) * 100) : 0}%`} icon={<TrendingUp className="h-5 w-5" />} type="info" />
       </div>
 
-      {/* Conteúdo Principal com Tabs */}
-      {(user?.role === 'support' || user?.role === 'admin') && (
+      {/* Conteúdo Principal com Tabs - quem tem permissão dashboard vê gráficos e abas */}
+      {has('dashboard') && (
         <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="flex justify-center md:justify-start">
             <TabsList className="bg-slate-100 p-1 rounded-full border border-slate-200">

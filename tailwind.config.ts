@@ -1,5 +1,4 @@
 import type { Config } from "tailwindcss";
-import type { PluginAPI } from "tailwindcss/types/config";
 import tailwindcssAnimate from "tailwindcss-animate";
 import tailwindcssAspectRatio from "@tailwindcss/aspect-ratio";
 
@@ -106,18 +105,7 @@ export default {
     },
   },
   plugins: [
-    tailwindcssAnimate, 
+    tailwindcssAnimate,
     tailwindcssAspectRatio,
-    function({ addBase }: PluginAPI) {
-      addBase({
-        '@font-face': {
-          fontFamily: 'Montserrat',
-          fontStyle: 'normal',
-          fontWeight: '400',
-          src: `url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap')`,
-          fontDisplay: 'swap',
-        }
-      });
-    }
   ],
 } satisfies Config;
