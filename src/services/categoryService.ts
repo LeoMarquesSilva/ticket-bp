@@ -846,7 +846,8 @@ export class CategoryService {
   }
 
   // Obter configuração de categoria no formato antigo (para compatibilidade)
-  static async getCategoriesConfig(): Promise<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>> {
+  // Inclui tagId (Frente de Atuação) para filtro no fluxo Frente > Categoria > Subcategoria
+  static async getCategoriesConfig(): Promise<Record<string, { label: string; tagId?: string; subcategories: { value: string; label: string; slaHours: number }[] }>> {
     try {
       const categories = await this.getAllCategories(false);
       const config: Record<string, any> = {};
@@ -854,6 +855,7 @@ export class CategoryService {
       for (const category of categories) {
         config[category.key] = {
           label: category.label,
+          tagId: category.tagId || undefined,
           subcategories: (category.subcategories || []).map(sub => ({
             value: sub.key,
             label: sub.label,

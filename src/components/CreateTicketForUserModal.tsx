@@ -45,6 +45,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const [selectedUser, setSelectedUser] = useState<UserOption | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [frenteId, setFrenteId] = useState('');
   const [category, setCategory] = useState('');
   const [subcategory, setSubcategory] = useState('');
   const [resolution, setResolution] = useState('');
@@ -58,29 +59,35 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [slaHours, setSlaHours] = useState<number | null>(null);
   const [step, setStep] = useState<'user' | 'ticket'>('user');
-  const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
+  const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; tagId?: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
+  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
 
-  // Carregar categorias do banco de dados
+  // Carregar categorias e frentes do banco de dados
   useEffect(() => {
-    const loadCategories = async () => {
+    const loadData = async () => {
       try {
         setLoadingCategories(true);
-        const config = await CategoryService.getCategoriesConfig();
+        const [config, tags] = await Promise.all([
+          CategoryService.getCategoriesConfig(),
+          CategoryService.getAllTags(false)
+        ]);
         setCategoriesConfig(config);
+        setFrentes(tags.map(t => ({ id: t.id, label: t.label, color: t.color })));
       } catch (error) {
         console.error('Erro ao carregar categorias do banco:', error);
         setCategoriesConfig({});
+        setFrentes([]);
       } finally {
         setLoadingCategories(false);
       }
     };
 
     if (isOpen) {
-      loadCategories();
+      loadData();
     }
   }, [isOpen]);
 
@@ -94,11 +101,25 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     }
   }, [isOpen]);
 
+  // Resetar categoria e subcategoria quando a frente muda
+  useEffect(() => {
+    setCategory('');
+    setSubcategory('');
+    setSlaHours(null);
+  }, [frenteId]);
+
   // Resetar subcategoria quando categoria muda
   useEffect(() => {
     setSubcategory('');
     setSlaHours(null);
   }, [category]);
+
+  // Categorias filtradas pela frente selecionada
+  const categoriesByFrente = frenteId === ''
+    ? Object.entries(categoriesConfig)
+    : frenteId === 'sem-frente'
+      ? Object.entries(categoriesConfig).filter(([, c]) => !c.tagId)
+      : Object.entries(categoriesConfig).filter(([, c]) => c.tagId === frenteId);
 
   // Atualizar SLA quando subcategoria muda
   useEffect(() => {
@@ -121,6 +142,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setSelectedUser(null);
     setTitle('');
     setDescription('');
+    setFrenteId('');
     setCategory('');
     setSubcategory('');
     setResolution('');
@@ -174,10 +196,14 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
       newErrors.description = 'A descrição deve ter pelo menos 10 caracteres';
     }
     
+    if (!frenteId) {
+      newErrors.frente = 'Selecione a frente de atuação';
+    }
+
     if (!category) {
       newErrors.category = 'A categoria é obrigatória';
     }
-    
+
     if (!subcategory && category) {
       newErrors.subcategory = 'A subcategoria é obrigatória';
     }
@@ -415,57 +441,91 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="category" className="text-[#2C2D2F]">Categoria</Label>
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.category ? 'border-[#BD2D29]' : ''}`}>
-                      <SelectValue placeholder="Selecione" />
+                  <Label htmlFor="frente" className="text-[#2C2D2F]">Frente de Atuação</Label>
+                  <Select value={frenteId} onValueChange={setFrenteId}>
+                    <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.frente ? 'border-[#BD2D29]' : ''}`}>
+                      <SelectValue placeholder="Selecione a frente de atuação" />
                     </SelectTrigger>
                     <SelectContent>
                       {loadingCategories ? (
-                        <div className="px-2 py-1.5 text-sm text-slate-500">Carregando categorias...</div>
+                        <div className="px-2 py-1.5 text-sm text-slate-500">Carregando...</div>
                       ) : (
-                        Object.entries(categoriesConfig).map(([key, config]) => (
-                          <SelectItem key={key} value={key}>
-                            {config.label}
-                          </SelectItem>
-                        ))
+                        <>
+                          <SelectItem value="sem-frente">Sem Frente de Atuação</SelectItem>
+                          {frentes.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>
+                              <span className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                                {f.label}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </>
                       )}
                     </SelectContent>
                   </Select>
-                  {errors.category && (
+                  {errors.frente && (
                     <p className="text-[#BD2D29] text-xs flex items-center mt-1">
                       <AlertCircle className="h-3 w-3 mr-1" />
-                      {errors.category}
+                      {errors.frente}
                     </p>
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="subcategory" className="text-[#2C2D2F]">Subcategoria</Label>
-                  <Select
-                    value={subcategory}
-                    onValueChange={setSubcategory}
-                    disabled={!category}
-                  >
-                    <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.subcategory ? 'border-[#BD2D29]' : ''}`}>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {category && categoriesConfig[category]?.subcategories.map((sub) => (
-                        <SelectItem key={sub.value} value={sub.value}>
-                          {sub.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.subcategory && (
-                    <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      {errors.subcategory}
-                    </p>
-                  )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="category" className="text-[#2C2D2F]">Categoria</Label>
+                    <Select value={category} onValueChange={setCategory} disabled={!frenteId}>
+                      <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.category ? 'border-[#BD2D29]' : ''}`}>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {!frenteId ? (
+                          <div className="px-2 py-1.5 text-sm text-slate-500">Selecione primeiro a frente de atuação</div>
+                        ) : (
+                          categoriesByFrente.map(([key, config]) => (
+                            <SelectItem key={key} value={key}>
+                              {config.label}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {errors.category && (
+                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        {errors.category}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="subcategory" className="text-[#2C2D2F]">Subcategoria</Label>
+                    <Select
+                      value={subcategory}
+                      onValueChange={setSubcategory}
+                      disabled={!category}
+                    >
+                      <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.subcategory ? 'border-[#BD2D29]' : ''}`}>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {category && categoriesConfig[category]?.subcategories.map((sub) => (
+                          <SelectItem key={sub.value} value={sub.value}>
+                            {sub.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.subcategory && (
+                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        {errors.subcategory}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 

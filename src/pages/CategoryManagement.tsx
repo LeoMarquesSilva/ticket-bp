@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { CategoryService, Category, Subcategory, CreateCategoryData, CreateSubcategoryData, Tag as TagType } from '@/services/categoryService';
+import { CategoryService, Category, Subcategory, CreateCategoryData, CreateSubcategoryData, CreateTagData, Tag as TagType } from '@/services/categoryService';
 import { UserService } from '@/services/userService';
 import { User } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2, RefreshCw, Pencil, Tag, Clock, User as UserIcon, ChevronDown, ChevronUp, Settings2, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Info, HelpCircle, ArrowRight, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Trash2, RefreshCw, Pencil, Tag, Clock, User as UserIcon, ChevronDown, ChevronUp, Settings2, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Info, HelpCircle, ArrowRight, AlertCircle, CheckCircle2, AlertTriangle, Power } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,6 +83,18 @@ export default function CategoryManagement() {
   const [pendingDeleteCategory, setPendingDeleteCategory] = useState<Category | null>(null);
   const [deleteSubcategoryDialogOpen, setDeleteSubcategoryDialogOpen] = useState(false);
   const [pendingDeleteSubcategory, setPendingDeleteSubcategory] = useState<Subcategory | null>(null);
+
+  // Frentes de Atuação (Tags) - CRUD
+  const [createFrenteDialogOpen, setCreateFrenteDialogOpen] = useState(false);
+  const [editFrenteDialogOpen, setEditFrenteDialogOpen] = useState(false);
+  const [editingFrente, setEditingFrente] = useState<TagType | null>(null);
+  const [newFrente, setNewFrente] = useState<CreateTagData>({ key: '', label: '', color: '#3B82F6' });
+  const [createFrenteLoading, setCreateFrenteLoading] = useState(false);
+  const [editFrenteLoading, setEditFrenteLoading] = useState(false);
+  const [deleteFrenteDialogOpen, setDeleteFrenteDialogOpen] = useState(false);
+  const [pendingDeleteFrente, setPendingDeleteFrente] = useState<TagType | null>(null);
+
+  const CORES_PRESET = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#6366F1', '#EC4899', '#14B8A6', '#F97316'];
 
   // Estados para busca e filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -516,6 +528,77 @@ export default function CategoryManagement() {
     setCreateSubcategoryDialogOpen(true);
   };
 
+  // Frentes de Atuação (Tags) - CRUD
+  const handleCreateFrente = async () => {
+    if (!newFrente.key?.trim() || !newFrente.label?.trim()) {
+      toast({ title: 'Campos obrigatórios', description: 'Preencha chave e nome da frente de atuação.', variant: 'destructive' });
+      return;
+    }
+    const key = newFrente.key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    if (!key) {
+      toast({ title: 'Chave inválida', description: 'Use apenas letras minúsculas, números e underscores.', variant: 'destructive' });
+      return;
+    }
+    try {
+      setCreateFrenteLoading(true);
+      await CategoryService.createTag({ ...newFrente, key });
+      toast({ title: 'Frente de atuação criada', description: `${newFrente.label} foi criada com sucesso.` });
+      setNewFrente({ key: '', label: '', color: '#3B82F6' });
+      setCreateFrenteDialogOpen(false);
+      loadData();
+    } catch (error: any) {
+      toast({ title: 'Erro ao criar', description: error.message || 'Não foi possível criar a frente de atuação.', variant: 'destructive' });
+    } finally {
+      setCreateFrenteLoading(false);
+    }
+  };
+
+  const handleEditFrente = async () => {
+    if (!editingFrente) return;
+    if (!editingFrente.label?.trim()) {
+      toast({ title: 'Nome obrigatório', description: 'Preencha o nome da frente de atuação.', variant: 'destructive' });
+      return;
+    }
+    try {
+      setEditFrenteLoading(true);
+      await CategoryService.updateTag(editingFrente.id, { label: editingFrente.label, color: editingFrente.color });
+      toast({ title: 'Frente de atuação atualizada', description: `${editingFrente.label} foi atualizada.` });
+      setEditFrenteDialogOpen(false);
+      setEditingFrente(null);
+      loadData();
+    } catch (error: any) {
+      toast({ title: 'Erro ao atualizar', description: error.message || 'Não foi possível atualizar.', variant: 'destructive' });
+    } finally {
+      setEditFrenteLoading(false);
+    }
+  };
+
+  const handleDeleteFrente = async () => {
+    if (!pendingDeleteFrente) return;
+    try {
+      await CategoryService.deleteTag(pendingDeleteFrente.id);
+      toast({ title: 'Frente de atuação excluída', description: `${pendingDeleteFrente.label} foi excluída.` });
+      setDeleteFrenteDialogOpen(false);
+      setPendingDeleteFrente(null);
+      loadData();
+    } catch (error: any) {
+      toast({ title: 'Erro ao excluir', description: error.message || 'Não foi possível excluir.', variant: 'destructive' });
+    }
+  };
+
+  const handleToggleFrenteStatus = async (tag: TagType) => {
+    try {
+      await CategoryService.toggleTagStatus(tag.id, !tag.isActive);
+      toast({
+        title: tag.isActive ? 'Frente inativada' : 'Frente ativada',
+        description: `${tag.label} foi ${tag.isActive ? 'inativada' : 'ativada'}.`,
+      });
+      loadData();
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error.message || 'Não foi possível alterar o status.', variant: 'destructive' });
+    }
+  };
+
   // Função para filtrar e ordenar categorias
   const getFilteredAndSortedCategories = () => {
     let filtered = [...categories];
@@ -565,7 +648,7 @@ export default function CategoryManagement() {
   // Agrupar categorias por tag
   const groupedByTag = filteredCategories.reduce((acc, category) => {
     const tagKey = category.tag?.id || 'sem-tag';
-    const tagLabel = category.tag?.label || 'Sem Tag';
+    const tagLabel = category.tag?.label || 'Sem Frente de Atuação';
     
     if (!acc[tagKey]) {
       acc[tagKey] = {
@@ -729,13 +812,13 @@ export default function CategoryManagement() {
                   <p className="text-xs text-slate-500">Usuário que receberá automaticamente tickets desta categoria</p>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="category-tag">Tag (Área de Negócio)</Label>
+                  <Label htmlFor="category-tag">Frente de Atuação</Label>
                   <Select
                     value={newCategory.tagId || 'none'}
                     onValueChange={(value) => setNewCategory({ ...newCategory, tagId: value === 'none' ? undefined : value })}
                   >
                     <SelectTrigger id="category-tag">
-                      <SelectValue placeholder="Selecione uma tag" />
+                      <SelectValue placeholder="Selecione uma frente de atuação" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Nenhuma</SelectItem>
@@ -749,7 +832,7 @@ export default function CategoryManagement() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-slate-500">Área de negócio para organizar categorias (ex: Jurídico, T.I, Marketing)</p>
+                  <p className="text-xs text-slate-500">Frente de atuação para organizar categorias (ex: Controladoria Jurídica, Inteligência de Dados)</p>
                 </div>
               </div>
               <div className="flex justify-end">
@@ -853,6 +936,73 @@ export default function CategoryManagement() {
           {hasActiveFilters && (
             <div className="mt-4 text-sm text-slate-500">
               Mostrando {filteredCategories.length} de {categories.length} categorias
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Frentes de Atuação */}
+      <Card className="border-[#F69F19]/20">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <CardTitle>Frentes de Atuação</CardTitle>
+              <CardDescription>
+                Frentes organizam as categorias (ex: Controladoria Jurídica, Inteligência de Dados). O usuário escolhe a frente ao criar um ticket.
+              </CardDescription>
+            </div>
+            <Button
+              onClick={() => { setNewFrente({ key: '', label: '', color: '#3B82F6' }); setCreateFrenteDialogOpen(true); }}
+              className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]"
+              size="sm"
+            >
+              <PlusCircle className="h-4 w-4 mr-2" />
+              Nova Frente de Atuação
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center py-6">
+              <RefreshCw className="h-6 w-6 animate-spin text-[#F69F19]" />
+            </div>
+          ) : tags.length === 0 ? (
+            <p className="text-slate-500 text-sm py-4">Nenhuma frente de atuação cadastrada. Crie uma para organizar as categorias.</p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {tags.sort((a, b) => (a.order || 0) - (b.order || 0)).map((tag) => (
+                <div
+                  key={tag.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-50"
+                >
+                  <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                  <span className="font-medium text-[#2C2D2F]">{tag.label}</span>
+                  {!tag.isActive && (
+                    <Badge variant="secondary" className="text-xs">Inativa</Badge>
+                  )}
+                  <div className="flex items-center gap-1 ml-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title={tag.isActive ? 'Inativar frente de atuação' : 'Ativar frente de atuação'}
+                      onClick={() => handleToggleFrenteStatus(tag)}
+                    >
+                      {tag.isActive ? (
+                        <Power className="h-3.5 w-3.5 text-amber-600 hover:text-amber-700" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 hover:text-green-700" />
+                      )}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={() => { setEditingFrente(tag); setEditFrenteDialogOpen(true); }}>
+                      <Pencil className="h-3.5 w-3.5 text-slate-500" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700" title="Excluir" onClick={() => { setPendingDeleteFrente(tag); setDeleteFrenteDialogOpen(true); }}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
@@ -1207,13 +1357,13 @@ export default function CategoryManagement() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="edit-category-tag">Tag (Área de Negócio)</Label>
+                <Label htmlFor="edit-category-tag">Frente de Atuação</Label>
                 <Select
                   value={editingCategory.tagId || 'none'}
                   onValueChange={(value) => setEditingCategory({ ...editingCategory, tagId: value === 'none' ? undefined : value })}
                 >
                   <SelectTrigger id="edit-category-tag">
-                    <SelectValue placeholder="Selecione uma tag" />
+                    <SelectValue placeholder="Selecione uma frente de atuação" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Nenhuma</SelectItem>
@@ -1454,6 +1604,141 @@ export default function CategoryManagement() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog Nova Frente de Atuação */}
+      <Dialog open={createFrenteDialogOpen} onOpenChange={setCreateFrenteDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Nova Frente de Atuação</DialogTitle>
+            <DialogDescription>
+              Crie uma frente de atuação para organizar categorias (ex: Controladoria Jurídica, Inteligência de Dados).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="frente-key">Chave (única)</Label>
+              <Input
+                id="frente-key"
+                value={newFrente.key}
+                onChange={(e) => {
+                  const v = e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+                  setNewFrente({ ...newFrente, key: v });
+                }}
+                placeholder="ex: inteligencia_dados"
+              />
+              <p className="text-xs text-slate-500">Apenas letras minúsculas, números e _</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="frente-label">Nome</Label>
+              <Input
+                id="frente-label"
+                value={newFrente.label}
+                onChange={(e) => setNewFrente({ ...newFrente, label: e.target.value })}
+                placeholder="ex: Inteligência de Dados"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Cor</Label>
+              <div className="flex flex-wrap gap-2">
+                {CORES_PRESET.map((cor) => (
+                  <button
+                    key={cor}
+                    type="button"
+                    className="w-8 h-8 rounded-full border-2 transition-all"
+                    style={{ backgroundColor: cor, borderColor: newFrente.color === cor ? '#2C2D2F' : 'transparent' }}
+                    onClick={() => setNewFrente({ ...newFrente, color: cor })}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={newFrente.color}
+                  onChange={(e) => setNewFrente({ ...newFrente, color: e.target.value })}
+                  className="w-8 h-8 rounded-full cursor-pointer border-0 p-0"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCreateFrenteDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateFrente} disabled={createFrenteLoading || !newFrente.key?.trim() || !newFrente.label?.trim()} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+              {createFrenteLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Criar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Editar Frente de Atuação */}
+      <Dialog open={editFrenteDialogOpen} onOpenChange={setEditFrenteDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Editar Frente de Atuação</DialogTitle>
+            <DialogDescription>
+              Altere o nome ou a cor da frente de atuação. A chave não pode ser alterada.
+            </DialogDescription>
+          </DialogHeader>
+          {editingFrente && (
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Chave</Label>
+                <Input value={editingFrente.key} disabled className="bg-slate-50" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-frente-label">Nome</Label>
+                <Input
+                  id="edit-frente-label"
+                  value={editingFrente.label}
+                  onChange={(e) => setEditingFrente({ ...editingFrente, label: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Cor</Label>
+                <div className="flex flex-wrap gap-2">
+                  {CORES_PRESET.map((cor) => (
+                    <button
+                      key={cor}
+                      type="button"
+                      className="w-8 h-8 rounded-full border-2 transition-all"
+                      style={{ backgroundColor: cor, borderColor: editingFrente.color === cor ? '#2C2D2F' : 'transparent' }}
+                      onClick={() => setEditingFrente({ ...editingFrente, color: cor })}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={editingFrente.color}
+                    onChange={(e) => setEditingFrente({ ...editingFrente, color: e.target.value })}
+                    className="w-8 h-8 rounded-full cursor-pointer border-0 p-0"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setEditFrenteDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleEditFrente} disabled={editFrenteLoading} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+              {editFrenteLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Salvar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Exclusão de Frente */}
+      <AlertDialog open={deleteFrenteDialogOpen} onOpenChange={setDeleteFrenteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Frente de Atuação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a frente de atuação <strong>{pendingDeleteFrente?.label}</strong>?
+              As categorias vinculadas ficarão sem frente (podem ser reatribuídas depois).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteFrente} className="bg-red-600 hover:bg-red-700">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modal de Confirmação de Exclusão de Categoria */}
       <AlertDialog open={deleteCategoryDialogOpen} onOpenChange={setDeleteCategoryDialogOpen}>

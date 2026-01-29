@@ -52,13 +52,14 @@ CREATE POLICY "Permitir DELETE em tags"
   FOR DELETE
   USING (true);
 
--- 6. Inserir tags padrão (exemplos)
+-- 6. Inserir frentes de atuação padrão
 INSERT INTO app_c009c0e4f1_tags (key, label, color, icon, description, "order") VALUES
-  ('juridico', 'Jurídico', '#3B82F6', 'briefcase', 'Questões jurídicas e legais', 1),
-  ('ti', 'T.I', '#10B981', 'monitor', 'Questões de tecnologia da informação', 2),
-  ('marketing', 'Marketing', '#8B5CF6', 'megaphone', 'Questões de marketing e comunicação', 3),
-  ('financeiro', 'Financeiro', '#F59E0B', 'dollar-sign', 'Questões financeiras e contábeis', 4),
-  ('projetos', 'Projetos', '#6366F1', 'folder', 'Área de projetos', 5)
+  ('juridico', 'Controladoria Jurídica', '#3B82F6', 'briefcase', 'Questões jurídicas e legais', 1),
+  ('inteligencia_dados', 'Inteligência de Dados', '#14B8A6', 'database', 'Área de inteligência de dados e analytics', 2),
+  ('ti', 'T.I', '#10B981', 'monitor', 'Questões de tecnologia da informação', 3),
+  ('marketing', 'Marketing', '#8B5CF6', 'megaphone', 'Questões de marketing e comunicação', 4),
+  ('financeiro', 'Financeiro', '#F59E0B', 'dollar-sign', 'Questões financeiras e contábeis', 5),
+  ('projetos', 'Projetos', '#6366F1', 'folder', 'Área de projetos', 6)
 ON CONFLICT (key) DO NOTHING;
 
 -- 7. Atualizar timestamp na atualização
