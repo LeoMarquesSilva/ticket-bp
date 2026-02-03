@@ -11,23 +11,47 @@ export interface CreateUserData {
 }
 
 export class UserService {
-  // Obter todos os usuários de suporte (inclui admin para atribuição automática)
+  // Obter todos os usuários que podem receber/atribuir tickets (support, lawyer, admin + roles com assign_ticket)
   static async getSupportUsers(): Promise<User[]> {
     try {
+      // Incluir roles customizadas que têm permissão assign_ticket
+      const { data: rolePerms } = await supabase
+        .from(TABLES.ROLE_PERMISSIONS)
+        .select('role_id')
+        .eq('permission_key', 'assign_ticket');
+      const roleIds = [...new Set((rolePerms || []).map((r: { role_id: string }) => r.role_id))];
+      let customRoleKeys: string[] = [];
+      if (roleIds.length > 0) {
+        const { data: rolesData } = await supabase
+          .from(TABLES.ROLES)
+          .select('key')
+          .in('id', roleIds);
+        customRoleKeys = (rolesData || []).map((r: { key: string }) => r.key);
+      }
+      const supportRoleKeys = [...new Set(['admin', 'lawyer', 'support', ...customRoleKeys])];
+      const supportKeysLower = new Set(supportRoleKeys.map((k) => String(k).toLowerCase()));
+      // Aliases: roles armazenadas como label em vez de key (ex: "Advogado" em vez de "lawyer")
+      supportKeysLower.add('advogado'); // lawyer
+      supportKeysLower.add('administrador'); // admin
+      supportKeysLower.add('suporte'); // support
+
+      // Buscar todos os ativos e filtrar por role (case-insensitive) para evitar problemas de casing no banco
       const { data, error } = await supabase
         .from(TABLES.USERS)
         .select('*')
-        .in('role', ['support', 'lawyer', 'admin'])
-        .eq('is_active', true) // Apenas usuários ativos
-        .order('role', { ascending: true }) // Admin primeiro, depois advogados, suporte
-        .order('is_online', { ascending: false }); // Online primeiro
+        .eq('is_active', true)
+        .order('role', { ascending: true })
+        .order('is_online', { ascending: false });
 
       if (error) {
         console.error('Error fetching support users:', error);
         throw error;
       }
 
-      return data ? data.map(this.mapFromDatabase) : [];
+      const filtered = (data || []).filter((u) =>
+        supportKeysLower.has(String(u.role ?? '').toLowerCase())
+      );
+      return filtered.map(this.mapFromDatabase);
     } catch (error) {
       console.error('Error in getSupportUsers:', error);
       throw error;

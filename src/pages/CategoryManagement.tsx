@@ -620,6 +620,9 @@ export default function CategoryManagement() {
       );
     }
 
+    // Ocultar categorias cuja frente de atuação está inativa
+    filtered = filtered.filter((cat) => !cat.tag || cat.tag.isActive !== false);
+
     // Aplicar filtro de status
     if (statusFilter === 'active') {
       filtered = filtered.filter(cat => cat.isActive);

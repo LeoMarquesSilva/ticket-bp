@@ -7,20 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle } from 'lucide-react';
 import FinishTicketButton from './FinishTicketButton';
+import TransferTicketModal from './TransferTicketModal';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
 import { getSlaHours } from '@/services/dashboardService';
 import { CategoryService } from '@/services/categoryService';
 import NPSChatFeedback from './NPSChatFeedback';
 import QuickReplyTemplates from './QuickReplyTemplates';
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useSearchParams } from 'react-router-dom';
 import {
   Dialog,
@@ -98,6 +91,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   canFinishTicket = false
 }) => {
   const [showTicketDetails, setShowTicketDetails] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
@@ -366,7 +360,8 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     );
   };
 
-  const supportOnlyUsers = supportUsers.filter(u => u.role === 'support');
+  // supportUsers já vem filtrado por getSupportUsers (admin, lawyer, support + roles com assign_ticket)
+  const assignableUsers = supportUsers;
   const assignedUserName = selectedTicket.assignedTo ? 
     supportUsers.find(u => u.id === selectedTicket.assignedTo)?.name || 
     selectedTicket.assignedToName || 
@@ -449,41 +444,27 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
           </div>
           <div className="flex items-center gap-2">
             {/* Botão de transferência - por permissão assign_ticket */}
-            {canAssignTicket && !isTicketFinalized(selectedTicket) && handleAssignTicket && supportOnlyUsers.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-1 text-xs border-slate-200 hover:bg-slate-50"
-                  >
-                    <UserPlus className="h-3 w-3" />
-                    <span className="hidden sm:inline">Transferir</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Transferir para suporte</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {supportOnlyUsers.map(supportUser => (
-                    <DropdownMenuItem 
-                      key={supportUser.id}
-                      onClick={() => handleAssignTicket(selectedTicket.id, supportUser.id)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-5 w-5">
-                          <AvatarFallback className="text-xs bg-[#F69F19] text-white">
-                            {supportUser.name?.charAt(0).toUpperCase() || '?'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{supportUser.name}</span>
-                        {supportUser.isOnline && (
-                          <span className="h-2 w-2 rounded-full bg-green-500 ml-1"></span>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+            {canAssignTicket && !isTicketFinalized(selectedTicket) && handleAssignTicket && assignableUsers.length > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-1 text-xs border-slate-200 hover:bg-slate-50"
+                  onClick={() => setTransferModalOpen(true)}
+                >
+                  <UserPlus className="h-3 w-3" />
+                  <span className="hidden sm:inline">Transferir</span>
+                </Button>
+                <TransferTicketModal
+                  open={transferModalOpen}
+                  onOpenChange={setTransferModalOpen}
+                  ticketId={selectedTicket.id}
+                  currentAssignee={selectedTicket.assignedTo}
+                  onTransfer={async (supportId, _supportName) => {
+                    await handleAssignTicket(selectedTicket.id, supportId);
+                  }}
+                />
+              </>
             )}
             
             {/* Botão de excluir ticket - por permissão delete_ticket */}

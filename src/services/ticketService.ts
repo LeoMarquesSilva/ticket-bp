@@ -867,24 +867,9 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
   }
 }
 
-  // Obter usuários de suporte
+  // Obter usuários de suporte (delega ao UserService para incluir roles com assign_ticket)
   static async getSupportUsers(): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from(TABLES.USERS)
-        .select('id, name, email, role')
-        .in('role', ['support', 'admin', 'lawyer']);
-
-      if (error) {
-        console.error('Error fetching support users:', error);
-        throw error;
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Error in getSupportUsers:', error);
-      throw error;
-    }
+    return UserService.getSupportUsers();
   }
 
 static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
