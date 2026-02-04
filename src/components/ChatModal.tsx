@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
 import { Send, MessageCircle, X, RefreshCw } from 'lucide-react';
 import { TicketService, type ChatMessage, type Ticket } from '@/services/ticketService';
+import { UserService } from '@/services/userService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChatContext } from '@/contexts/ChatContext';
 import { toast } from 'sonner';
@@ -315,49 +316,62 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
           if (!mountedRef.current || !isOpen) return;
           
           if (payload.eventType === 'INSERT') {
-            const newMsg: ChatMessage = {
-              id: payload.new.id,
-              ticketId: payload.new.ticket_id,
-              userId: payload.new.user_id,
-              userName: payload.new.user_name,
-              message: payload.new.message,
-              createdAt: payload.new.created_at,
-            };
-            
+            const msgId = payload.new.id;
+            const userId = payload.new.user_id;
+
             safeSetState(setMessages, prev => {
-              if (prev.some(msg => msg.id === newMsg.id)) {
+              if (prev.some(msg => msg.id === msgId)) {
                 return prev;
               }
-              
+
+              const existingAvatar = prev.find(m => m.userId === userId && m.avatarUrl)?.avatarUrl;
+              const newMsg: ChatMessage = {
+                id: msgId,
+                ticketId: payload.new.ticket_id,
+                userId,
+                userName: payload.new.user_name,
+                avatarUrl: existingAvatar,
+                message: payload.new.message,
+                createdAt: payload.new.created_at,
+              };
+
               const tempMessages = prev.filter(msg => 
                 msg.id.startsWith('temp-') && 
-                msg.userId === newMsg.userId && 
-                msg.message === newMsg.message
+                msg.userId === userId && 
+                msg.message === payload.new.message
               );
-              
+
               let updatedMessages;
-              
+
               if (tempMessages.length > 0) {
                 const tempId = tempMessages[0].id;
                 tempMessagesRef.current.delete(tempId);
-                
+
                 updatedMessages = prev.map(msg => 
                   msg.id === tempId ? newMsg : msg
                 );
               } else {
                 updatedMessages = [...prev, newMsg];
               }
-              
+
+              if (!existingAvatar) {
+                UserService.getUserById(userId).then(u => {
+                  if (u?.avatarUrl && mountedRef.current) {
+                    safeSetState(setMessages, p => p.map(m => m.id === msgId ? { ...m, avatarUrl: u.avatarUrl } : m));
+                  }
+                });
+              }
+
               updatedMessages.sort((a, b) => 
                 new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
               );
-              
+
               setTimeout(() => {
                 if (mountedRef.current) {
                   saveMessagesToCache(updatedMessages);
                 }
               }, 0);
-              
+
               return updatedMessages;
             });
             

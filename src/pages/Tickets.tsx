@@ -25,6 +25,7 @@ interface SupportUser {
   name: string;
   role: string;
   isOnline?: boolean;
+  avatarUrl?: string;
 }
 
 interface UploadingFile {
@@ -425,44 +426,50 @@ const Tickets = () => {
       filter: `ticket_id=eq.${ticketId}`
     }, (payload) => {
       if (!isMountedRef.current) return;
-      const newMessage = {
-        id: payload.new.id,
-        ticketId: payload.new.ticket_id,
-        userId: payload.new.user_id,
-        userName: payload.new.user_name,
-        message: payload.new.message,
-        attachments: payload.new.attachments || [],
-        createdAt: payload.new.created_at,
-        read: payload.new.read
-      };
-      
-      // Verificar se a mensagem já existe no estado
+      const messageId = payload.new.id;
+      const userId = payload.new.user_id;
+      const userName = payload.new.user_name;
+
       setChatMessages(prevMessages => {
-        // Verificar se já existe uma mensagem com este ID ou uma mensagem temporária com o mesmo conteúdo
+        const existingAvatar = prevMessages.find(m => m.userId === userId && m.avatarUrl)?.avatarUrl;
+        const newMessage: ChatMessage = {
+          id: messageId,
+          ticketId: payload.new.ticket_id,
+          userId,
+          userName,
+          avatarUrl: existingAvatar,
+          message: payload.new.message,
+          attachments: payload.new.attachments || [],
+          createdAt: payload.new.created_at,
+          read: payload.new.read
+        };
+
         const messageExists = prevMessages.some(
-          msg => msg.id === newMessage.id || 
-                (msg.isTemp && 
-                msg.userId === newMessage.userId && 
-                msg.message === newMessage.message)
+          msg => msg.id === messageId || 
+                (msg.isTemp && msg.userId === userId && msg.message === payload.new.message)
         );
-        
+
         if (messageExists) {
-          // Se a mensagem já existe, apenas substituir a temporária se houver
           return prevMessages.map(msg => 
-            (msg.isTemp && 
-            msg.userId === newMessage.userId && 
-            msg.message === newMessage.message) 
+            (msg.isTemp && msg.userId === userId && msg.message === payload.new.message) 
               ? { ...newMessage, isTemp: false } 
               : msg
           );
-        } else {
-          // Se a mensagem não existe, adicionar ao estado
-          return [...prevMessages, newMessage];
         }
+
+        const updated = [...prevMessages, newMessage];
+        if (!existingAvatar) {
+          UserService.getUserById(userId).then(u => {
+            if (u?.avatarUrl && isMountedRef.current) {
+              setChatMessages(prev => prev.map(m => m.id === messageId ? { ...m, avatarUrl: u.avatarUrl } : m));
+            }
+          });
+        }
+        return updated;
       });
       
       // Marcar como lida se for de outro usuário e o chat estiver aberto
-      if (newMessage.userId !== user.id) {
+      if (userId !== user.id) {
         markMessagesAsRead(ticketId);
       }
       

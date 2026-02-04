@@ -35,12 +35,14 @@ import { cn } from '@/lib/utils';
 import { supabase, TABLES } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import ticketEventService from '@/services/ticketEventService';
+import UserAvatar from '@/components/UserAvatar';
 
 interface User {
   id: string;
   name: string;
   role: string;
   isOnline?: boolean;
+  avatarUrl?: string;
 }
 
 interface TicketHeaderProps {
@@ -385,11 +387,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                             <Card key={user.id} className="p-3 hover:bg-slate-50">
                               <div className="flex items-center">
                                 <div className="relative">
-                                  <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center">
-                                    <span className="text-sm font-medium text-slate-600">
-                                      {user.name.substring(0, 2).toUpperCase()}
-                                    </span>
-                                  </div>
+                                  <UserAvatar
+                                    name={user.name}
+                                    avatarUrl={user.avatarUrl}
+                                    size="md"
+                                    className="h-8 w-8 shrink-0"
+                                    fallbackClassName="bg-slate-200 text-slate-600"
+                                  />
                                   <Circle 
                                     className="absolute -bottom-1 -right-1 h-3 w-3 fill-green-500 text-green-500" 
                                   />
@@ -591,11 +595,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                             <Card key={user.id} className="p-3 hover:bg-slate-50">
                               <div className="flex items-center">
                                 <div className="relative">
-                                  <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center">
-                                    <span className="text-sm font-medium text-slate-600">
-                                      {user.name.substring(0, 2).toUpperCase()}
-                                    </span>
-                                  </div>
+                                  <UserAvatar
+                                    name={user.name}
+                                    avatarUrl={user.avatarUrl}
+                                    size="md"
+                                    className="h-8 w-8 shrink-0"
+                                    fallbackClassName="bg-slate-200 text-slate-600"
+                                  />
                                   <Circle 
                                     className="absolute -bottom-1 -right-1 h-3 w-3 fill-green-500 text-green-500" 
                                   />
