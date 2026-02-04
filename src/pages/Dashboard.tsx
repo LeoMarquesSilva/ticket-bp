@@ -23,7 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Separator } from '@/components/ui/separator';
 import { DateRange } from 'react-day-picker';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
@@ -1252,11 +1252,13 @@ const Dashboard = () => {
                           <TableRow key={entry.userId} className="hover:bg-slate-50/50">
                             <TableCell>
                               <div className="flex items-center gap-3">
-                                <Avatar className="h-9 w-9">
-                                  <AvatarFallback className="bg-[#F69F19]/20 text-[#2C2D2F] text-sm">
-                                    {entry.userName?.charAt(0).toUpperCase() || '?'}
-                                  </AvatarFallback>
-                                </Avatar>
+                                <UserAvatar
+                                  name={entry.userName}
+                                  avatarUrl={entry.avatarUrl}
+                                  size="md"
+                                  className="shrink-0"
+                                  fallbackClassName="bg-[#F69F19]/20 text-[#2C2D2F]"
+                                />
                                 <div>
                                   <span className="font-medium text-[#2C2D2F]">{entry.userName}</span>
                                   {entry.userEmail && (
@@ -1438,17 +1440,17 @@ const Dashboard = () => {
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="text-xs font-medium text-slate-500 shrink-0">Atendente:</div>
                     <div className="flex items-center gap-1 min-w-0">
-                      <Avatar className="h-4 w-4 sm:h-5 sm:w-5 bg-slate-200 shrink-0">
-                        <AvatarFallback className={
+                      <UserAvatar
+                        name={chatTicket.assignedToName}
+                        avatarUrl={chatTicket.assignedToAvatarUrl}
+                        size="sm"
+                        className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
+                        fallbackClassName={
                           chatTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
                           chatTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
                           'bg-[#2C2D2F] text-[#F6F6F6]'
-                        }>
-                          {chatTicket.assignedToRole === 'lawyer' ? <Briefcase className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
-                          chatTicket.assignedToRole === 'support' ? <HeadphonesIcon className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
-                          getInitials(chatTicket.assignedToName)}
-                        </AvatarFallback>
-                      </Avatar>
+                        }
+                      />
                       <span className="text-xs sm:text-sm text-slate-700 truncate">{chatTicket.assignedToName}</span>
                       {chatTicket.assignedToRole && (
                         <Badge variant="outline" className="text-xs font-normal bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
@@ -1506,11 +1508,13 @@ const Dashboard = () => {
                         
                         {/* Avatar - shrink-0 impede que o avatar seja esmagado */}
                         <div className="flex flex-col items-center mt-1 shrink-0">
-                          <Avatar className={`h-8 w-8 ${styles.avatarBg}`}>
-                            <AvatarFallback className={`${styles.avatarBg} flex items-center justify-center`}>
-                              {styles.icon}
-                            </AvatarFallback>
-                          </Avatar>
+                          <UserAvatar
+                            name={message.userName}
+                            avatarUrl={message.avatarUrl}
+                            size="md"
+                            className={`h-8 w-8 ${styles.avatarBg}`}
+                            fallbackClassName={`${styles.avatarBg} flex items-center justify-center`}
+                          />
                         </div>
 
                         {/* Balão da Mensagem - min-w-0 ajuda no flexbox aninhado */}

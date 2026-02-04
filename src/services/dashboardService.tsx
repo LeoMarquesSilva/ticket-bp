@@ -85,6 +85,7 @@ export interface DashboardStats {
     userId: string;
     userName: string;
     userEmail?: string;
+    avatarUrl?: string;
     tickets: Array<{
       id: string;
       title: string;
@@ -270,7 +271,7 @@ export async function getDashboardStats(
     stats.recentFeedback = await processFeedbackFromTickets(ticketsToProcess);
 
     // Tickets resolvidos aguardando feedback (agrupados por solicitante)
-    stats.pendingFeedback = processPendingFeedbackFromTickets(ticketsToProcess);
+    stats.pendingFeedback = await processPendingFeedbackFromTickets(ticketsToProcess);
 
     return stats;
   } catch (error) {
@@ -775,14 +776,14 @@ async function processFeedbackFromTickets(tickets: any[]) {
 }
 
 /** Tickets resolvidos aguardando feedback do solicitante - agrupados por usuário */
-function processPendingFeedbackFromTickets(tickets: any[]): DashboardStats['pendingFeedback'] {
+async function processPendingFeedbackFromTickets(tickets: any[]): Promise<DashboardStats['pendingFeedback']> {
   const pending = tickets.filter(
     (t) => t.status === 'resolved' && t.feedback_submitted_at == null
   );
 
   const byUser = new Map<
     string,
-    { userId: string; userName: string; userEmail?: string; tickets: any[] }
+    { userId: string; userName: string; userEmail?: string; avatarUrl?: string; tickets: any[] }
   >();
 
   pending.forEach((ticket) => {
@@ -791,7 +792,7 @@ function processPendingFeedbackFromTickets(tickets: any[]): DashboardStats['pend
     const userEmail = ticket.created_by_email;
 
     if (!byUser.has(userId)) {
-      byUser.set(userId, { userId, userName, userEmail, tickets: [] });
+      byUser.set(userId, { userId, userName, userEmail, avatarUrl: undefined, tickets: [] });
     }
 
     const entry = byUser.get(userId)!;
@@ -804,6 +805,20 @@ function processPendingFeedbackFromTickets(tickets: any[]): DashboardStats['pend
     });
   });
 
+  const userIds = Array.from(byUser.keys());
+  let avatarMap: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: usersData } = await supabase
+      .from(TABLES.USERS)
+      .select('id, avatar_url')
+      .in('id', userIds);
+    if (usersData) {
+      usersData.forEach((u: { id: string; avatar_url?: string }) => {
+        if (u.avatar_url) avatarMap[u.id] = u.avatar_url;
+      });
+    }
+  }
+
   return Array.from(byUser.values())
     .map((entry) => {
       const sortedTickets = entry.tickets.sort(
@@ -813,6 +828,7 @@ function processPendingFeedbackFromTickets(tickets: any[]): DashboardStats['pend
         userId: entry.userId,
         userName: entry.userName,
         userEmail: entry.userEmail,
+        avatarUrl: avatarMap[entry.userId],
         tickets: sortedTickets,
         count: entry.tickets.length,
       };

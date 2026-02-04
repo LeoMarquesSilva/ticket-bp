@@ -30,7 +30,7 @@ import {
   useSidebar
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { User } from '@/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -159,12 +159,13 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
           isCollapsed && "px-2 py-2"
         )}>
           <div className="flex items-center gap-3 mb-3">
-            <Avatar className="h-12 w-12 border-2 border-[#D5B170]/30 shadow-md">
-              <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`} />
-              <AvatarFallback className="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] text-white">
-                {user?.name?.charAt(0)?.toUpperCase() || '?'}
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar
+              name={user?.name}
+              avatarUrl={user?.avatarUrl}
+              size="lg"
+              className="h-12 w-12 border-2 border-[#D5B170]/30 shadow-md"
+              fallbackClassName="bg-gradient-to-r from-[#101F2E] to-[#2a3f52] text-white"
+            />
             {!isCollapsed && (
               <div className="transition-opacity duration-200">
                 <p className="text-sm font-semibold">{user?.name}</p>

@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, useState, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { PlusCircle, Trash2, RefreshCw, Pencil, UserX, UserCheck, Filter, AlertTriangle, Search, X, Shield, Settings2, Building2 } from 'lucide-react';
+import { PlusCircle, Trash2, RefreshCw, Pencil, UserX, UserCheck, Filter, AlertTriangle, Search, X, Shield, Settings2, Building2, ImagePlus } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +26,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
+import UserAvatar from '@/components/UserAvatar';
+import AvatarCropModal from '@/components/AvatarCropModal';
+import { AvatarService } from '@/services/avatarService';
 
 
 export default function UserManagement() {
@@ -35,6 +38,10 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [createLoading, setCreateLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageFile, setCropImageFile] = useState<File | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [showInactive, setShowInactive] = useState(true); // Mostrar inativos por padrão na admin
@@ -291,6 +298,7 @@ const handleCreateUser = async () => {
         name: editingUser.name,
         role: editingUser.role,
         department: editingUser.department,
+        avatarUrl: editingUser.avatarUrl ?? undefined,
       });
 
       toast.success('Usuário atualizado', { description: `${editingUser.name} foi atualizado com sucesso.` });
@@ -701,6 +709,81 @@ const handleConfirmDelete = async () => {
                   </SelectContent>
                 </Select>
               </div>
+              {/* Foto do usuário */}
+              <div className="grid gap-2">
+                <Label>Foto (Avatar)</Label>
+                <div className="flex items-center gap-4">
+                  <UserAvatar
+                    name={editingUser.name}
+                    avatarUrl={editingUser.avatarUrl}
+                    size="lg"
+                    className="shrink-0"
+                  />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="URL da imagem (ex: WordPress)"
+                        value={editingUser.avatarUrl ?? ''}
+                        onChange={(e) => setEditingUser({ ...editingUser, avatarUrl: e.target.value.trim() || undefined })}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={avatarUploading}
+                        title="Enviar arquivo"
+                      >
+                        {avatarUploading ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ImagePlus className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file && editingUser) {
+                            setCropImageFile(file);
+                            setCropModalOpen(true);
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                      <AvatarCropModal
+                        open={cropModalOpen}
+                        onOpenChange={(open) => {
+                          setCropModalOpen(open);
+                          if (!open) setCropImageFile(null);
+                        }}
+                        imageFile={cropImageFile}
+                        onCropComplete={async (croppedFile) => {
+                          if (!editingUser) return;
+                          setAvatarUploading(true);
+                          try {
+                            const { url } = await AvatarService.uploadAvatar(editingUser.id, croppedFile);
+                            setEditingUser({ ...editingUser, avatarUrl: url });
+                            toast.success('Foto enviada');
+                          } catch (err: any) {
+                            toast.error(err.message || 'Erro ao enviar foto');
+                          } finally {
+                            setAvatarUploading(false);
+                            setCropImageFile(null);
+                          }
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Cole o link (WordPress) ou envie uma imagem (máx. 20 MB)
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           <div className="flex justify-end gap-2">
@@ -902,7 +985,17 @@ const handleConfirmDelete = async () => {
                 ) : (
                   filteredUsers.map((userItem) => (
                     <TableRow key={userItem.id}>
-                      <TableCell>{userItem.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <UserAvatar
+                            name={userItem.name}
+                            avatarUrl={userItem.avatarUrl}
+                            size="sm"
+                            className="shrink-0"
+                          />
+                          {userItem.name}
+                        </div>
+                      </TableCell>
                       <TableCell>{userItem.email}</TableCell>
                       <TableCell>
                             <span className={`inline-block px-2 py-1 rounded text-xs ${

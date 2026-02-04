@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, TABLES } from '@/lib/supabase';
 import { passwordService, FirstLoginData } from '@/services/passwordService';
+import { UserService } from '@/services/userService';
 import { User, UserRole } from '@/types';
 
 // Re-exportar UserRole para compatibilidade
@@ -105,20 +106,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Função para recarregar perfil do usuário
   const refreshUserProfile = async () => {
     if (!user) return;
-    
+
     try {
-      console.log('🔄 Atualizando perfil do usuário...');
-      
-      // Obter authUserId da sessão atual
+      // Obter authUserId: tentar getSession, depois getUser
+      let authUserId: string | undefined;
       const { data: { session } } = await supabase.auth.getSession();
-      const authUserId = session?.user?.id;
-      
+      authUserId = session?.user?.id;
+
       if (!authUserId) {
-        console.error('❌ Não foi possível obter authUserId da sessão');
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        authUserId = authUser?.id;
+      }
+
+      if (authUserId) {
+        await loadUserProfile(authUserId);
         return;
       }
-      
-      await loadUserProfile(authUserId);
+
+      // Fallback: buscar usuário diretamente por id (app user) quando sessão indisponível
+      const updatedUser = await UserService.getUserById(user.id);
+      if (updatedUser) {
+        setUser(updatedUser);
+        setRequiresPasswordChange(checkPasswordChangeRequired(updatedUser));
+        saveUserToStorage(updatedUser);
+      }
     } catch (error) {
       console.error('❌ Erro ao atualizar perfil:', error);
     }
@@ -206,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Selecionar campos específicos incluindo ticket_view_preference e is_active
         const { data: userProfile, error } = await supabase
           .from(TABLES.USERS)
-          .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
+          .select('id, name, email, role, department, avatar_url, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
           .eq('auth_user_id', authUserId)
           .abortSignal(controller.signal)
           .single();
@@ -239,6 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: userProfile.email,
             role: userProfile.role as UserRole,
             department: userProfile.department || 'Geral',
+            avatarUrl: userProfile.avatar_url || undefined,
             isOnline: userProfile.is_online || false,
             lastActiveAt: userProfile.last_active_at,
             firstLogin: userProfile.first_login || false,
@@ -265,7 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Selecionar campos específicos incluindo ticket_view_preference e is_active
           const { data: emailProfile, error: emailError } = await supabase
             .from(TABLES.USERS)
-            .select('id, name, email, role, department, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
+            .select('id, name, email, role, department, avatar_url, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
             .eq('email', authUser.email)
             .single();
           
@@ -295,6 +307,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: emailProfile.email,
               role: emailProfile.role as UserRole,
               department: emailProfile.department || 'Geral',
+              avatarUrl: emailProfile.avatar_url || undefined,
               isOnline: emailProfile.is_online || false,
               lastActiveAt: emailProfile.last_active_at,
               firstLogin: emailProfile.first_login || false,

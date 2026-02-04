@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Send, MessageCircle, X, RefreshCw } from 'lucide-react';
 import { TicketService, type ChatMessage, type Ticket } from '@/services/ticketService';
 import { useAuth } from '@/contexts/AuthContext';
@@ -718,11 +718,13 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
                             key={message.id}
                             className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
                           >
-                            <Avatar className="h-8 w-8 flex-shrink-0">
-                              <AvatarFallback className="text-xs bg-[#D5B170] text-white">
-                                {message.userName.charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
+                            <UserAvatar
+                              name={message.userName}
+                              avatarUrl={message.avatarUrl}
+                              size="md"
+                              className="h-8 w-8 flex-shrink-0"
+                              fallbackClassName="text-xs bg-[#D5B170] text-white"
+                            />
                             
                             <div className={`flex flex-col max-w-[70%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
                               <div className="flex items-center gap-2 mb-1">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,9 +6,12 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { User, Lock, Mail, Calendar, Shield, Key, LayoutGrid, List, Users } from 'lucide-react';
+import { User, Lock, Mail, Calendar, Shield, Key, LayoutGrid, List, Users, ImagePlus, RefreshCw } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import UserAvatar from '@/components/UserAvatar';
+import AvatarCropModal from '@/components/AvatarCropModal';
 import { UserService } from '@/services/userService';
+import { AvatarService } from '@/services/avatarService';
 import { toast } from 'sonner';
 
 const Profile: React.FC = () => {
@@ -16,13 +19,21 @@ const Profile: React.FC = () => {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [viewPreference, setViewPreference] = useState<'list' | 'board' | 'users'>('list');
   const [savingPreference, setSavingPreference] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarUrlInput, setAvatarUrlInput] = useState('');
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageFile, setCropImageFile] = useState<File | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   
-  // Carregar preferência atual do usuário
+  // Carregar preferência e avatar atual do usuário
   useEffect(() => {
     if (user?.ticketViewPreference) {
       setViewPreference(user.ticketViewPreference);
     }
-  }, [user?.ticketViewPreference]);
+    if (user?.avatarUrl !== undefined) {
+      setAvatarUrlInput(user.avatarUrl ?? '');
+    }
+  }, [user?.ticketViewPreference, user?.avatarUrl]);
   
   // Salvar preferência de visualização
   const handleViewPreferenceChange = async (newPreference: 'list' | 'board' | 'users') => {
@@ -109,6 +120,34 @@ const Profile: React.FC = () => {
     toast.success('Senha alterada com sucesso!');
   };
 
+  const handleSaveAvatarUrl = async () => {
+    if (!user?.id) return;
+    const url = avatarUrlInput.trim() || undefined;
+    try {
+      await UserService.updateUser(user.id, { avatarUrl: url });
+      await refreshUserProfile();
+      toast.success('Foto atualizada!');
+    } catch (e) {
+      toast.error('Erro ao atualizar foto.');
+    }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!user?.id) return;
+    setAvatarUploading(true);
+    try {
+      const { url } = await AvatarService.uploadAvatar(user.id, file);
+      await UserService.updateUser(user.id, { avatarUrl: url });
+      setAvatarUrlInput(url);
+      await refreshUserProfile();
+      toast.success('Foto enviada!');
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao enviar foto.');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#F6F6F6]">
@@ -170,6 +209,86 @@ const Profile: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
+            {/* Foto (Avatar) */}
+            <div className="space-y-4">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                <User className="h-3 w-3" />
+                Sua Foto
+              </label>
+              <div className="flex flex-col sm:flex-row items-start gap-4">
+                <UserAvatar
+                  name={user.name}
+                  avatarUrl={user.avatarUrl}
+                  size="lg"
+                  className="shrink-0"
+                />
+                <div className="flex-1 w-full space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="URL da imagem (ex: WordPress)"
+                      value={avatarUrlInput}
+                      onChange={(e) => setAvatarUrlInput(e.target.value)}
+                      className="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#F69F19]/50"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSaveAvatarUrl}
+                      className="bg-[#F69F19] hover:bg-[#e08e12] text-white"
+                    >
+                      Salvar URL
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                      title="Enviar arquivo"
+                    >
+                      {avatarUploading ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ImagePlus className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setCropImageFile(file);
+                          setCropModalOpen(true);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                    <AvatarCropModal
+                      open={cropModalOpen}
+                      onOpenChange={(open) => {
+                        setCropModalOpen(open);
+                        if (!open) setCropImageFile(null);
+                      }}
+                      imageFile={cropImageFile}
+                      onCropComplete={(croppedFile) => {
+                        handleAvatarUpload(croppedFile);
+                        setCropImageFile(null);
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Cole o link (WordPress) e clique em Salvar URL, ou envie uma imagem (máx. 20 MB)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
             {/* Nome e Email */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">

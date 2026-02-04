@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle } from 'lucide-react';
@@ -630,11 +630,13 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   key={message.id}
                   className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
                 >
-                  <Avatar className="h-8 w-8 flex-shrink-0 border border-slate-200 shadow-sm">
-                    <AvatarFallback className={`text-xs font-bold ${isOwnMessage ? 'bg-[#F69F19] text-white' : 'bg-[#2C2D2F] text-white'}`}>
-                      {message.userName?.charAt(0).toUpperCase() || '?'}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={message.userName}
+                    avatarUrl={message.avatarUrl}
+                    size="md"
+                    className="h-8 w-8 flex-shrink-0 border border-slate-200 shadow-sm"
+                    fallbackClassName={`text-xs font-bold ${isOwnMessage ? 'bg-[#F69F19] text-white' : 'bg-[#2C2D2F] text-white'}`}
+                  />
                   
                   <div className={`flex flex-col max-w-[80%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
                     <div className="flex items-center gap-2 mb-1 px-1">

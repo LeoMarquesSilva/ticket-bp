@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { UserPlus, Building2, RefreshCw } from 'lucide-react';
 import { UserService } from '@/services/userService';
 import { DepartmentService } from '@/services/departmentService';
@@ -163,11 +163,12 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
                           : 'hover:bg-slate-50 border border-transparent'
                       }`}
                     >
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-xs bg-[#F69F19]/20 text-[#2C2D2F]">
-                          {u.name?.charAt(0).toUpperCase() || '?'}
-                        </AvatarFallback>
-                      </Avatar>
+                      <UserAvatar
+                        name={u.name}
+                        avatarUrl={u.avatarUrl}
+                        size="md"
+                        fallbackClassName="text-xs bg-[#F69F19]/20 text-[#2C2D2F]"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{u.name}</p>
                         <p className="text-xs text-slate-500">{getRoleLabel(u.role)}</p>

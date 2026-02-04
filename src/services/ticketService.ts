@@ -17,8 +17,10 @@ export interface Ticket {
   createdBy: string;
   createdByName: string;
   createdByDepartment?: string;
+  createdByAvatarUrl?: string;
   assignedTo?: string;
   assignedToName?: string;
+  assignedToAvatarUrl?: string;
   assignedBy?: string;
   assignedAt?: string;
   startedAt?: string;
@@ -43,12 +45,13 @@ export interface ChatMessage {
   ticketId: string;
   userId: string;
   userName: string;
+  avatarUrl?: string;
   message: string;
   createdAt: string;
   attachments?: any[];
   read?: boolean;
   isTemp?: boolean;
-   isSystem?: boolean;
+  isSystem?: boolean;
 }
 
 export interface CreateTicketData {
@@ -171,6 +174,7 @@ const mapMessageFromDatabase = (data: any): ChatMessage => {
     ticketId: data.ticket_id,
     userId: data.user_id,
     userName: data.user_name,
+    avatarUrl: data.avatar_url,
     message: data.message,
     attachments: data.attachments || [],
     createdAt: data.created_at,
@@ -212,7 +216,7 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
   });
 }
 
-// Get a specific ticket by ID
+// Get a specific ticket by ID (com avatar_url de assigned_to e created_by)
 static async getTicket(ticketId: string): Promise<Ticket | null> {
   try {
     const { data, error } = await supabase
@@ -230,7 +234,25 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
       return null;
     }
 
-    return mapFromDatabase(data);
+    const ticket = mapFromDatabase(data);
+    const ids: string[] = [];
+    if (ticket.assignedTo) ids.push(ticket.assignedTo);
+    if (ticket.createdBy) ids.push(ticket.createdBy);
+
+    if (ids.length > 0) {
+      const { data: usersData } = await supabase
+        .from(TABLES.USERS)
+        .select('id, avatar_url')
+        .in('id', ids);
+      const map: Record<string, string> = {};
+      (usersData || []).forEach((u: { id: string; avatar_url?: string }) => {
+        if (u.avatar_url) map[u.id] = u.avatar_url;
+      });
+      if (ticket.assignedTo && map[ticket.assignedTo]) ticket.assignedToAvatarUrl = map[ticket.assignedTo];
+      if (ticket.createdBy && map[ticket.createdBy]) ticket.createdByAvatarUrl = map[ticket.createdBy];
+    }
+
+    return ticket;
   } catch (error) {
     console.error('Error in getTicket:', error);
     throw error;
@@ -654,11 +676,27 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
     }
   }
 
+  // Enriquecer mensagens com avatar_url dos usuários
+  private static async enrichMessagesWithAvatars(messages: ChatMessage[]): Promise<ChatMessage[]> {
+    const userIds = [...new Set(messages.map((m) => m.userId).filter(Boolean))];
+    if (userIds.length === 0) return messages;
+
+    const { data: usersData } = await supabase
+      .from(TABLES.USERS)
+      .select('id, avatar_url')
+      .in('id', userIds);
+
+    const avatarMap: Record<string, string> = {};
+    (usersData || []).forEach((u: { id: string; avatar_url?: string }) => {
+      if (u.avatar_url) avatarMap[u.id] = u.avatar_url;
+    });
+
+    return messages.map((m) => ({ ...m, avatarUrl: avatarMap[m.userId] }));
+  }
+
   // Get chat messages for a ticket
   static async getTicketMessages(ticketId: string): Promise<ChatMessage[]> {
     try {
-      console.log('Getting chat messages for ticket:', ticketId);
-      
       const { data, error } = await supabase
         .from(TABLES.CHAT_MESSAGES)
         .select('*')
@@ -670,9 +708,8 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
         throw error;
       }
 
-      // Map database fields to frontend fields
       const messages: ChatMessage[] = data ? data.map(mapMessageFromDatabase) : [];
-      return messages;
+      return this.enrichMessagesWithAvatars(messages);
     } catch (error) {
       console.error('Error in getTicketMessages:', error);
       throw error;
@@ -682,8 +719,6 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
   // Get chat messages for a ticket com suporte a paginação
   static async getChatMessages(ticketId: string, limit: number = 50, offset: number = 0): Promise<ChatMessage[]> {
     try {
-      console.log('Getting chat messages for ticket:', ticketId, 'limit:', limit, 'offset:', offset);
-      
       const { data, error } = await supabase
         .from(TABLES.CHAT_MESSAGES)
         .select('*')
@@ -696,9 +731,8 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
         throw error;
       }
 
-      // Map database fields to frontend fields
       const messages: ChatMessage[] = data ? data.map(mapMessageFromDatabase) : [];
-      return messages;
+      return this.enrichMessagesWithAvatars(messages);
     } catch (error) {
       console.error('Error in getChatMessages:', error);
       throw error;

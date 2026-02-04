@@ -7,7 +7,7 @@ import { TicketService } from '@/services/ticketService';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, ChevronDown, ChevronUp, Tag, Clock, Calendar } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { CategoryService } from '@/services/categoryService';
@@ -25,6 +25,7 @@ interface RecentFeedbackItem {
   ticketUrl: string;
   assignedToName: string; // Nome do atendente
   assignedToRole?: string; // Função do atendente (support, lawyer, etc.)
+  assignedToAvatarUrl?: string; // Foto do atendente
   createdByName?: string; // Nome do solicitante
   createdBy?: string; // ID do criador do ticket
   category?: string; // Categoria do ticket
@@ -41,6 +42,7 @@ interface ChatMessage {
   ticketId: string;
   userId: string;
   userName: string;
+  avatarUrl?: string;
   message: string;
   createdAt: string;
   userRole?: string;
@@ -141,13 +143,14 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
         return;
       }
       
-      // Buscar o ticket completo para ter todas as informações (createdBy, category, etc.)
+      // Buscar o ticket completo para ter todas as informações (createdBy, category, assignedToAvatarUrl, etc.)
       let fullTicket = ticket;
       if (ticket.id && (!ticket.createdByName || !ticket.createdBy || !ticket.category || !ticket.createdAt)) {
         const ticketData = await TicketService.getTicket(ticket.id);
         if (ticketData) {
           fullTicket = {
             ...ticket,
+            ...ticketData,
             createdByName: ticketData.createdByName,
             createdBy: ticketData.createdBy,
             category: ticketData.category || ticket.category,
@@ -624,17 +627,17 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="text-xs font-medium text-slate-500 shrink-0">Atendente:</div>
                       <div className="flex items-center gap-1 min-w-0">
-                        <Avatar className="h-4 w-4 sm:h-5 sm:w-5 bg-slate-200 shrink-0">
-                          <AvatarFallback className={
+                        <UserAvatar
+                          name={selectedTicket.assignedToName}
+                          avatarUrl={selectedTicket.assignedToAvatarUrl}
+                          size="sm"
+                          className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
+                          fallbackClassName={
                             selectedTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
                             selectedTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
                             'bg-[#2C2D2F] text-[#F6F6F6]'
-                          }>
-                            {selectedTicket.assignedToRole === 'lawyer' ? <Briefcase className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
-                            selectedTicket.assignedToRole === 'support' ? <HeadphonesIcon className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> :
-                            getInitials(selectedTicket.assignedToName)}
-                          </AvatarFallback>
-                        </Avatar>
+                          }
+                        />
                         <span className="text-xs sm:text-sm text-slate-700 truncate">{selectedTicket.assignedToName}</span>
                         {selectedTicket.assignedToRole && (
                           <Badge variant="outline" className="text-xs font-normal bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
@@ -700,11 +703,13 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                         <div className={`flex gap-3 ${styles.flexDirection}`} style={{ maxWidth: '85%', width: 'fit-content' }}>
                           {/* Avatar */}
                           <div className="flex flex-col items-center mt-1 shrink-0">
-                            <Avatar className={`h-8 w-8 ${styles.avatarBg}`}>
-                              <AvatarFallback className={`${styles.avatarBg} flex items-center justify-center`}>
-                                {styles.icon}
-                              </AvatarFallback>
-                            </Avatar>
+                            <UserAvatar
+                              name={message.userName}
+                              avatarUrl={message.avatarUrl}
+                              size="md"
+                              className={`h-8 w-8 ${styles.avatarBg}`}
+                              fallbackClassName={`${styles.avatarBg} flex items-center justify-center`}
+                            />
                           </div>
 
                           {/* Balão da Mensagem */}

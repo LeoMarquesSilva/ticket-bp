@@ -109,6 +109,28 @@ export class UserService {
     }
   }
   
+  // Buscar usuário por ID (app user id)
+  static async getUserById(userId: string): Promise<User | null> {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.USERS)
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // no rows
+        console.error('Error fetching user by id:', error);
+        throw error;
+      }
+
+      return data ? this.mapFromDatabase(data) : null;
+    } catch (error) {
+      console.error('Error in getUserById:', error);
+      throw error;
+    }
+  }
+
   // Buscar usuário por email
   static async getUserByEmail(email: string): Promise<User[] | null> {
     try {
@@ -266,12 +288,13 @@ export class UserService {
   // Atualizar um usuário existente
   static async updateUser(userId: string, updates: Partial<User>): Promise<User> {
     try {
-      const dbUpdates = {
-        name: updates.name,
-        role: updates.role,
-        department: updates.department || Department.GERAL,
+      const dbUpdates: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.role !== undefined) dbUpdates.role = updates.role;
+      if (updates.department !== undefined) dbUpdates.department = updates.department || Department.GERAL;
+      if (updates.avatarUrl !== undefined) dbUpdates.avatar_url = updates.avatarUrl === '' ? null : updates.avatarUrl;
 
       const { data, error } = await supabase
         .from(TABLES.USERS)
@@ -640,6 +663,7 @@ static async deleteUser(userId: string): Promise<boolean> {
       email: data.email,
       role: data.role,
       department: data.department || Department.GERAL,
+      avatarUrl: data.avatar_url || undefined,
       isOnline: data.is_online,
       lastActiveAt: data.last_active_at,
       firstLogin: data.first_login, // ✅ Novo campo

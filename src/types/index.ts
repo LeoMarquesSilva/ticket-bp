@@ -18,6 +18,7 @@ export interface User {
   email: string;
   role: UserRole;
   department: Department | string; // Agora usando o enum Department
+  avatarUrl?: string; // URL da foto (WordPress, Supabase Storage ou qualquer URL pública)
   isOnline?: boolean;
   lastActiveAt?: string;
   firstLogin?: boolean; // ✅ Novo campo - indica se é primeiro login
@@ -67,6 +68,7 @@ export interface ChatMessage {
   ticketId: string;
   userId: string;
   userName: string;
+  avatarUrl?: string;
   message: string;
   createdAt: string;
   attachments?: any[];

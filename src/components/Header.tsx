@@ -16,7 +16,7 @@ import {
 import { usePermissions } from '@/hooks/usePermissions';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { 
   DropdownMenu,
@@ -209,12 +209,13 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
                 className="relative h-10 w-10 rounded-full overflow-hidden hover:bg-responsum-dark-lighter hover:scale-105 transition-all duration-200"
               >
                 <div className="absolute inset-0 bg-responsum-gradient opacity-20 animate-pulse-slow"></div>
-                <Avatar className="h-9 w-9 border-2 border-responsum-primary/30">
-                  <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`} />
-                  <AvatarFallback className="bg-responsum-gradient text-white">
-                    {user?.name?.charAt(0)?.toUpperCase() || '?'}
-                  </AvatarFallback>
-                </Avatar>
+                <UserAvatar
+                  name={user?.name}
+                  avatarUrl={user?.avatarUrl}
+                  size="md"
+                  className="h-9 w-9 border-2 border-responsum-primary/30"
+                  fallbackClassName="bg-responsum-gradient text-white"
+                />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent 
@@ -237,12 +238,13 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
               <div className="h-1 w-full bg-responsum-gradient"></div>
               <div className="bg-gradient-to-b from-responsum-dark-lighter to-transparent p-4">
                 <div className="flex items-start gap-3">
-                  <Avatar className="h-10 w-10 border-2 border-responsum-primary/30 flex-shrink-0">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`} />
-                    <AvatarFallback className="bg-responsum-gradient text-white">
-                      {user?.name?.charAt(0)?.toUpperCase() || '?'}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={user?.name}
+                    avatarUrl={user?.avatarUrl}
+                    size="lg"
+                    className="h-10 w-10 border-2 border-responsum-primary/30 flex-shrink-0"
+                    fallbackClassName="bg-responsum-gradient text-white"
+                  />
                   <div className="flex flex-col flex-grow min-w-0">
                     <p className="text-sm font-medium leading-none text-white truncate">{user?.name}</p>
                     <p className="text-xs leading-none text-responsum-light/80 mt-1 break-all">
