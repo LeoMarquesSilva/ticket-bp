@@ -243,12 +243,14 @@ const App = () => {
           </PasswordChangeHandler>
           <Toaster
             position="top-right"
+            richColors
             toastOptions={{
               duration: 4000,
               style: {
-                background: 'white',
-                color: '#1e293b',
-                border: '1px solid #e2e8f0',
+                background: '#FFFFFF',
+                color: '#2C2D2F',
+                border: '1px solid rgba(246, 159, 25, 0.25)',
+                boxShadow: '0 4px 12px rgba(44, 45, 47, 0.08)',
               },
             }}
           />

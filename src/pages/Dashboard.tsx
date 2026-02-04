@@ -666,6 +666,14 @@ const Dashboard = () => {
               <TabsTrigger value="performance" className="rounded-full px-6 data-[state=active]:bg-[#2C2D2F] data-[state=active]:text-white transition-all">Performance</TabsTrigger>
               <TabsTrigger value="satisfaction" className="rounded-full px-6 data-[state=active]:bg-[#2C2D2F] data-[state=active]:text-white transition-all">Satisfação</TabsTrigger>
               <TabsTrigger value="feedback" className="rounded-full px-6 data-[state=active]:bg-[#2C2D2F] data-[state=active]:text-white transition-all">Feedback</TabsTrigger>
+              <TabsTrigger value="pending-feedback" className="rounded-full px-6 data-[state=active]:bg-[#2C2D2F] data-[state=active]:text-white transition-all">
+                Feedback Pendente
+                {(stats.pendingFeedback?.length ?? 0) > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 h-5 min-w-5 px-1.5 bg-[#F69F19]/20 text-[#F69F19] border-0">
+                    {stats.pendingFeedback.reduce((s, u) => s + u.count, 0)}
+                  </Badge>
+                )}
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -1199,6 +1207,110 @@ const Dashboard = () => {
           {/* === TAB: FEEDBACK === */}
           <TabsContent value="feedback" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             <RecentFeedbackList feedbackItems={stats.recentFeedback} />
+          </TabsContent>
+
+          {/* === TAB: FEEDBACK PENDENTE === */}
+          <TabsContent value="pending-feedback" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader className="border-b border-slate-100 bg-slate-50/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg font-bold text-[#2C2D2F] flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-[#F59E0B]" />
+                      Usuários que ainda não responderam o feedback
+                    </CardTitle>
+                    <CardDescription>
+                      Tickets resolvidos no período aguardando avaliação do solicitante
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200">
+                    {stats.pendingFeedback?.reduce((s, u) => s + u.count, 0) ?? 0} ticket(s) pendente(s)
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                  {!stats.pendingFeedback || stats.pendingFeedback.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                      <CheckCircle className="h-12 w-12 text-green-500 mb-3 opacity-60" />
+                      <p className="font-medium">Nenhum feedback pendente</p>
+                      <p className="text-sm mt-1">Todos os solicitantes já responderam aos tickets resolvidos.</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-50/80">
+                          <TableHead className="font-semibold">Solicitante</TableHead>
+                          <TableHead className="font-semibold">Atendente</TableHead>
+                          <TableHead className="font-semibold text-center">Tickets pendentes</TableHead>
+                          <TableHead className="font-semibold">Detalhes</TableHead>
+                          <TableHead className="text-right font-semibold">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {stats.pendingFeedback.map((entry) => (
+                          <TableRow key={entry.userId} className="hover:bg-slate-50/50">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-9 w-9">
+                                  <AvatarFallback className="bg-[#F69F19]/20 text-[#2C2D2F] text-sm">
+                                    {entry.userName?.charAt(0).toUpperCase() || '?'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <span className="font-medium text-[#2C2D2F]">{entry.userName}</span>
+                                  {entry.userEmail && (
+                                    <p className="text-xs text-slate-500">{entry.userEmail}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm text-slate-700">
+                                {entry.tickets[0]?.assignedToName || 'Não atribuído'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="secondary" className="bg-amber-100 text-amber-800">
+                                {entry.count}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-1 max-w-xs">
+                                {entry.tickets.slice(0, 3).map((t) => (
+                                  <div key={t.id} className="text-sm text-slate-600 truncate" title={t.title}>
+                                    • {t.title}
+                                    {t.resolvedAt && (
+                                      <span className="text-slate-400 ml-1">
+                                        ({format(new Date(t.resolvedAt), 'dd/MM', { locale: ptBR })})
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                                {entry.tickets.length > 3 && (
+                                  <p className="text-xs text-slate-400">+{entry.tickets.length - 3} mais</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleOpenChat({ id: entry.tickets[0].id, title: entry.tickets[0].title })}
+                                className="h-8 w-8 p-0 text-[#2C2D2F] hover:text-[#F69F19] hover:bg-slate-100"
+                                title="Ver Histórico da Conversa"
+                              >
+                                <MessageSquare className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       )}

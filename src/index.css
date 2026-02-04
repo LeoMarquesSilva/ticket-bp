@@ -108,4 +108,12 @@
   .responsum-gradient-text {
     @apply bg-responsum-gradient bg-clip-text text-transparent;
   }
+
+  /* Sonner toast - identidade do sistema (Bismarchi Pires) */
+  [data-sonner-toast][data-type="success"] { border-left: 4px solid #10B981; }
+  [data-sonner-toast][data-type="error"] { border-left: 4px solid #BD2D29; }
+  [data-sonner-toast][data-type="info"] { border-left: 4px solid #F69F19; }
+  [data-sonner-toast][data-type="warning"] { border-left: 4px solid #F59E0B; }
+  [data-sonner-toast] [data-button] { background: #F69F19 !important; color: #2C2D2F !important; }
+  [data-sonner-toast] [data-button]:hover { background: #DE5532 !important; color: white !important; }
 }

@@ -76,9 +76,23 @@ export interface DashboardStats {
     notFulfilledReason?: string;
     comment?: string;
     resolvedAt?: string;
-    ticketUrl: string; // URL para navegar para o ticket
-    assignedToName: string; // Nome do atendente
-    assignedToRole?: string; // Função do atendente (support, lawyer, etc.)
+    ticketUrl: string;
+    assignedToName: string;
+    assignedToRole?: string;
+  }>;
+  /** Tickets resolvidos aguardando feedback do solicitante (por usuário) */
+  pendingFeedback: Array<{
+    userId: string;
+    userName: string;
+    userEmail?: string;
+    tickets: Array<{
+      id: string;
+      title: string;
+      resolvedAt?: string;
+      assignedToName?: string;
+      ticketUrl: string;
+    }>;
+    count: number;
   }>;
 }
 
@@ -255,6 +269,9 @@ export async function getDashboardStats(
     // Processar feedback diretamente dos tickets (já que não existe uma tabela separada)
     stats.recentFeedback = await processFeedbackFromTickets(ticketsToProcess);
 
+    // Tickets resolvidos aguardando feedback (agrupados por solicitante)
+    stats.pendingFeedback = processPendingFeedbackFromTickets(ticketsToProcess);
+
     return stats;
   } catch (error) {
     console.error('Erro no serviço de dashboard:', error);
@@ -336,7 +353,8 @@ async function processTicketsData(tickets: any[], days: number): Promise<Dashboa
     npsScores: npsData,
     serviceScores: serviceData,
     requestFulfillment: requestFulfillmentData,
-    recentFeedback: [] // Será preenchido posteriormente
+    recentFeedback: [],
+    pendingFeedback: []
   };
 }
 
@@ -756,6 +774,55 @@ async function processFeedbackFromTickets(tickets: any[]) {
   return feedbackItems;
 }
 
+/** Tickets resolvidos aguardando feedback do solicitante - agrupados por usuário */
+function processPendingFeedbackFromTickets(tickets: any[]): DashboardStats['pendingFeedback'] {
+  const pending = tickets.filter(
+    (t) => t.status === 'resolved' && t.feedback_submitted_at == null
+  );
+
+  const byUser = new Map<
+    string,
+    { userId: string; userName: string; userEmail?: string; tickets: any[] }
+  >();
+
+  pending.forEach((ticket) => {
+    const userId = ticket.created_by || 'unknown';
+    const userName = ticket.created_by_name || 'Usuário desconhecido';
+    const userEmail = ticket.created_by_email;
+
+    if (!byUser.has(userId)) {
+      byUser.set(userId, { userId, userName, userEmail, tickets: [] });
+    }
+
+    const entry = byUser.get(userId)!;
+    entry.tickets.push({
+      id: ticket.id,
+      title: ticket.title || `Ticket #${ticket.id.slice(0, 8)}`,
+      resolvedAt: ticket.resolved_at,
+      assignedToName: ticket.assigned_to_name,
+      ticketUrl: `/tickets/${ticket.id}`,
+    });
+  });
+
+  return Array.from(byUser.values())
+    .map((entry) => {
+      const sortedTickets = entry.tickets.sort(
+        (a, b) => new Date(b.resolvedAt || 0).getTime() - new Date(a.resolvedAt || 0).getTime()
+      );
+      return {
+        userId: entry.userId,
+        userName: entry.userName,
+        userEmail: entry.userEmail,
+        tickets: sortedTickets,
+        count: entry.tickets.length,
+      };
+    })
+    .sort((a, b) => {
+      const dateA = a.tickets[0]?.resolvedAt;
+      const dateB = b.tickets[0]?.resolvedAt;
+      return new Date(dateB || 0).getTime() - new Date(dateA || 0).getTime();
+    });
+}
 
 // Função para verificar se um ticket está dentro do SLA
 export function isTicketWithinSLA(ticket: any): boolean {

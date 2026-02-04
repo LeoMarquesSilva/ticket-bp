@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { PlusCircle, Trash2, RefreshCw, Pencil, UserX, UserCheck, Filter, AlertTriangle, Search, X, Shield, Settings2, Building2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -109,11 +109,7 @@ export default function UserManagement() {
     if (has('manage_users') || has('manage_roles')) return;
     const isAdmin = String(user.role ?? '').toLowerCase() === 'admin';
     if (isAdmin) return;
-    toast({
-      title: 'Acesso negado',
-      description: 'Você não tem permissão para acessar esta página.',
-      variant: 'destructive',
-    });
+    toast.error('Acesso negado', { description: 'Você não tem permissão para acessar esta página.' });
     navigate('/tickets');
   }, [user, has, permissionsLoading, navigate]);
 
@@ -132,11 +128,7 @@ export default function UserManagement() {
       setUsers(data);
     } catch (error) {
       console.error('Erro ao carregar usuários:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar a lista de usuários.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao carregar usuários', { description: 'Não foi possível carregar a lista de usuários.' });
     } finally {
       setLoading(false);
     }
@@ -217,33 +209,21 @@ const handleCreateUser = async () => {
     
     // Validações básicas
     if (!newUser.name || !newUser.email || !newUser.password || !newUser.role || !newUser.department) {
-      toast({
-        title: 'Campos obrigatórios',
-        description: 'Preencha todos os campos obrigatórios, incluindo o departamento.',
-        variant: 'destructive',
-      });
+      toast.error('Campos obrigatórios', { description: 'Preencha todos os campos obrigatórios, incluindo o departamento.' });
       setCreateLoading(false);
       return;
     }
 
     // Validar email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
-      toast({
-        title: 'Email inválido',
-        description: 'Por favor, insira um endereço de email válido.',
-        variant: 'destructive',
-      });
+      toast.error('Email inválido', { description: 'Por favor, insira um endereço de email válido.' });
       setCreateLoading(false);
       return;
     }
 
     // Validar senha (mínimo 6 caracteres)
     if (newUser.password.length < 6) {
-      toast({
-        title: 'Senha muito curta',
-        description: 'A senha deve ter pelo menos 6 caracteres.',
-        variant: 'destructive',
-      });
+      toast.error('Senha muito curta', { description: 'A senha deve ter pelo menos 6 caracteres.' });
       setCreateLoading(false);
       return;
     }
@@ -252,11 +232,7 @@ const handleCreateUser = async () => {
     try {
       const existingUsers = await UserService.getUserByEmail(newUser.email);
       if (existingUsers && existingUsers.length > 0) {
-        toast({
-          title: 'Email já cadastrado',
-          description: 'Este endereço de email já está sendo usado por outro usuário.',
-          variant: 'destructive',
-        });
+        toast.error('Email já cadastrado', { description: 'Este endereço de email já está sendo usado por outro usuário.' });
         setCreateLoading(false);
         return;
       }
@@ -268,10 +244,7 @@ const handleCreateUser = async () => {
     // Criar usuário
     await UserService.createUserAdmin(newUser);
     
-    toast({
-      title: 'Usuário criado',
-      description: `${newUser.name} foi adicionado com sucesso.`,
-    });
+    toast.success('Usuário criado', { description: `${newUser.name} foi adicionado com sucesso.` });
     
     // Limpar formulário e fechar diálogo
     setNewUser({
@@ -288,11 +261,7 @@ const handleCreateUser = async () => {
     
   } catch (error: any) {
     console.error('Erro ao criar usuário:', error);
-    toast({
-      title: 'Erro ao criar usuário',
-      description: error.message || 'Ocorreu um erro ao criar o usuário.',
-      variant: 'destructive',
-    });
+    toast.error('Erro ao criar usuário', { description: error.message || 'Ocorreu um erro ao criar o usuário.' });
   } finally {
     setCreateLoading(false);
   }
@@ -313,11 +282,7 @@ const handleCreateUser = async () => {
       
       // Validações básicas
       if (!editingUser.name || !editingUser.role || !editingUser.department) {
-        toast({
-          title: 'Campos obrigatórios',
-          description: 'Preencha todos os campos obrigatórios.',
-          variant: 'destructive',
-        });
+        toast.error('Campos obrigatórios', { description: 'Preencha todos os campos obrigatórios.' });
         setEditLoading(false);
         return;
       }
@@ -328,10 +293,7 @@ const handleCreateUser = async () => {
         department: editingUser.department,
       });
 
-      toast({
-        title: 'Usuário atualizado',
-        description: `${editingUser.name} foi atualizado com sucesso.`,
-      });
+      toast.success('Usuário atualizado', { description: `${editingUser.name} foi atualizado com sucesso.` });
       
       setEditDialogOpen(false);
       setEditingUser(null);
@@ -340,11 +302,7 @@ const handleCreateUser = async () => {
       loadUsers();
     } catch (error: any) {
       console.error('Erro ao atualizar usuário:', error);
-      toast({
-        title: 'Erro ao atualizar usuário',
-        description: error.message || 'Ocorreu um erro ao atualizar o usuário.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao atualizar usuário', { description: error.message || 'Ocorreu um erro ao atualizar o usuário.' });
     } finally {
       setEditLoading(false);
     }
@@ -367,18 +325,11 @@ const handleConfirmToggleStatus = async () => {
     setToggleLoading(userId);
     setConfirmDialogOpen(false);
     await UserService.toggleUserActiveStatus(userId, newStatus);
-    toast({
-      title: 'Status alterado',
-      description: `${userName} foi ${newStatus ? 'ativado' : 'desativado'} com sucesso.`,
-    });
+    toast.success('Status alterado', { description: `${userName} foi ${newStatus ? 'ativado' : 'desativado'} com sucesso.` });
     loadUsers();
   } catch (error: any) {
     console.error('Erro ao alterar status do usuário:', error);
-    toast({
-      title: 'Erro ao alterar status',
-      description: error.message || 'Não foi possível alterar o status do usuário.',
-      variant: 'destructive',
-    });
+    toast.error('Erro ao alterar status', { description: error.message || 'Não foi possível alterar o status do usuário.' });
   } finally {
     setToggleLoading(null);
     setPendingAction(null);
@@ -401,18 +352,11 @@ const handleConfirmDelete = async () => {
     setDeleteLoading(true);
     setDeleteDialogOpen(false);
     await UserService.deleteUser(userId);
-    toast({
-      title: 'Usuário processado',
-      description: `${userName} foi removido ou anonimizado com sucesso.`,
-    });
+    toast.success('Usuário processado', { description: `${userName} foi removido ou anonimizado com sucesso.` });
     loadUsers();
   } catch (error: any) {
     console.error('Erro ao excluir usuário:', error);
-    toast({
-      title: 'Erro ao processar usuário',
-      description: error.message || 'Não foi possível excluir ou anonimizar o usuário.',
-      variant: 'destructive',
-    });
+    toast.error('Erro ao processar usuário', { description: error.message || 'Não foi possível excluir ou anonimizar o usuário.' });
   } finally {
     setDeleteLoading(false);
     setPendingDelete(null);
@@ -423,23 +367,23 @@ const handleConfirmDelete = async () => {
 
   const handleCreateRole = async () => {
     if (!newRole.key?.trim() || !newRole.label?.trim()) {
-      toast({ title: 'Campos obrigatórios', description: 'Preencha chave e nome da role.', variant: 'destructive' });
+      toast.error('Campos obrigatórios', { description: 'Preencha chave e nome da role.' });
       return;
     }
     const key = newRole.key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     if (!key) {
-      toast({ title: 'Chave inválida', description: 'Use apenas letras minúsculas, números e _.', variant: 'destructive' });
+      toast.error('Chave inválida', { description: 'Use apenas letras minúsculas, números e _.' });
       return;
     }
     try {
       setCreateRoleLoading(true);
       await RoleService.createRole({ ...newRole, key, permissionKeys: newRole.permissionKeys || [] });
-      toast({ title: 'Role criada', description: `${newRole.label} foi criada.` });
+      toast.success('Role criada', { description: `${newRole.label} foi criada.` });
       setNewRole({ key: '', label: '', permissionKeys: [] });
       setCreateRoleOpen(false);
       RoleService.getRoles(true).then(setRoles);
     } catch (e: any) {
-      toast({ title: 'Erro ao criar role', description: e.message, variant: 'destructive' });
+      toast.error('Erro ao criar role', { description: e.message });
     } finally {
       setCreateRoleLoading(false);
     }
@@ -451,12 +395,12 @@ const handleConfirmDelete = async () => {
       setEditRoleLoading(true);
       await RoleService.updateRole(editingRole.id, { label: editingRole.label, description: editingRole.description });
       await RoleService.setRolePermissions(editingRole.id, rolePermissions);
-      toast({ title: 'Role atualizada', description: `${editingRole.label} foi atualizada.` });
+      toast.success('Role atualizada', { description: `${editingRole.label} foi atualizada.` });
       setEditRoleOpen(false);
       setEditingRole(null);
       RoleService.getRoles(true).then(setRoles);
     } catch (e: any) {
-      toast({ title: 'Erro ao atualizar role', description: e.message, variant: 'destructive' });
+      toast.error('Erro ao atualizar role', { description: e.message });
     } finally {
       setEditRoleLoading(false);
     }
@@ -467,16 +411,16 @@ const handleConfirmDelete = async () => {
     try {
       const count = await RoleService.countUsersByRole(pendingDeleteRole.key);
       if (count > 0) {
-        toast({ title: 'Não é possível excluir', description: `${count} usuário(s) usam esta role. Atribua outra role a eles antes.`, variant: 'destructive' });
+        toast.error('Não é possível excluir', { description: `${count} usuário(s) usam esta role. Atribua outra role a eles antes.` });
         return;
       }
       await RoleService.deleteRole(pendingDeleteRole.id);
-      toast({ title: 'Role excluída', description: `${pendingDeleteRole.label} foi excluída.` });
+      toast.success('Role excluída', { description: `${pendingDeleteRole.label} foi excluída.` });
       setDeleteRoleOpen(false);
       setPendingDeleteRole(null);
       RoleService.getRoles(true).then(setRoles);
     } catch (e: any) {
-      toast({ title: 'Erro ao excluir', description: e.message, variant: 'destructive' });
+      toast.error('Erro ao excluir role', { description: e.message });
     }
   };
 
@@ -484,18 +428,18 @@ const handleConfirmDelete = async () => {
 
   const handleCreateDepartment = async () => {
     if (!newDepartment.name?.trim()) {
-      toast({ title: 'Nome obrigatório', description: 'Informe o nome do departamento.', variant: 'destructive' });
+      toast.error('Nome obrigatório', { description: 'Informe o nome do departamento.' });
       return;
     }
     try {
       setCreateDepartmentLoading(true);
       await DepartmentService.createDepartment({ name: newDepartment.name.trim() });
-      toast({ title: 'Departamento criado', description: `${newDepartment.name.trim()} foi adicionado.` });
+      toast.success('Departamento criado', { description: `${newDepartment.name.trim()} foi adicionado.` });
       setNewDepartment({ name: '' });
       setCreateDepartmentOpen(false);
       loadDepartments();
     } catch (e: any) {
-      toast({ title: 'Erro ao criar departamento', description: e.message, variant: 'destructive' });
+      toast.error('Erro ao criar departamento', { description: e.message });
     } finally {
       setCreateDepartmentLoading(false);
     }
@@ -510,12 +454,12 @@ const handleConfirmDelete = async () => {
         order: editingDepartment.order,
         isActive: editingDepartment.isActive,
       });
-      toast({ title: 'Departamento atualizado', description: `${editingDepartment.name} foi atualizado.` });
+      toast.success('Departamento atualizado', { description: `${editingDepartment.name} foi atualizado.` });
       setEditDepartmentOpen(false);
       setEditingDepartment(null);
       loadDepartments();
     } catch (e: any) {
-      toast({ title: 'Erro ao atualizar departamento', description: e.message, variant: 'destructive' });
+      toast.error('Erro ao atualizar departamento', { description: e.message });
     } finally {
       setEditDepartmentLoading(false);
     }
@@ -526,20 +470,16 @@ const handleConfirmDelete = async () => {
     try {
       const count = await DepartmentService.countUsersByDepartment(pendingDeleteDepartment.name);
       if (count > 0) {
-        toast({
-          title: 'Não é possível excluir',
-          description: `${count} usuário(s) usam este departamento. Altere o departamento deles antes.`,
-          variant: 'destructive',
-        });
+        toast.error('Não é possível excluir', { description: `${count} usuário(s) usam este departamento. Altere o departamento deles antes.` });
         return;
       }
       await DepartmentService.deleteDepartment(pendingDeleteDepartment.id);
-      toast({ title: 'Departamento excluído', description: `${pendingDeleteDepartment.name} foi removido.` });
+      toast.success('Departamento excluído', { description: `${pendingDeleteDepartment.name} foi removido.` });
       setDeleteDepartmentOpen(false);
       setPendingDeleteDepartment(null);
       loadDepartments();
     } catch (e: any) {
-      toast({ title: 'Erro ao excluir departamento', description: e.message, variant: 'destructive' });
+      toast.error('Erro ao excluir departamento', { description: e.message });
     }
   };
 

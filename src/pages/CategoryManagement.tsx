@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { PlusCircle, Trash2, RefreshCw, Pencil, Tag, Clock, User as UserIcon, ChevronDown, ChevronUp, Settings2, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Info, HelpCircle, ArrowRight, AlertCircle, CheckCircle2, AlertTriangle, Power } from 'lucide-react';
 import {
   AlertDialog,
@@ -110,11 +110,7 @@ export default function CategoryManagement() {
     if (has('manage_categories')) return;
     const isAdmin = String(user.role ?? '').toLowerCase() === 'admin';
     if (isAdmin) return;
-    toast({
-      title: 'Acesso negado',
-      description: 'Você não tem permissão para acessar esta página.',
-      variant: 'destructive',
-    });
+    toast.error('Acesso negado', { description: 'Você não tem permissão para acessar esta página.' });
     navigate('/tickets');
   }, [user, has, permissionsLoading, navigate]);
 
@@ -134,11 +130,7 @@ export default function CategoryManagement() {
       setTags(tagsData);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar as categorias.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao carregar categorias', { description: 'Não foi possível carregar as categorias.' });
     } finally {
       setLoading(false);
     }
@@ -186,21 +178,14 @@ export default function CategoryManagement() {
   // Criar categoria
   const handleCreateCategory = async () => {
     if (!newCategory.key || !newCategory.label) {
-      toast({
-        title: 'Campos obrigatórios',
-        description: 'Preencha pelo menos a chave e o nome da categoria.',
-        variant: 'destructive',
-      });
+      toast.error('Campos obrigatórios', { description: 'Preencha pelo menos a chave e o nome da categoria.' });
       return;
     }
 
     try {
       setCreateCategoryLoading(true);
       await CategoryService.createCategory(newCategory);
-      toast({
-        title: 'Categoria criada',
-        description: `${newCategory.label} foi criada com sucesso.`,
-      });
+      toast.success('Categoria criada', { description: `${newCategory.label} foi criada com sucesso.` });
       setNewCategory({
         key: '',
         label: '',
@@ -213,11 +198,7 @@ export default function CategoryManagement() {
       loadData();
     } catch (error: any) {
       console.error('Erro ao criar categoria:', error);
-      toast({
-        title: 'Erro ao criar categoria',
-        description: error.message || 'Não foi possível criar a categoria.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao criar categoria', { description: error.message || 'Não foi possível criar a categoria.' });
     } finally {
       setCreateCategoryLoading(false);
     }
@@ -248,20 +229,13 @@ export default function CategoryManagement() {
         tagId: editingCategory.tagId || undefined,
         order: editingCategory.order
       });
-      toast({
-        title: 'Categoria atualizada',
-        description: `${editingCategory.label} foi atualizada com sucesso.`,
-      });
+      toast.success('Categoria atualizada', { description: `${editingCategory.label} foi atualizada com sucesso.` });
       setEditCategoryDialogOpen(false);
       setEditingCategory(null);
       loadData();
     } catch (error: any) {
       console.error('Erro ao atualizar categoria:', error);
-      toast({
-        title: 'Erro ao atualizar categoria',
-        description: error.message || 'Não foi possível atualizar a categoria.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao atualizar categoria', { description: error.message || 'Não foi possível atualizar a categoria.' });
     } finally {
       setEditCategoryLoading(false);
     }
@@ -303,22 +277,14 @@ export default function CategoryManagement() {
   // Criar subcategoria
   const handleCreateSubcategory = async () => {
     if (!newSubcategory.key || !newSubcategory.label || !newSubcategory.categoryId) {
-      toast({
-        title: 'Campos obrigatórios',
-        description: 'Preencha todos os campos obrigatórios.',
-        variant: 'destructive',
-      });
+      toast.error('Campos obrigatórios', { description: 'Preencha todos os campos obrigatórios.' });
       return;
     }
 
     // Validar formato da chave antes de criar
     const formatValidation = CategoryService.validateKeyFormat(newSubcategory.key);
     if (!formatValidation.valid) {
-      toast({
-        title: 'Chave inválida',
-        description: formatValidation.error || 'A chave não está no formato correto.',
-        variant: 'destructive',
-      });
+      toast.error('Chave inválida', { description: formatValidation.error || 'A chave não está no formato correto.' });
       return;
     }
 
@@ -326,30 +292,19 @@ export default function CategoryManagement() {
     try {
       const keyExists = await CategoryService.subcategoryKeyExists(newSubcategory.categoryId, newSubcategory.key);
       if (keyExists) {
-        toast({
-          title: 'Chave já existe',
-          description: `A chave "${newSubcategory.key}" já está em uso por outra subcategoria nesta categoria. Por favor, escolha uma chave diferente.`,
-          variant: 'destructive',
-        });
+        toast.error('Chave já existe', { description: `A chave "${newSubcategory.key}" já está em uso por outra subcategoria nesta categoria. Por favor, escolha uma chave diferente.` });
         return;
       }
     } catch (error: any) {
       console.error('Erro ao verificar chave:', error);
-      toast({
-        title: 'Erro ao validar chave',
-        description: 'Não foi possível verificar se a chave já existe. Tente novamente.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao validar chave', { description: 'Não foi possível verificar se a chave já existe. Tente novamente.' });
       return;
     }
 
     try {
       setCreateSubcategoryLoading(true);
       await CategoryService.createSubcategory(newSubcategory);
-      toast({
-        title: 'Subcategoria criada',
-        description: `${newSubcategory.label} foi criada com sucesso.`,
-      });
+      toast.success('Subcategoria criada', { description: `${newSubcategory.label} foi criada com sucesso.` });
       setNewSubcategory({
         categoryId: '',
         key: '',
@@ -377,11 +332,7 @@ export default function CategoryManagement() {
         }
       }
       
-      toast({
-        title: 'Erro ao criar subcategoria',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      toast.error('Erro ao criar subcategoria', { description: errorMessage });
     } finally {
       setCreateSubcategoryLoading(false);
     }
@@ -390,11 +341,7 @@ export default function CategoryManagement() {
   // Editar subcategoria
   const handleEditSubcategory = async () => {
     if (!editingSubcategory || !editingSubcategory.label) {
-      toast({
-        title: 'Dados inválidos',
-        description: 'Preencha todos os campos obrigatórios.',
-        variant: 'destructive',
-      });
+      toast.error('Dados inválidos', { description: 'Preencha todos os campos obrigatórios.' });
       return;
     }
 
@@ -430,10 +377,7 @@ export default function CategoryManagement() {
         console.log('defaultAssignedToName após update:', updated.defaultAssignedToName);
         
         // Toast de sucesso
-        toast({
-          title: 'Subcategoria atualizada',
-          description: `${editingSubcategory.label} foi atualizada com sucesso.`,
-        });
+        toast.success('Subcategoria atualizada', { description: `${editingSubcategory.label} foi atualizada com sucesso.` });
         
         // Fechar modal
         setEditSubcategoryDialogOpen(false);
@@ -457,11 +401,7 @@ export default function CategoryManagement() {
       console.error('Mensagem:', error.message);
       console.error('Código:', error.code);
       
-      toast({
-        title: 'Erro ao atualizar subcategoria',
-        description: error.message || error.code || 'Não foi possível atualizar a subcategoria.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao atualizar subcategoria', { description: error.message || error.code || 'Não foi possível atualizar a subcategoria.' });
       
       // Não fechar o modal se houver erro
       // setEditSubcategoryDialogOpen(false);
@@ -478,20 +418,13 @@ export default function CategoryManagement() {
     
     try {
       await CategoryService.deleteCategory(pendingDeleteCategory.id);
-      toast({
-        title: 'Categoria excluída',
-        description: `${pendingDeleteCategory.label} foi excluída com sucesso.`,
-      });
+      toast.success('Categoria excluída', { description: `${pendingDeleteCategory.label} foi excluída com sucesso.` });
       setDeleteCategoryDialogOpen(false);
       setPendingDeleteCategory(null);
       loadData();
     } catch (error: any) {
       console.error('Erro ao excluir categoria:', error);
-      toast({
-        title: 'Erro ao excluir categoria',
-        description: error.message || 'Não foi possível excluir a categoria.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao excluir categoria', { description: error.message || 'Não foi possível excluir a categoria.' });
     }
   };
 
@@ -501,20 +434,13 @@ export default function CategoryManagement() {
     
     try {
       await CategoryService.deleteSubcategory(pendingDeleteSubcategory.id);
-      toast({
-        title: 'Subcategoria excluída',
-        description: `${pendingDeleteSubcategory.label} foi excluída com sucesso.`,
-      });
+      toast.success('Subcategoria excluída', { description: `${pendingDeleteSubcategory.label} foi excluída com sucesso.` });
       setDeleteSubcategoryDialogOpen(false);
       setPendingDeleteSubcategory(null);
       loadData();
     } catch (error: any) {
       console.error('Erro ao excluir subcategoria:', error);
-      toast({
-        title: 'Erro ao excluir subcategoria',
-        description: error.message || 'Não foi possível excluir a subcategoria.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao excluir subcategoria', { description: error.message || 'Não foi possível excluir a subcategoria.' });
     }
   };
 
@@ -535,23 +461,23 @@ export default function CategoryManagement() {
   // Frentes de Atuação (Tags) - CRUD
   const handleCreateFrente = async () => {
     if (!newFrente.key?.trim() || !newFrente.label?.trim()) {
-      toast({ title: 'Campos obrigatórios', description: 'Preencha chave e nome da frente de atuação.', variant: 'destructive' });
+      toast.error('Campos obrigatórios', { description: 'Preencha chave e nome da frente de atuação.' });
       return;
     }
     const key = newFrente.key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     if (!key) {
-      toast({ title: 'Chave inválida', description: 'Use apenas letras minúsculas, números e underscores.', variant: 'destructive' });
+      toast.error('Chave inválida', { description: 'Use apenas letras minúsculas, números e underscores.' });
       return;
     }
     try {
       setCreateFrenteLoading(true);
       await CategoryService.createTag({ ...newFrente, key });
-      toast({ title: 'Frente de atuação criada', description: `${newFrente.label} foi criada com sucesso.` });
+      toast.success('Frente de atuação criada', { description: `${newFrente.label} foi criada com sucesso.` });
       setNewFrente({ key: '', label: '', color: '#3B82F6' });
       setCreateFrenteDialogOpen(false);
       loadData();
     } catch (error: any) {
-      toast({ title: 'Erro ao criar', description: error.message || 'Não foi possível criar a frente de atuação.', variant: 'destructive' });
+      toast.error('Erro ao criar frente de atuação', { description: error.message || 'Não foi possível criar a frente de atuação.' });
     } finally {
       setCreateFrenteLoading(false);
     }
@@ -560,18 +486,18 @@ export default function CategoryManagement() {
   const handleEditFrente = async () => {
     if (!editingFrente) return;
     if (!editingFrente.label?.trim()) {
-      toast({ title: 'Nome obrigatório', description: 'Preencha o nome da frente de atuação.', variant: 'destructive' });
+      toast.error('Nome obrigatório', { description: 'Preencha o nome da frente de atuação.' });
       return;
     }
     try {
       setEditFrenteLoading(true);
       await CategoryService.updateTag(editingFrente.id, { label: editingFrente.label, color: editingFrente.color });
-      toast({ title: 'Frente de atuação atualizada', description: `${editingFrente.label} foi atualizada.` });
+      toast.success('Frente de atuação atualizada', { description: `${editingFrente.label} foi atualizada.` });
       setEditFrenteDialogOpen(false);
       setEditingFrente(null);
       loadData();
     } catch (error: any) {
-      toast({ title: 'Erro ao atualizar', description: error.message || 'Não foi possível atualizar.', variant: 'destructive' });
+      toast.error('Erro ao atualizar frente de atuação', { description: error.message || 'Não foi possível atualizar.' });
     } finally {
       setEditFrenteLoading(false);
     }
@@ -581,25 +507,22 @@ export default function CategoryManagement() {
     if (!pendingDeleteFrente) return;
     try {
       await CategoryService.deleteTag(pendingDeleteFrente.id);
-      toast({ title: 'Frente de atuação excluída', description: `${pendingDeleteFrente.label} foi excluída.` });
+      toast.success('Frente de atuação excluída', { description: `${pendingDeleteFrente.label} foi excluída.` });
       setDeleteFrenteDialogOpen(false);
       setPendingDeleteFrente(null);
       loadData();
     } catch (error: any) {
-      toast({ title: 'Erro ao excluir', description: error.message || 'Não foi possível excluir.', variant: 'destructive' });
+      toast.error('Erro ao excluir frente de atuação', { description: error.message || 'Não foi possível excluir.' });
     }
   };
 
   const handleToggleFrenteStatus = async (tag: TagType) => {
     try {
       await CategoryService.toggleTagStatus(tag.id, !tag.isActive);
-      toast({
-        title: tag.isActive ? 'Frente inativada' : 'Frente ativada',
-        description: `${tag.label} foi ${tag.isActive ? 'inativada' : 'ativada'}.`,
-      });
+      toast.success(tag.isActive ? 'Frente inativada' : 'Frente ativada', { description: `${tag.label} foi ${tag.isActive ? 'inativada' : 'ativada'}.` });
       loadData();
     } catch (error: any) {
-      toast({ title: 'Erro', description: error.message || 'Não foi possível alterar o status.', variant: 'destructive' });
+      toast.error('Erro ao alterar status', { description: error.message || 'Não foi possível alterar o status.' });
     }
   };
 
