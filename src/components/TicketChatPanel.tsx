@@ -10,6 +10,7 @@ import FinishTicketButton from './FinishTicketButton';
 import TransferTicketModal from './TransferTicketModal';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
+import { UserService } from '@/services/userService';
 import { getSlaHours } from '@/services/dashboardService';
 import { CategoryService } from '@/services/categoryService';
 import NPSChatFeedback from './NPSChatFeedback';
@@ -99,6 +100,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   const [imageError, setImageError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
+  const [createdByAvatarUrl, setCreatedByAvatarUrl] = useState<string | null>(null);
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
@@ -144,6 +146,18 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     requestAnimationFrame(() => attemptFocus());
     setTimeout(() => attemptFocus(), 50);
   };
+
+  // Buscar avatar do solicitante quando o modal de detalhes abre
+  useEffect(() => {
+    if (showTicketDetails && selectedTicket.createdBy) {
+      UserService.getUserById(selectedTicket.createdBy).then(u => {
+        if (u?.avatarUrl) setCreatedByAvatarUrl(u.avatarUrl);
+        else setCreatedByAvatarUrl(null);
+      }).catch(() => setCreatedByAvatarUrl(null));
+    } else if (!showTicketDetails) {
+      setCreatedByAvatarUrl(null);
+    }
+  }, [showTicketDetails, selectedTicket.createdBy]);
 
   useEffect(() => {
     if (!isTicketFinalized(selectedTicket)) {
@@ -362,11 +376,10 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
   // supportUsers já vem filtrado por getSupportUsers (admin, lawyer, support + roles com assign_ticket)
   const assignableUsers = supportUsers;
-  const assignedUserName = selectedTicket.assignedTo ? 
-    supportUsers.find(u => u.id === selectedTicket.assignedTo)?.name || 
-    selectedTicket.assignedToName || 
-    "Usuário não encontrado" : 
-    null;
+  const assignedUser = selectedTicket.assignedTo ? supportUsers.find(u => u.id === selectedTicket.assignedTo) : null;
+  const assignedUserName = selectedTicket.assignedTo 
+    ? (assignedUser?.name || selectedTicket.assignedToName || "Usuário não encontrado") 
+    : null;
 
   const getPriorityLabel = (priority: string) => {
     switch(priority) {
@@ -410,49 +423,71 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden border-l border-slate-200 chat-container bg-white">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden border-l border-slate-200 chat-container bg-white">
       {/* Chat Header */}
-      <div className="p-3 border-b border-slate-200 bg-white shadow-sm z-10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <div 
+        className="relative border-b border-slate-200 z-10 shrink-0"
+        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(246,159,25,0.04) 50%, rgba(255,255,255,1) 100%)' }}
+      >
+        <div className="px-4 py-3 flex items-center justify-between gap-4">
+          {/* Lado esquerdo: voltar (mobile) + info do ticket */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Button
               variant="ghost"
               size="icon"
               onClick={closeChat}
-              className="h-8 w-8 lg:hidden"
+              className="h-9 w-9 shrink-0 lg:hidden rounded-lg hover:bg-slate-100"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div className="p-2 bg-[#F69F19]/10 rounded-lg">
-              <MessageCircle className="h-5 w-5 text-[#F69F19]" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[#2C2D2F] text-sm md:text-base">
-                {selectedTicket.title}
-              </h2>
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span>Ticket #{selectedTicket.id.slice(-8)}</span>
-                <span className="text-slate-300">|</span>
-                <button 
-                  onClick={() => setShowTicketDetails(!showTicketDetails)}
-                  className="text-[#F69F19] hover:text-[#DE5532] font-medium hover:underline transition-colors"
-                >
-                  {showTicketDetails ? 'Ocultar detalhes' : 'Ver detalhes'}
-                </button>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white border border-[#F69F19]/25 shadow-sm ring-1 ring-[#F69F19]/10">
+                <MessageCircle className="h-4 w-4 text-[#F69F19]" strokeWidth={2} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-bold text-[#2C2D2F] text-base truncate">
+                    {selectedTicket.title}
+                  </h2>
+                  <Badge variant="secondary" className={`${getStatusColor(selectedTicket.status)} shrink-0 text-[10px] font-medium px-2 py-0`}>
+                    {getStatusLabel(selectedTicket.status)}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
+                  {assignedUserName && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <UserAvatar
+                        name={assignedUserName}
+                        avatarUrl={assignedUser?.avatarUrl}
+                        size="sm"
+                        className="h-5 w-5"
+                        fallbackClassName="bg-[#F69F19]/20 text-[#F69F19] text-[10px]"
+                      />
+                      <span><span className="text-slate-400">Atendente:</span> {assignedUserName}</span>
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => setShowTicketDetails(true)}
+                    className="text-[#F69F19] hover:text-[#DE5532] font-medium transition-colors hover:underline shrink-0"
+                  >
+                    Ver detalhes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Botão de transferência - por permissão assign_ticket */}
+
+          {/* Lado direito: ações */}
+          <div className="flex items-center gap-1.5 shrink-0">
             {canAssignTicket && !isTicketFinalized(selectedTicket) && handleAssignTicket && assignableUsers.length > 0 && (
               <>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex items-center gap-1 text-xs border-slate-200 hover:bg-slate-50"
+                  className="h-8 gap-1.5 text-xs border-slate-200 hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5 rounded-lg"
                   onClick={() => setTransferModalOpen(true)}
                 >
-                  <UserPlus className="h-3 w-3" />
+                  <UserPlus className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Transferir</span>
                 </Button>
                 <TransferTicketModal
@@ -467,14 +502,13 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               </>
             )}
             
-            {/* Botão de excluir ticket - por permissão delete_ticket */}
             {canDeleteTicket && handleDeleteTicket && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-[#BD2D29] hover:bg-[#BD2D29]/10"
+                    className="h-8 w-8 rounded-lg text-slate-400 hover:text-[#BD2D29] hover:bg-[#BD2D29]/10"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -499,7 +533,6 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               </AlertDialog>
             )}
   
-            {/* Botão de finalizar ticket - por permissão finish_ticket */}
             {canFinishTicket && selectedTicket.status !== 'resolved' && user && handleUpdateTicket && (
               <FinishTicketButton
                 ticketId={selectedTicket.id}
@@ -511,77 +544,135 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               />
             )}
             
-            {/* Botão de fechar chat */}
             <Button
               variant="ghost"
               size="icon"
               onClick={closeChat}
-              className="h-8 w-8 hidden lg:flex text-slate-400 hover:text-slate-600"
+              className="h-8 w-8 hidden lg:flex rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
             >
               <X className="h-4 w-4" />
             </Button>
           </div>
         </div>
-
-        {/* Detalhes do ticket (expandível) */}
-        {showTicketDetails && (
-          <div className="mt-3 pt-3 border-t border-slate-100 text-xs animate-in slide-in-from-top-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 text-slate-600">
-                <User className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-[#2C2D2F]">Solicitante:</span> {selectedTicket.createdByName}
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <UserCheck className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-[#2C2D2F]">Atribuído:</span> {assignedUserName || <span className="italic text-slate-400">Não atribuído</span>}
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-[#2C2D2F]">Criado em:</span> {formatDate(selectedTicket.createdAt)} às {formatTime(selectedTicket.createdAt)}
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Tag className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-[#2C2D2F]">Categoria:</span> 
-                {getCategoryLabel(selectedTicket.category || 'outros')}
-                {selectedTicket.subcategory && (
-                  <span> / {getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Clock className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-[#2C2D2F]">SLA Estimado:</span> 
-                <span className="text-[#F69F19] font-medium">
-                  {(() => {
-                    const slaHours = getSlaHours(selectedTicket.category || 'outros', selectedTicket.subcategory || 'outros');
-                    if (slaHours === 1) return '1 hora';
-                    return `${slaHours} horas`;
-                  })()}
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              <Badge className={`${getStatusColor(selectedTicket.status)} border text-xs font-medium`}>
-                {getStatusLabel(selectedTicket.status)}
-              </Badge>
-              {selectedTicket.priority && (
-                <Badge className={`${getPriorityColor(selectedTicket.priority)} border text-xs font-medium`}>
-                  {getPriorityLabel(selectedTicket.priority)}
-                </Badge>
-              )}
-            </div>
-            {selectedTicket.description && (
-              <ScrollArea className="mt-3 h-[180px] rounded-lg border border-slate-100 bg-slate-50">
-                <div className="p-3 text-slate-700 text-sm whitespace-pre-wrap break-words pr-4">
-                  {selectedTicket.description}
-                </div>
-              </ScrollArea>
-            )}
-          </div>
-        )}
       </div>
 
+      {/* Modal de detalhes do ticket */}
+      <Dialog open={showTicketDetails} onOpenChange={setShowTicketDetails}>
+        <DialogContent className="sm:max-w-xl p-0 gap-0 overflow-hidden">
+          {/* Header com gradiente */}
+          <div 
+            className="px-6 pt-6 pb-5 relative"
+            style={{ background: 'linear-gradient(135deg, rgba(246, 159, 25, 0.08) 0%, rgba(222, 85, 50, 0.05) 50%, rgba(189, 45, 41, 0.04) 100%)' }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-[#F69F19]/15 shrink-0">
+                <FileText className="h-5 w-5 text-[#F69F19]" />
+              </div>
+              <div className="flex-1 min-w-0 pr-8">
+                <p className="text-xs font-medium text-[#F69F19] uppercase tracking-wide mb-1">
+                  Ticket #{selectedTicket.id.slice(-8)}
+                </p>
+                <DialogTitle className="text-lg font-bold text-[#2C2D2F] leading-snug">
+                  {selectedTicket.title}
+                </DialogTitle>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Badge className={`${getStatusColor(selectedTicket.status)} border text-xs font-medium shadow-sm`}>
+                    {getStatusLabel(selectedTicket.status)}
+                  </Badge>
+                  {selectedTicket.priority && (
+                    <Badge className={`${getPriorityColor(selectedTicket.priority)} border text-xs font-medium shadow-sm`}>
+                      {getPriorityLabel(selectedTicket.priority)}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Conteúdo */}
+          <div className="px-6 pb-6 pt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
+                <UserAvatar
+                  name={selectedTicket.createdByName}
+                  avatarUrl={createdByAvatarUrl}
+                  size="lg"
+                  className="h-10 w-10 shrink-0 border-2 border-white shadow-sm"
+                  fallbackClassName="bg-[#DE5532]/20 text-[#DE5532]"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Solicitante</p>
+                  <p className="text-sm font-medium text-[#2C2D2F] truncate">{selectedTicket.createdByName}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
+                <UserAvatar
+                  name={assignedUserName || undefined}
+                  avatarUrl={assignedUser?.avatarUrl}
+                  size="lg"
+                  className="h-10 w-10 shrink-0 border-2 border-white shadow-sm"
+                  fallbackClassName="bg-[#F69F19]/20 text-[#F69F19]"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Atribuído</p>
+                  <p className="text-sm font-medium text-[#2C2D2F] truncate">{assignedUserName || 'Não atribuído'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
+                <div className="p-1.5 rounded-lg bg-white border border-slate-200 shrink-0">
+                  <Calendar className="h-4 w-4 text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Criado em</p>
+                  <p className="text-sm font-medium text-[#2C2D2F]">{formatDate(selectedTicket.createdAt)} às {formatTime(selectedTicket.createdAt)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
+                <div className="p-1.5 rounded-lg bg-white border border-slate-200 shrink-0">
+                  <Tag className="h-4 w-4 text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Categoria</p>
+                  <p className="text-sm font-medium text-[#2C2D2F] truncate">
+                    {getCategoryLabel(selectedTicket.category || 'outros')}
+                    {selectedTicket.subcategory && ` / ${getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-[#F69F19]/5 border border-[#F69F19]/20 sm:col-span-2">
+                <div className="p-1.5 rounded-lg bg-[#F69F19]/10 shrink-0">
+                  <Clock className="h-4 w-4 text-[#F69F19]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-[#F69F19] uppercase tracking-wider">SLA Estimado</p>
+                  <p className="text-sm font-bold text-[#DE5532]">
+                    {(() => {
+                      const slaHours = getSlaHours(selectedTicket.category || 'outros', selectedTicket.subcategory || 'outros');
+                      return slaHours === 1 ? '1 hora' : `${slaHours} horas`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {selectedTicket.description && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent" />
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Descrição</p>
+                  <div className="h-px flex-1 bg-gradient-to-l from-slate-200 to-transparent" />
+                </div>
+                <div className="max-h-[220px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap break-words custom-scrollbar shadow-inner">
+                  {selectedTicket.description}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Chat Messages */}
-      <ScrollArea className="flex-1 p-4 relative bg-slate-50/30" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+      <ScrollArea className="flex-1 min-h-0 p-4 relative bg-slate-50/30">
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 p-4 text-center">
             <div className="bg-slate-100 p-4 rounded-full mb-3">
@@ -846,12 +937,12 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
         </div>
       ) : (
         /* Ticket finalizado */
-        <div className="p-6 border-t border-slate-200 bg-slate-50/50">
-          <div className="flex flex-col items-center justify-center gap-3 text-slate-500 text-sm py-4">
-            <div className="p-3 bg-slate-100 rounded-full">
-              <Lock className="h-5 w-5 text-slate-400" />
+        <div className="flex-shrink-0 px-4 py-3 border-t border-slate-200 bg-slate-50/50">
+          <div className="flex flex-row items-center justify-center gap-2 text-slate-500 text-xs">
+            <div className="p-1.5 bg-slate-100 rounded-full">
+              <Lock className="h-3.5 w-3.5 text-slate-400" />
             </div>
-            <span className="font-medium">Atendimento finalizado</span>
+            <span>Atendimento finalizado</span>
           </div>
           
           {/* Mostrar botão de feedback se necessário */}

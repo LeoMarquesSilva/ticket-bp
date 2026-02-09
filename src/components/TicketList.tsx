@@ -21,22 +21,22 @@ const TicketList: React.FC<TicketListProps> = ({
 
   if (isTotalEmpty || isFilteredEmpty) {
     return (
-      <div className="h-full w-full flex flex-col items-center justify-center p-8 bg-slate-50/50">
-        <div className="flex flex-col items-center justify-center text-center max-w-sm animate-in fade-in zoom-in duration-300">
-          <div className="h-20 w-20 bg-white rounded-full flex items-center justify-center shadow-sm mb-4 border border-slate-100">
+      <div className={`h-full w-full flex flex-col items-center justify-center bg-slate-50/50 ${isChatOpen ? 'p-4' : 'p-8'}`}>
+        <div className={`flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-300 ${isChatOpen ? 'max-w-[200px]' : 'max-w-sm'}`}>
+          <div className={`bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 ${isChatOpen ? 'h-14 w-14 mb-3' : 'h-20 w-20 mb-4'}`}>
             {isFilteredEmpty ? (
-              <SearchX className="h-10 w-10 text-slate-300" />
+              <SearchX className={isChatOpen ? 'h-7 w-7 text-slate-300' : 'h-10 w-10 text-slate-300'} />
             ) : (
-              <Inbox className="h-10 w-10 text-slate-300" />
+              <Inbox className={isChatOpen ? 'h-7 w-7 text-slate-300' : 'h-10 w-10 text-slate-300'} />
             )}
           </div>
-          <h3 className="text-lg font-semibold text-slate-700 mb-1">
-            {isFilteredEmpty ? 'Nenhum resultado encontrado' : 'Nenhum ticket por aqui'}
+          <h3 className={`font-semibold text-slate-700 mb-1 ${isChatOpen ? 'text-sm' : 'text-lg'}`}>
+            {isFilteredEmpty ? 'Nenhum resultado' : 'Nenhum ticket'}
           </h3>
-          <p className="text-sm text-slate-500">
+          <p className={isChatOpen ? 'text-xs text-slate-500' : 'text-sm text-slate-500'}>
             {isFilteredEmpty 
-              ? 'Tente ajustar seus filtros ou termos de busca para encontrar o que procura.'
-              : 'Não há tickets criados no momento. Quando houver, eles aparecerão aqui.'}
+              ? 'Ajuste os filtros de busca.'
+              : 'Não há tickets no momento.'}
           </p>
         </div>
       </div>
@@ -47,10 +47,10 @@ const TicketList: React.FC<TicketListProps> = ({
     <div className="h-full w-full overflow-y-auto bg-slate-50/50 custom-scrollbar">
       <div 
         className={`
-          p-4 md:p-6 grid gap-4 auto-rows-max animate-in fade-in slide-in-from-bottom-4 duration-500
+          grid auto-rows-max animate-in fade-in slide-in-from-bottom-4 duration-500
           ${isChatOpen 
-            ? 'grid-cols-2' // Se o chat estiver aberto, força 1 coluna
-            : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-1' // Se fechado, usa layout responsivo
+            ? 'p-2 gap-2 grid-cols-1' // Chat aberto: layout compacto para coluna estreita
+            : 'p-4 md:p-6 gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-1' // Chat fechado: layout responsivo
           }
         `}
       >

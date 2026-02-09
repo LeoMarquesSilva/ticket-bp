@@ -8,6 +8,7 @@ import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
 import { UserService } from '@/services/userService';
 import TicketHeader from '@/components/TicketHeader';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import TicketKanbanBoard from '@/components/TicketKanbanBoard';
 import TicketUserBoard from '@/components/TicketUserBoard';
 import TicketList from '@/components/TicketList';
@@ -1342,11 +1343,12 @@ const renderTicketCard = (ticket: Ticket) => {
       key={ticket.id}
       ticket={ticket}
       selectedTicketId={selectedTicket?.id}
-      unreadCount={unreadMessages[ticket.id] || 0} // Passar o contador
+      unreadCount={unreadMessages[ticket.id] || 0}
       onClick={() => openChat(ticket)}
       getPriorityColor={getPriorityColor}
       getStatusColor={getStatusColor}
       isTicketFinalized={isTicketFinalized}
+      compact={showChat}
     />
   );
 };
@@ -1447,71 +1449,164 @@ return (
 
         {/* Layout principal: lista de tickets + chat */}
         {!loading && (
-          <div className="flex w-full h-full">
-            {/* Lista de tickets - largura dinâmica baseada no estado do chat */}
-              <div className={`
-                border-r border-slate-200 bg-white
-                ${showChat 
-                  ? 'w-60 sm:w-64 md:w-72 lg:w-80 xl:w-96 flex-shrink-0' // Largura responsiva quando chat está aberto
-                  : 'flex-1 w-full' // Ocupa todo espaço quando chat está fechado
-                }
-              `}>
-              {view === 'list' && (
-                <TicketList
-                  filteredTickets={getFilteredTickets()}
-                  tickets={tickets}
-                  renderTicketCard={renderTicketCard}
-                />
+          <>
+            {/* Mobile: chat fullscreen quando aberto, lista fullscreen quando fechado */}
+            <div className="flex w-full h-full lg:hidden">
+              {!showChat && (
+                <div className="flex-1 flex flex-col min-w-0 border-r border-slate-200 bg-white">
+                  {view === 'list' && (
+                    <TicketList
+                      filteredTickets={getFilteredTickets()}
+                      tickets={tickets}
+                      renderTicketCard={renderTicketCard}
+                      isChatOpen={false}
+                    />
+                  )}
+                  {view === 'board' && (
+                    <TicketKanbanBoard
+                      ticketsByStatus={getTicketsByStatus()}
+                      renderTicketCard={renderTicketCard}
+                    />
+                  )}
+                  {view === 'users' && (
+                    <TicketUserBoard
+                      ticketsByUser={getTicketsByUser()}
+                      supportUsers={supportUsers}
+                      renderTicketCard={renderTicketCard}
+                      handleAssignTicket={has('assign_ticket') ? handleAssignTicket : undefined}
+                    />
+                  )}
+                </div>
               )}
-              {view === 'board' && (
-                <TicketKanbanBoard
-                  ticketsByStatus={getTicketsByStatus()}
-                  renderTicketCard={renderTicketCard}
-                />
-              )}
-              {view === 'users' && (
-                <TicketUserBoard
-                  ticketsByUser={getTicketsByUser()}
-                  supportUsers={supportUsers}
-                  renderTicketCard={renderTicketCard}
-                  handleAssignTicket={has('assign_ticket') ? handleAssignTicket : undefined}
-                />
+              {showChat && selectedTicket && (
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                  <TicketChatPanel
+                    selectedTicket={selectedTicket}
+                    chatMessages={chatMessages}
+                    user={user}
+                    sending={sending}
+                    newMessage={newMessage}
+                    setNewMessage={setNewMessage}
+                    uploadingFiles={uploadingFiles}
+                    handleFileUpload={handleFileUpload}
+                    removeUploadingFile={removeUploadingFile}
+                    sendMessage={sendMessage}
+                    handleKeyPress={handleKeyPress}
+                    closeChat={closeChat}
+                    handleDeleteTicket={has('delete_ticket') ? handleDeleteTicket : undefined}
+                    handleUpdateTicket={handleUpdateTicket}
+                    isTicketFinalized={isTicketFinalized}
+                    messagesEndRef={messagesEndRef}
+                    markMessagesAsRead={markMessagesAsRead}
+                    setShowImagePreview={setShowImagePreview}
+                    typingUsers={typingUsers}
+                    handleTyping={handleTyping}
+                    supportUsers={supportUsers}
+                    handleAssignTicket={handleAssignTicket}
+                    canAssignTicket={has('assign_ticket')}
+                    canDeleteTicket={has('delete_ticket')}
+                    canFinishTicket={has('finish_ticket')}
+                  />
+                </div>
               )}
             </div>
 
-            {/* Painel de chat - ocupa o espaço restante quando aberto */}
-            {showChat && selectedTicket && (
-              <div className="flex-1 overflow-hidden">
-                <TicketChatPanel
-                  selectedTicket={selectedTicket}
-                  chatMessages={chatMessages}
-                  user={user}
-                  sending={sending}
-                  newMessage={newMessage}
-                  setNewMessage={setNewMessage}
-                  uploadingFiles={uploadingFiles}
-                  handleFileUpload={handleFileUpload}
-                  removeUploadingFile={removeUploadingFile}
-                  sendMessage={sendMessage}
-                  handleKeyPress={handleKeyPress}
-                  closeChat={closeChat}
-                  handleDeleteTicket={has('delete_ticket') ? handleDeleteTicket : undefined}
-                  handleUpdateTicket={handleUpdateTicket}
-                  isTicketFinalized={isTicketFinalized}
-                  messagesEndRef={messagesEndRef}
-                  markMessagesAsRead={markMessagesAsRead}
-                  setShowImagePreview={setShowImagePreview}
-                  typingUsers={typingUsers}
-                  handleTyping={handleTyping}
-                  supportUsers={supportUsers}
-                  handleAssignTicket={handleAssignTicket}
-                  canAssignTicket={has('assign_ticket')}
-                  canDeleteTicket={has('delete_ticket')}
-                  canFinishTicket={has('finish_ticket')}
-                />
-              </div>
-            )}
-          </div>
+            {/* Desktop (lg+): painel redimensionável ou lista única */}
+            <div className="hidden lg:flex w-full h-full">
+              {!showChat ? (
+                <div className="flex-1 flex flex-col min-w-0 border-r border-slate-200 bg-white">
+                  {view === 'list' && (
+                    <TicketList
+                      filteredTickets={getFilteredTickets()}
+                      tickets={tickets}
+                      renderTicketCard={renderTicketCard}
+                      isChatOpen={false}
+                    />
+                  )}
+                  {view === 'board' && (
+                    <TicketKanbanBoard
+                      ticketsByStatus={getTicketsByStatus()}
+                      renderTicketCard={renderTicketCard}
+                    />
+                  )}
+                  {view === 'users' && (
+                    <TicketUserBoard
+                      ticketsByUser={getTicketsByUser()}
+                      supportUsers={supportUsers}
+                      renderTicketCard={renderTicketCard}
+                      handleAssignTicket={has('assign_ticket') ? handleAssignTicket : undefined}
+                    />
+                  )}
+                </div>
+              ) : (
+                <ResizablePanelGroup direction="horizontal" className="w-full">
+                  <ResizablePanel
+                    defaultSize={28}
+                    minSize={20}
+                    maxSize={40}
+                    className="flex flex-col min-w-[280px]"
+                  >
+                    <div className="flex-1 flex flex-col min-h-0 border-r border-slate-200 bg-white">
+                      {view === 'list' && (
+                        <TicketList
+                          filteredTickets={getFilteredTickets()}
+                          tickets={tickets}
+                          renderTicketCard={renderTicketCard}
+                          isChatOpen={true}
+                        />
+                      )}
+                      {view === 'board' && (
+                        <TicketKanbanBoard
+                          ticketsByStatus={getTicketsByStatus()}
+                          renderTicketCard={renderTicketCard}
+                        />
+                      )}
+                      {view === 'users' && (
+                        <TicketUserBoard
+                          ticketsByUser={getTicketsByUser()}
+                          supportUsers={supportUsers}
+                          renderTicketCard={renderTicketCard}
+                          handleAssignTicket={has('assign_ticket') ? handleAssignTicket : undefined}
+                        />
+                      )}
+                    </div>
+                  </ResizablePanel>
+                  <ResizableHandle withHandle className="bg-slate-200 hover:bg-[#F69F19]/30 transition-colors" />
+                  <ResizablePanel defaultSize={72} minSize={50} className="min-w-0 overflow-hidden">
+                    {selectedTicket && (
+                      <TicketChatPanel
+                        selectedTicket={selectedTicket}
+                        chatMessages={chatMessages}
+                        user={user}
+                        sending={sending}
+                        newMessage={newMessage}
+                        setNewMessage={setNewMessage}
+                        uploadingFiles={uploadingFiles}
+                        handleFileUpload={handleFileUpload}
+                        removeUploadingFile={removeUploadingFile}
+                        sendMessage={sendMessage}
+                        handleKeyPress={handleKeyPress}
+                        closeChat={closeChat}
+                        handleDeleteTicket={has('delete_ticket') ? handleDeleteTicket : undefined}
+                        handleUpdateTicket={handleUpdateTicket}
+                        isTicketFinalized={isTicketFinalized}
+                        messagesEndRef={messagesEndRef}
+                        markMessagesAsRead={markMessagesAsRead}
+                        setShowImagePreview={setShowImagePreview}
+                        typingUsers={typingUsers}
+                        handleTyping={handleTyping}
+                        supportUsers={supportUsers}
+                        handleAssignTicket={handleAssignTicket}
+                        canAssignTicket={has('assign_ticket')}
+                        canDeleteTicket={has('delete_ticket')}
+                        canFinishTicket={has('finish_ticket')}
+                      />
+                    )}
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              )}
+            </div>
+          </>
         )}
     </div>
 

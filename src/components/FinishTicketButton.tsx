@@ -13,12 +13,14 @@ import { TicketService } from '@/services/ticketService';
 import { toast } from 'sonner';
 import NPSModal from './NPSModal';
 import { useAuth } from '@/contexts/AuthContext';
+import { cn } from '@/lib/utils';
 
 interface FinishTicketButtonProps {
   ticketId: string;
   ticketTitle: string;
   isSupport?: boolean;
   onTicketFinished?: () => void;
+  className?: string;
 }
 
 const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
@@ -26,6 +28,7 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
   ticketTitle,
   isSupport = false,
   onTicketFinished = () => {},
+  className,
 }) => {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isNPSModalOpen, setIsNPSModalOpen] = useState(false);
@@ -58,11 +61,11 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
     <>
       <Button
         onClick={() => setIsConfirmDialogOpen(true)}
-        className="bg-green-600 hover:bg-green-700 text-white"
+        className={cn("h-8 text-xs gap-1.5 bg-green-600 hover:bg-green-700 text-white", className)}
         size="sm"
       >
-        <CheckCircle className="h-4 w-4 mr-2" />
-        Finalizar Atendimento
+        <CheckCircle className="h-3.5 w-3.5" />
+        Finalizar
       </Button>
 
       {/* Diálogo de confirmação */}

@@ -14,6 +14,7 @@ interface SimpleTicketCardProps {
   getPriorityColor?: (priority: string) => string;
   getStatusColor?: (status: string) => string;
   isTicketFinalized?: (ticket: Ticket) => boolean;
+  compact?: boolean;
 }
 
 const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({ 
@@ -23,7 +24,8 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   onClick,
   getPriorityColor,
   getStatusColor,
-  isTicketFinalized
+  isTicketFinalized,
+  compact = false
 }) => {
   
   // Cores de Prioridade ajustadas para a nova paleta
@@ -137,11 +139,11 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
         <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#F69F19] rounded-l-lg"></div>
       )}
 
-      <CardHeader className="pb-2 pl-4 pr-4 pt-4">
-        <div className="flex items-start justify-between">
+      <CardHeader className={compact ? 'pb-1 pl-3 pr-3 pt-3' : 'pb-2 pl-4 pr-4 pt-4'}>
+        <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {getStatusIcon(ticket.status)}
-            <h4 className={`font-semibold text-sm truncate pr-2 ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
+            <h4 className={`font-semibold truncate pr-1 ${compact ? 'text-xs' : 'text-sm'} ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
               {ticket.title}
             </h4>
           </div>
@@ -156,13 +158,13 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
         </div>
       </CardHeader>
 
-      <CardContent className="pt-0 pl-4 pr-4 pb-4">
-        <div className="space-y-3">
-          <p className="text-slate-600 text-xs line-clamp-2 leading-relaxed">
+      <CardContent className={compact ? 'pt-0 pl-3 pr-3 pb-3' : 'pt-0 pl-4 pr-4 pb-4'}>
+        <div className={compact ? 'space-y-2' : 'space-y-3'}>
+          <p className={`text-slate-600 text-xs leading-relaxed ${compact ? 'line-clamp-1' : 'line-clamp-2'}`}>
             {ticket.description}
           </p>
           
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             <Badge className={`${statusColor} border text-[10px] font-medium px-2 py-0.5 shadow-sm`}>
               {getStatusLabel(ticket.status)}
             </Badge>
@@ -172,7 +174,7 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
             </Badge>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-100 mt-2">
+          <div className={`flex items-center justify-between text-[11px] text-slate-400 ${compact ? 'pt-0.5' : 'pt-1 border-t border-slate-100 mt-2'}`}>
             <div className="flex items-center gap-1.5 truncate max-w-[50%]">
               <User className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">{ticket.createdByName}</span>
@@ -183,7 +185,7 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
             </div>
           </div>
 
-          {ticket.assignedToName && (
+          {!compact && ticket.assignedToName && (
             <div className="flex items-center gap-1.5 text-[11px] text-[#F69F19] font-medium pt-0">
               <UserCheck className="h-3 w-3" />
               <span className="truncate">Atribuído: {ticket.assignedToName}</span>
