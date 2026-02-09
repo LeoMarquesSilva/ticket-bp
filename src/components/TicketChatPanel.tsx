@@ -570,9 +570,11 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               )}
             </div>
             {selectedTicket.description && (
-              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100 text-slate-700 whitespace-pre-wrap">
-                {selectedTicket.description}
-              </div>
+              <ScrollArea className="mt-3 h-[180px] rounded-lg border border-slate-100 bg-slate-50">
+                <div className="p-3 text-slate-700 text-sm whitespace-pre-wrap break-words pr-4">
+                  {selectedTicket.description}
+                </div>
+              </ScrollArea>
             )}
           </div>
         )}
