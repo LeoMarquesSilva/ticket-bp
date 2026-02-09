@@ -70,7 +70,7 @@ const RecentFeedbackCard: React.FC<RecentFeedbackCardProps> = ({
   
   return (
     <Card 
-      className={`cursor-pointer hover:shadow-md transition-shadow ${isLoading ? 'opacity-70' : ''}`}
+      className={`cursor-pointer hover:shadow-md hover:border-[#F69F19]/30 transition-all duration-200 border-slate-200 ${isLoading ? 'opacity-70' : ''}`}
       onClick={handleClick}
     >
       <CardContent className="p-4">

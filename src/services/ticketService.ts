@@ -183,6 +183,29 @@ const mapMessageFromDatabase = (data: any): ChatMessage => {
   };
 };
 
+async function enrichTicketsWithAvatars(tickets: Ticket[]): Promise<Ticket[]> {
+  const ids = new Set<string>();
+  tickets.forEach(t => {
+    if (t.assignedTo) ids.add(t.assignedTo);
+    if (t.createdBy) ids.add(t.createdBy);
+  });
+  if (ids.size === 0) return tickets;
+  const { data: usersData } = await supabase
+    .from(TABLES.USERS)
+    .select('id, avatar_url')
+    .in('id', Array.from(ids));
+  const map: Record<string, string> = {};
+  (usersData || []).forEach((u: { id: string; avatar_url?: string }) => {
+    if (u.avatar_url) map[u.id] = u.avatar_url;
+  });
+  return tickets.map(t => {
+    const copy = { ...t };
+    if (t.assignedTo && map[t.assignedTo]) copy.assignedToAvatarUrl = map[t.assignedTo];
+    if (t.createdBy && map[t.createdBy]) copy.createdByAvatarUrl = map[t.createdBy];
+    return copy;
+  });
+}
+
 export class TicketService {
   // Get tickets based on user role
 static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
@@ -193,11 +216,9 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
         .select('*')
         .order('created_at', { ascending: false });
 
-      // Filter based on user role
       if (userRole === 'user') {
         query = query.eq('created_by', userId);
       }
-      // For support and admin, show all tickets (no additional filter)
 
       const { data, error } = await query;
 
@@ -206,7 +227,8 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
         throw error;
       }
 
-      const tickets = data ? data.map(mapFromDatabase) : [];
+      let tickets = data ? data.map(mapFromDatabase) : [];
+      tickets = await enrichTicketsWithAvatars(tickets);
       
       return tickets;
     } catch (error) {
@@ -272,8 +294,8 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
         throw error;
       }
 
-      // Map database fields to frontend fields
-      const tickets = data ? data.map(mapFromDatabase) : [];
+      let tickets = data ? data.map(mapFromDatabase) : [];
+      tickets = await enrichTicketsWithAvatars(tickets);
       return tickets;
     } catch (error) {
       console.error('Error in getAllTickets:', error);

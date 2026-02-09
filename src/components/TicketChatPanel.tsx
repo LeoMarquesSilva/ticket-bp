@@ -424,11 +424,8 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden border-l border-slate-200 chat-container bg-white">
-      {/* Chat Header */}
-      <div 
-        className="relative border-b border-slate-200 z-10 shrink-0"
-        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(246,159,25,0.04) 50%, rgba(255,255,255,1) 100%)' }}
-      >
+      {/* Chat Header - mesmo estilo do header da página de tickets */}
+      <div className="flex-shrink-0 bg-[#F6F6F6] border-b border-[#F69F19]/20 shadow-sm z-10">
         <div className="px-4 py-3 flex items-center justify-between gap-4">
           {/* Lado esquerdo: voltar (mobile) + info do ticket */}
           <div className="flex items-center gap-3 min-w-0 flex-1">

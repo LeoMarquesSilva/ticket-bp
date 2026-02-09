@@ -79,6 +79,10 @@ export interface DashboardStats {
     ticketUrl: string;
     assignedToName: string;
     assignedToRole?: string;
+    assignedToAvatarUrl?: string;
+    createdByName?: string;
+    createdBy?: string;
+    createdByAvatarUrl?: string;
   }>;
   /** Tickets resolvidos aguardando feedback do solicitante (por usuário) */
   pendingFeedback: Array<{
@@ -733,28 +737,30 @@ async function processFeedbackFromTickets(tickets: any[]) {
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
   
-  // 3. Buscar nomes dos usuários para exibir quem atendeu (opcional, mas bom para contexto)
-  // Nota: Se você já tiver o 'assigned_to_name' no objeto ticket vindo do banco, isso pode ser simplificado.
-  const { data: supportUsers } = await supabase
-    .from(TABLES.USERS)
-    .select('id, name, role')
-    .in('role', ['support', 'lawyer']);
-  
-  const userMap = new Map();
-  if (supportUsers) {
-    supportUsers.forEach(user => {
-      userMap.set(user.id, { name: user.name, role: user.role });
+  // 3. Buscar usuários (atribuídos e criadores) com avatar
+  const assignedIds = [...new Set(sortedTickets.map(t => t.assigned_to).filter(Boolean))];
+  const createdIds = [...new Set(sortedTickets.map(t => t.created_by).filter(Boolean))];
+  const allUserIds = [...new Set([...assignedIds, ...createdIds])];
+  const userMap = new Map<string, { name: string; role?: string; avatarUrl?: string }>();
+  if (allUserIds.length > 0) {
+    const { data: usersData } = await supabase
+      .from(TABLES.USERS)
+      .select('id, name, role, avatar_url')
+      .in('id', allUserIds);
+    (usersData || []).forEach((u: { id: string; name: string; role?: string; avatar_url?: string }) => {
+      userMap.set(u.id, { name: u.name, role: u.role, avatarUrl: u.avatar_url || undefined });
     });
   }
   
-  // 4. Mapear TODOS os tickets encontrados (REMOVIDO O .slice(0, 20))
+  // 4. Mapear TODOS os tickets encontrados
   const feedbackItems = sortedTickets.map(ticket => {
     const assignedUser = userMap.get(ticket.assigned_to);
+    const createdUser = userMap.get(ticket.created_by);
     
     return {
       id: ticket.id,
       title: ticket.title || `Ticket #${ticket.id.substring(0, 8)}`,
-      npsScore: ticket.service_score, // Usar service_score como NPS
+      npsScore: ticket.service_score,
       serviceScore: ticket.service_score,
       requestFulfilled: ticket.request_fulfilled,
       notFulfilledReason: ticket.not_fulfilled_reason || null,
@@ -763,8 +769,10 @@ async function processFeedbackFromTickets(tickets: any[]) {
       ticketUrl: `/tickets/${ticket.id}`,
       assignedToName: ticket.assigned_to_name || (assignedUser ? assignedUser.name : 'Não atribuído'),
       assignedToRole: assignedUser ? assignedUser.role : undefined,
-      createdByName: ticket.created_by_name,
-      createdBy: ticket.created_by
+      assignedToAvatarUrl: assignedUser?.avatarUrl,
+      createdByName: ticket.created_by_name || (createdUser ? createdUser.name : 'Não informado'),
+      createdBy: ticket.created_by,
+      createdByAvatarUrl: createdUser?.avatarUrl
     };
   });
   

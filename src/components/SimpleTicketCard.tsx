@@ -1,7 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, User, Calendar, AlertCircle, CheckCircle, UserCheck, MessageSquare, ArrowUpCircle, MinusCircle } from 'lucide-react';
+import UserAvatar from '@/components/UserAvatar';
+import { Clock, Calendar, AlertCircle, CheckCircle, UserCheck, MessageSquare, ArrowUpCircle, MinusCircle } from 'lucide-react';
 import { Ticket, TicketStatus, TicketPriority } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -125,36 +126,45 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   return (
     <Card 
       className={`
-        group relative transition-all duration-200 cursor-pointer border
+        group relative transition-all duration-200 cursor-pointer border overflow-hidden
         ${isSelected 
-          ? 'border-[#F69F19] bg-[#F69F19]/5 shadow-md ring-1 ring-[#F69F19]/20' 
-          : 'border-slate-200 bg-white hover:border-[#F69F19]/50 hover:shadow-sm'
+          ? 'border-[#F69F19] bg-white shadow-lg ring-2 ring-[#F69F19]/25' 
+          : 'border-slate-200 bg-white hover:border-[#F69F19]/40 hover:shadow-md'
         }
-        ${isFinalized ? 'opacity-75 bg-slate-50' : ''}
+        ${isFinalized ? 'opacity-80' : ''}
       `}
       onClick={onClick}
     >
-      {/* Indicador lateral para itens selecionados */}
       {isSelected && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#F69F19] rounded-l-lg"></div>
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#F69F19]" />
       )}
 
-      <CardHeader className={compact ? 'pb-1 pl-3 pr-3 pt-3' : 'pb-2 pl-4 pr-4 pt-4'}>
-        <div className="flex items-start justify-between gap-2">
+      <CardHeader className={compact ? 'pb-1 pl-3 pr-3 pt-3' : 'pb-3 pl-4 pr-4 pt-4'}>
+        <div className="flex items-start gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {getStatusIcon(ticket.status)}
-            <h4 className={`font-semibold truncate pr-1 ${compact ? 'text-xs' : 'text-sm'} ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
-              {ticket.title}
-            </h4>
+            <UserAvatar
+              name={ticket.createdByName}
+              avatarUrl={ticket.createdByAvatarUrl}
+              size={compact ? 'sm' : 'md'}
+              className="shrink-0 border-2 border-white shadow-sm"
+              fallbackClassName="bg-[#DE5532]/15 text-[#DE5532]"
+            />
+            <div className="min-w-0 flex-1">
+              <h4 className={`font-semibold truncate ${compact ? 'text-xs' : 'text-sm'} ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
+                {ticket.title}
+              </h4>
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">{ticket.createdByName}</p>
+            </div>
           </div>
-          {unreadCount > 0 && (
-            <div className="flex items-center gap-1 flex-shrink-0 animate-in zoom-in duration-300">
-              <Badge className="bg-[#DE5532] text-white text-[10px] px-1.5 py-0.5 h-5 flex items-center justify-center shadow-sm border-0">
-                <MessageSquare className="h-3 w-3 mr-1 fill-current opacity-70" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            {unreadCount > 0 && (
+              <Badge className="bg-[#DE5532] text-white text-[10px] px-1.5 py-0 h-5 flex items-center shadow-sm border-0">
+                <MessageSquare className="h-3 w-3 mr-1 fill-current opacity-80" />
                 {unreadCount > 99 ? '99+' : unreadCount}
               </Badge>
-            </div>
-          )}
+            )}
+            <div className="text-slate-400">{getStatusIcon(ticket.status)}</div>
+          </div>
         </div>
       </CardHeader>
 
@@ -165,32 +175,35 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
           </p>
           
           <div className="flex flex-wrap gap-1.5">
-            <Badge className={`${statusColor} border text-[10px] font-medium px-2 py-0.5 shadow-sm`}>
+            <Badge variant="secondary" className={`${statusColor} border text-[10px] font-medium px-2 py-0`}>
               {getStatusLabel(ticket.status)}
             </Badge>
-            <Badge className={`${priorityColor} border text-[10px] font-medium px-2 py-0.5 shadow-sm flex items-center`}>
+            <Badge variant="secondary" className={`${priorityColor} border text-[10px] font-medium px-2 py-0 flex items-center`}>
               {getPriorityIcon(ticket.priority)}
               {getPriorityLabel(ticket.priority)}
             </Badge>
           </div>
 
-          <div className={`flex items-center justify-between text-[11px] text-slate-400 ${compact ? 'pt-0.5' : 'pt-1 border-t border-slate-100 mt-2'}`}>
-            <div className="flex items-center gap-1.5 truncate max-w-[50%]">
-              <User className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">{ticket.createdByName}</span>
-            </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            {ticket.assignedToName ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <UserAvatar
+                  name={ticket.assignedToName}
+                  avatarUrl={ticket.assignedToAvatarUrl}
+                  size="sm"
+                  className="h-6 w-6 shrink-0 border border-white"
+                  fallbackClassName="bg-[#F69F19]/20 text-[#F69F19] text-[9px]"
+                />
+                <span className="text-[11px] text-slate-500 truncate">Atribuído: {ticket.assignedToName}</span>
+              </div>
+            ) : (
+              <span className="text-[11px] text-slate-400 italic">Não atribuído</span>
+            )}
+            <div className="flex items-center gap-1 text-[11px] text-slate-400 flex-shrink-0">
               <Calendar className="h-3 w-3" />
-              <span>{formatDate(ticket.createdAt)}</span>
+              {formatDate(ticket.createdAt)}
             </div>
           </div>
-
-          {!compact && ticket.assignedToName && (
-            <div className="flex items-center gap-1.5 text-[11px] text-[#F69F19] font-medium pt-0">
-              <UserCheck className="h-3 w-3" />
-              <span className="truncate">Atribuído: {ticket.assignedToName}</span>
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>

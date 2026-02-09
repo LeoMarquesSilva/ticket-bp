@@ -100,6 +100,10 @@ const Dashboard = () => {
   const [sortColumn, setSortColumn] = useState<'nps' | 'requestFulfilled' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
+  // Filtros rápidos da tabela de avaliações
+  const [npsFilter, setNpsFilter] = useState<'all' | 'promoter' | 'passive' | 'detractor'>('all');
+  const [fulfilledFilter, setFulfilledFilter] = useState<'all' | 'fulfilled' | 'notFulfilled'>('all');
+  
   // Estado para controlar quais comentários estão expandidos
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   
@@ -128,13 +132,36 @@ const Dashboard = () => {
     }
   };
   
-  // Função para ordenar os feedbacks
-  const getSortedFeedback = () => {
-    if (!stats.recentFeedback || !sortColumn) {
-      return stats.recentFeedback || [];
+  // Função para filtrar e ordenar os feedbacks
+  const getFilteredAndSortedFeedback = () => {
+    if (!stats.recentFeedback) return [];
+    
+    let filtered = [...stats.recentFeedback];
+    
+    // Filtro NPS: promotor (9-10), neutro (7-8), detrator (0-6)
+    if (npsFilter !== 'all') {
+      filtered = filtered.filter((a: any) => {
+        const score = a.npsScore;
+        if (score == null || score === undefined) return false;
+        if (npsFilter === 'promoter') return score >= 9;
+        if (npsFilter === 'passive') return score >= 7 && score <= 8;
+        if (npsFilter === 'detractor') return score <= 6;
+        return true;
+      });
     }
     
-    const sorted = [...stats.recentFeedback].sort((a, b) => {
+    // Filtro solicitação atendida
+    if (fulfilledFilter !== 'all') {
+      filtered = filtered.filter((a: any) => {
+        if (fulfilledFilter === 'fulfilled') return a.requestFulfilled === true;
+        if (fulfilledFilter === 'notFulfilled') return a.requestFulfilled === false;
+        return true;
+      });
+    }
+    
+    if (!sortColumn) return filtered;
+    
+    const sorted = [...filtered].sort((a, b) => {
       if (sortColumn === 'nps') {
         const aVal = a.npsScore ?? -1; // -1 para colocar valores nulos no final
         const bVal = b.npsScore ?? -1;
@@ -996,14 +1023,82 @@ const Dashboard = () => {
             {/* === TABELA DE DETALHAMENTO DAS AVALIAÇÕES === */}
             <Card className="border-slate-200 shadow-sm mt-6">
               <CardHeader className="border-b border-slate-100 bg-slate-50/50">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg font-bold text-[#2C2D2F]">Detalhamento das Avaliações</CardTitle>
-                    <CardDescription>Lista de tickets avaliados no período e suas respectivas notas</CardDescription>
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg font-bold text-[#2C2D2F]">Detalhamento das Avaliações</CardTitle>
+                      <CardDescription>Lista de tickets avaliados no período e suas respectivas notas</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="bg-white shrink-0">
+                      {getFilteredAndSortedFeedback().length} de {stats.recentFeedback?.length || 0} avaliações
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="bg-white">
-                    {stats.recentFeedback?.length || 0} avaliações
-                  </Badge>
+                  {/* Filtros rápidos */}
+                  <div className="flex flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium text-slate-500 mr-1">NPS:</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`h-7 text-xs ${npsFilter === 'all' ? 'bg-slate-200 border-slate-300' : ''}`}
+                        onClick={() => setNpsFilter('all')}
+                      >
+                        Todos
+                      </Button>
+                      <Button
+                        variant={npsFilter === 'promoter' ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs ${npsFilter === 'promoter' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                        onClick={() => setNpsFilter('promoter')}
+                      >
+                        Promotores
+                      </Button>
+                      <Button
+                        variant={npsFilter === 'passive' ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs ${npsFilter === 'passive' ? 'bg-yellow-500 hover:bg-yellow-600' : ''}`}
+                        onClick={() => setNpsFilter('passive')}
+                      >
+                        Neutros
+                      </Button>
+                      <Button
+                        variant={npsFilter === 'detractor' ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs ${npsFilter === 'detractor' ? 'bg-red-600 hover:bg-red-700' : ''}`}
+                        onClick={() => setNpsFilter('detractor')}
+                      >
+                        Detratores
+                      </Button>
+                    </div>
+                    <div className="h-4 w-px bg-slate-200" />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium text-slate-500 mr-1">Atendimento:</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`h-7 text-xs ${fulfilledFilter === 'all' ? 'bg-slate-200 border-slate-300' : ''}`}
+                        onClick={() => setFulfilledFilter('all')}
+                      >
+                        Todos
+                      </Button>
+                      <Button
+                        variant={fulfilledFilter === 'fulfilled' ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs ${fulfilledFilter === 'fulfilled' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                        onClick={() => setFulfilledFilter('fulfilled')}
+                      >
+                        Atendidas
+                      </Button>
+                      <Button
+                        variant={fulfilledFilter === 'notFulfilled' ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs ${fulfilledFilter === 'notFulfilled' ? 'bg-red-600 hover:bg-red-700' : ''}`}
+                        onClick={() => setFulfilledFilter('notFulfilled')}
+                      >
+                        Não atendidas
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
@@ -1050,19 +1145,22 @@ const Dashboard = () => {
                           </button>
                         </TableHead>
                         <TableHead>Comentário</TableHead>
-                        <TableHead className="text-right">Ver Conversa</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {(!stats.recentFeedback || stats.recentFeedback.length === 0) ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="h-24 text-center text-slate-500">
+                          <TableCell colSpan={7} className="h-24 text-center text-slate-500">
                             Nenhuma avaliação encontrada neste período.
                           </TableCell>
                         </TableRow>
                       ) : (
-                        getSortedFeedback().map((feedback: any) => (
-                          <TableRow key={feedback.id} className="hover:bg-slate-50/50">
+                        getFilteredAndSortedFeedback().map((feedback: any) => (
+                          <TableRow
+                            key={feedback.id}
+                            className="hover:bg-slate-50/50 cursor-pointer transition-colors"
+                            onClick={() => handleOpenChat(feedback)}
+                          >
                             <TableCell>
                               <div className="flex flex-col">
                                 <span className="font-medium text-[#2C2D2F] truncate max-w-[280px]" title={feedback.title}>
@@ -1075,10 +1173,28 @@ const Dashboard = () => {
                               {formatDate(feedback.resolvedAt)}
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm text-slate-700">{feedback.createdByName || 'Não informado'}</span>
+                              <div className="flex items-center gap-2">
+                                <UserAvatar
+                                  name={feedback.createdByName || 'Não informado'}
+                                  avatarUrl={feedback.createdByAvatarUrl}
+                                  size="sm"
+                                  className="h-7 w-7 shrink-0"
+                                  fallbackClassName="bg-[#DE5532]/15 text-[#DE5532] text-xs"
+                                />
+                                <span className="text-sm text-slate-700 truncate">{feedback.createdByName || 'Não informado'}</span>
+                              </div>
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm text-slate-700">{feedback.assignedToName || 'Não atribuído'}</span>
+                              <div className="flex items-center gap-2">
+                                <UserAvatar
+                                  name={feedback.assignedToName || 'Não atribuído'}
+                                  avatarUrl={feedback.assignedToAvatarUrl}
+                                  size="sm"
+                                  className="h-7 w-7 shrink-0"
+                                  fallbackClassName="bg-[#F69F19]/15 text-[#F69F19] text-xs"
+                                />
+                                <span className="text-sm text-slate-700 truncate">{feedback.assignedToName || 'Não atribuído'}</span>
+                              </div>
                             </TableCell>
                             <TableCell className="text-center">
                               {feedback.npsScore !== undefined && feedback.npsScore !== null ? (
@@ -1183,17 +1299,6 @@ const Dashboard = () => {
                                 return <span className="text-xs text-slate-300 italic">Sem comentário</span>;
                               })()}
                             </TableCell>
-                            <TableCell className="text-right">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => handleOpenChat(feedback)}
-                                className="h-8 w-8 p-0 text-[#2C2D2F] hover:text-[#F69F19] hover:bg-slate-100"
-                                title="Ver Histórico da Conversa"
-                              >
-                                <MessageSquare className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
                           </TableRow>
                         ))
                       )}
@@ -1242,6 +1347,7 @@ const Dashboard = () => {
                         <TableRow className="bg-slate-50/80">
                           <TableHead className="font-semibold">Solicitante</TableHead>
                           <TableHead className="font-semibold">Atendente</TableHead>
+                          <TableHead className="font-semibold">Concluído em</TableHead>
                           <TableHead className="font-semibold text-center">Tickets pendentes</TableHead>
                           <TableHead className="font-semibold">Detalhes</TableHead>
                           <TableHead className="text-right font-semibold">Ações</TableHead>
@@ -1271,6 +1377,13 @@ const Dashboard = () => {
                               <span className="text-sm text-slate-700">
                                 {entry.tickets[0]?.assignedToName || 'Não atribuído'}
                               </span>
+                            </TableCell>
+                            <TableCell className="text-slate-600 text-sm whitespace-nowrap">
+                              {entry.tickets[0]?.resolvedAt ? (
+                                format(new Date(entry.tickets[0].resolvedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge variant="secondary" className="bg-amber-100 text-amber-800">

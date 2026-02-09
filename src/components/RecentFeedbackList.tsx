@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useAuth } from '@/contexts/AuthContext';
 import { TicketService } from '@/services/ticketService';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, ChevronDown, ChevronUp, Tag, Clock, Calendar } from 'lucide-react';
+import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, ChevronDown, ChevronUp, Tag, Clock, Calendar, HelpCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
@@ -76,16 +76,9 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
       
       // Processar cada feedback
       if (feedbackItems && feedbackItems.length > 0) {
-        console.log("Feedbacks recebidos:", feedbackItems);
-        
         feedbackItems.forEach(feedback => {
-          console.log("Processando feedback:", feedback.id, feedback.title);
-          console.log("Nome do atendente (assignedToName):", feedback.assignedToName);
-          
-          // Se o feedback tem um nome de atendente
           if (feedback.assignedToName && feedback.assignedToName.trim() !== '') {
             const attendantName = feedback.assignedToName.trim();
-            console.log("✅ Atribuindo ao atendente:", attendantName);
             
             // Adicionar o nome do atendente ao set de atendentes únicos
             uniqueAttendants.add(attendantName);
@@ -98,8 +91,6 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
             // Adicionar o feedback à lista do atendente
             feedbackMap[attendantName].push(feedback);
           } else {
-            // Se não tem atendente atribuído, vai para não atribuídos
-            console.log("❌ Sem atendente atribuído, indo para 'não atribuídos'");
             feedbackMap.unassigned.push(feedback);
           }
         });
@@ -112,10 +103,6 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
       setFeedbacksByAttendant(feedbackMap);
       setAttendants(sortedAttendants);
       setIsProcessing(false);
-      
-      // Log para depuração
-      console.log('Atendentes encontrados:', sortedAttendants);
-      console.log('Feedbacks por atendente:', feedbackMap);
     };
     
     processFeedbacks();
@@ -423,36 +410,50 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <MessageSquare className="h-5 w-5 text-[#F69F19]" />
-            Feedbacks por Atendente
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-3 text-lg">
+            <div className="p-2 rounded-lg bg-[#F69F19]/10">
+              <MessageSquare className="h-5 w-5 text-[#F69F19]" />
+            </div>
+            <div>
+              <span>Feedbacks por Atendente</span>
+              <p className="text-sm font-normal text-slate-500 mt-0.5">Avaliações agrupadas por responsável</p>
+            </div>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 pt-0">
           <div className="h-full w-full flex flex-col">
             {/* Container principal com rolagem horizontal */}
             <div className="flex-1 overflow-x-auto">
               {/* Este div define a largura mínima do conteúdo para garantir que as colunas não fiquem muito apertadas */}
-              <div className="flex p-4 gap-4 h-full">
+              <div className="flex p-4 gap-5 h-full">
                 {/* Coluna: Não atribuídos */}
-                <div className="flex-shrink-0 flex flex-col h-full w-[250px]">
-                  <div className="bg-slate-100 p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-slate-600" />
-                      <h3 className="font-medium text-slate-700">Não Atribuídos</h3>
+                <div className="flex-shrink-0 flex flex-col h-full w-[260px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="bg-slate-100 p-3 rounded-t-lg flex items-center justify-between border-b border-slate-200 sticky top-0 z-10">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200">
+                        <HelpCircle className="h-4 w-4 text-slate-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-slate-700 text-sm">Não Atribuídos</h3>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider">Atendimento</p>
+                      </div>
                     </div>
-                    <Badge className="bg-slate-200 text-slate-800 border-slate-300">
+                    <Badge variant="secondary" className="bg-slate-200 text-slate-800 border-slate-300 font-bold">
                       {feedbacksByAttendant['unassigned']?.length || 0}
                     </Badge>
                   </div>
                   
-                  <div className="flex-1 p-2 overflow-y-auto rounded-b-md bg-slate-50/30 max-h-[500px]">
+                  <div className="flex-1 p-3 overflow-y-auto bg-slate-50/50 max-h-[500px] custom-scrollbar">
                     <div className="space-y-2 pb-1">
                       {!feedbacksByAttendant['unassigned'] || feedbacksByAttendant['unassigned'].length === 0 ? (
-                        <div className="text-center py-8 text-sm text-slate-500">
-                          Nenhum feedback não atribuído
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <div className="rounded-full bg-slate-100 p-3 mb-2">
+                            <HelpCircle className="h-6 w-6 text-slate-400" />
+                          </div>
+                          <p className="text-sm text-slate-500 font-medium">Nenhum feedback</p>
+                          <p className="text-xs text-slate-400 mt-0.5">não atribuído</p>
                         </div>
                       ) : (
                         feedbacksByAttendant['unassigned'].map((feedback) => (
@@ -482,32 +483,46 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                      feedback.comment)
                   );
                   
+                  const attendantAvatarUrl = firstFeedback?.assignedToAvatarUrl;
+                  
                   return (
-                    <div key={attendantName} className="flex-shrink-0 flex flex-col h-full w-[250px]">
-                      <div className={`${styles.headerBg} p-2 rounded-t-md flex items-center justify-between sticky top-0 z-10`}>
-                        <div className="flex items-center gap-2">
-                          {styles.icon}
-                          <div>
-                            <div className="flex items-center gap-1">
-                              <h3 className={`font-medium text-sm truncate max-w-[120px] ${styles.headerText}`}>
-                                {attendantName}
-                              </h3>
-                            </div>
-                            <span className="text-xs text-slate-500">
+                    <div key={attendantName} className="flex-shrink-0 flex flex-col h-full w-[260px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                      <div className={`${styles.headerBg} p-3 rounded-t-lg flex items-center justify-between border-b border-slate-200/50 sticky top-0 z-10`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <UserAvatar
+                            name={attendantName}
+                            avatarUrl={attendantAvatarUrl}
+                            size="md"
+                            className="h-9 w-9 shrink-0 border-2 border-white shadow-sm"
+                            fallbackClassName={
+                              role === 'lawyer' ? 'bg-[#DE5532]/20 text-[#DE5532]' :
+                              role === 'support' ? 'bg-[#F69F19]/20 text-[#F69F19]' :
+                              'bg-[#2C2D2F]/10 text-[#2C2D2F]'
+                            }
+                          />
+                          <div className="min-w-0 flex-1">
+                            <h3 className={`font-semibold text-sm truncate ${styles.headerText}`}>
+                              {attendantName}
+                            </h3>
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wider">
                               {styles.roleText}
                             </span>
                           </div>
                         </div>
-                        <Badge className={styles.badge}>
+                        <Badge variant="secondary" className={`${styles.badge} font-bold shrink-0`}>
                           {hasRealFeedbacks ? attendantFeedbacks.filter(f => f.id.indexOf('empty-') !== 0).length : 0}
                         </Badge>
                       </div>
                       
-                      <div className={`flex-1 p-2 overflow-y-auto rounded-b-md ${styles.contentBg} max-h-[500px]`}>
+                      <div className={`flex-1 p-3 overflow-y-auto ${styles.contentBg} max-h-[500px] custom-scrollbar`}>
                         <div className="space-y-2 pb-1">
                           {!hasRealFeedbacks ? (
-                            <div className="text-center py-8 text-sm text-slate-500">
-                              Nenhum feedback atribuído
+                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                              <div className="rounded-full bg-slate-100 p-3 mb-2">
+                                <MessageSquare className="h-6 w-6 text-slate-400" />
+                              </div>
+                              <p className="text-sm text-slate-500 font-medium">Nenhum feedback</p>
+                              <p className="text-xs text-slate-400 mt-0.5">atribuído ainda</p>
                             </div>
                           ) : (
                             attendantFeedbacks.map((feedback) => {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
+import UserAvatar from '@/components/UserAvatar';
 import { User, UserCircle, Shield, Briefcase, HelpCircle } from 'lucide-react';
 import { Ticket } from '@/types';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -9,6 +10,7 @@ interface SupportUser {
   name: string;
   role: string;
   isOnline?: boolean;
+  avatarUrl?: string;
 }
 
 interface TicketUserBoardProps {
@@ -156,11 +158,15 @@ const TicketUserBoard: React.FC<TicketUserBoardProps> = ({
               return (
                 <div key={supportUser.id} className={`flex-shrink-0 flex flex-col h-full w-[280px] rounded-lg border border-slate-200 ${styles.bgBody}`}>
                   <div className={`bg-white p-3 rounded-t-lg border-b border-slate-200 border-t-4 ${styles.borderTop} flex items-center justify-between sticky top-0 z-10 shadow-sm`}>
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <div className={`p-1.5 rounded-md ${styles.bgHeader}`}>
-                        {styles.icon}
-                      </div>
-                      <div className="min-w-0">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <UserAvatar
+                        name={supportUser.name}
+                        avatarUrl={supportUser.avatarUrl}
+                        size="md"
+                        className="h-9 w-9 shrink-0 border-2 border-white shadow-sm"
+                        fallbackClassName={`${styles.bgHeader} ${styles.textHeader}`}
+                      />
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <h3 className={`font-bold text-sm truncate ${styles.textHeader}`}>
                             {supportUser.name}
