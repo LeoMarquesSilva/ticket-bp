@@ -20,6 +20,7 @@ export const TABLES = {
   ROLES: 'app_c009c0e4f1_roles',
   ROLE_PERMISSIONS: 'app_c009c0e4f1_role_permissions',
   DEPARTMENTS: 'app_c009c0e4f1_departments',
+  PUSH_SUBSCRIPTIONS: 'app_c009c0e4f1_push_subscriptions',
 };
 
 // Database types

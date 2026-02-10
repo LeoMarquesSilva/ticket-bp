@@ -6,13 +6,21 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { User, Lock, Mail, Calendar, Shield, Key, LayoutGrid, List, Users, ImagePlus, RefreshCw } from 'lucide-react';
+import { User, Lock, Mail, Calendar, Shield, Key, LayoutGrid, List, Users, ImagePlus, RefreshCw, Bell, BellOff } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import UserAvatar from '@/components/UserAvatar';
 import AvatarCropModal from '@/components/AvatarCropModal';
 import { UserService } from '@/services/userService';
 import { AvatarService } from '@/services/avatarService';
 import { toast } from 'sonner';
+import {
+  isPushSupported,
+  getNotificationPermission,
+  registerServiceWorker,
+  subscribeUserToPush,
+  unsubscribeUserFromPush,
+} from '@/services/pushService';
+import { supabase, TABLES } from '@/lib/supabase';
 
 const Profile: React.FC = () => {
   const { user, refreshUserProfile } = useAuth();
@@ -24,6 +32,8 @@ const Profile: React.FC = () => {
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [cropImageFile, setCropImageFile] = useState<File | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
+  const [pushLoading, setPushLoading] = useState(false);
   
   // Carregar preferência e avatar atual do usuário
   useEffect(() => {
@@ -34,6 +44,20 @@ const Profile: React.FC = () => {
       setAvatarUrlInput(user.avatarUrl ?? '');
     }
   }, [user?.ticketViewPreference, user?.avatarUrl]);
+
+  // Verificar se o usuário já tem inscrição de push
+  useEffect(() => {
+    if (!user?.id || !isPushSupported()) return;
+    const check = async () => {
+      const { data } = await supabase
+        .from(TABLES.PUSH_SUBSCRIPTIONS)
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setPushEnabled(!!data);
+    };
+    check();
+  }, [user?.id]);
   
   // Salvar preferência de visualização
   const handleViewPreferenceChange = async (newPreference: 'list' | 'board' | 'users') => {
@@ -118,6 +142,33 @@ const Profile: React.FC = () => {
   const handlePasswordChangeSuccess = () => {
     setShowPasswordModal(false);
     toast.success('Senha alterada com sucesso!');
+  };
+
+  const handleTogglePush = async (enable: boolean) => {
+    if (!user?.id) return;
+    setPushLoading(true);
+    try {
+      if (enable) {
+        await registerServiceWorker();
+        const result = await subscribeUserToPush(user.id);
+        if (result.ok) {
+          setPushEnabled(true);
+          toast.success('Notificações push ativadas. Você receberá avisos mesmo com a aba fechada.');
+        } else {
+          toast.error(result.error || 'Não foi possível ativar.');
+        }
+      } else {
+        const result = await unsubscribeUserFromPush(user.id);
+        if (result.ok) {
+          setPushEnabled(false);
+          toast.success('Notificações push desativadas.');
+        } else {
+          toast.error(result.error || 'Não foi possível desativar.');
+        }
+      }
+    } finally {
+      setPushLoading(false);
+    }
   };
 
   const handleSaveAvatarUrl = async () => {
@@ -409,6 +460,58 @@ const Profile: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Notificações push */}
+        {isPushSupported() && (
+          <Card className="border-[#F69F19]/10 shadow-sm hover:shadow-md transition-shadow duration-300 bg-white">
+            <CardHeader className="border-b border-slate-100 pb-4">
+              <CardTitle className="flex items-center gap-2 text-[#2C2D2F]">
+                <div className="p-2 rounded-lg bg-[#F69F19]/10">
+                  <Bell className="h-5 w-5 text-[#F69F19]" />
+                </div>
+                Notificações push
+              </CardTitle>
+              <CardDescription>
+                Receba avisos de novas mensagens e tickets mesmo com a aba ou o navegador fechados
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-6">
+              <p className="text-sm text-slate-600">
+                {getNotificationPermission() === 'denied'
+                  ? 'As notificações estão bloqueadas neste navegador. Libere nas configurações do site para ativar.'
+                  : pushEnabled
+                    ? 'Ativado: você receberá notificações quando houver nova mensagem ou ticket.'
+                    : 'Ative para receber notificações mesmo com a aba fechada.'}
+              </p>
+              {getNotificationPermission() !== 'denied' && (
+                <Button
+                  type="button"
+                  variant={pushEnabled ? 'outline' : 'default'}
+                  disabled={pushLoading}
+                  onClick={() => handleTogglePush(!pushEnabled)}
+                  className={!pushEnabled ? 'bg-[#F69F19] hover:bg-[#e08e12] text-white' : ''}
+                >
+                  {pushLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Processando...
+                    </>
+                  ) : pushEnabled ? (
+                    <>
+                      <BellOff className="h-4 w-4 mr-2" />
+                      Desativar notificações push
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="h-4 w-4 mr-2" />
+                      Ativar notificações push
+                    </>
+                  )}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Preferências de Visualização */}
         <Card className="border-[#F69F19]/10 shadow-sm hover:shadow-md transition-shadow duration-300 bg-white">

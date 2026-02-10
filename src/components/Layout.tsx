@@ -34,12 +34,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           table: 'app_c009c0e4f1_tickets'
         }, (payload) => {
           console.log('Novo ticket criado:', payload);
-          // Para novos tickets, sempre reproduz som (não tem chat específico aberto ainda)
+          const newTicketId = payload.new?.id;
           playNotificationSound();
           toast.info('Novo ticket criado!', {
             action: {
               label: 'Ver',
-              onClick: () => navigate('/tickets')
+              onClick: () => navigate(newTicketId ? `/tickets/${newTicketId}` : '/tickets')
             }
           });
         })

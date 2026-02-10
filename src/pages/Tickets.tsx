@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -60,6 +61,8 @@ interface CreateTicketForUserData {
 const Tickets = () => {
   const { user } = useAuth();
   const { has } = usePermissions();
+  const { ticketId: ticketIdParam } = useParams<{ ticketId: string }>();
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -767,6 +770,16 @@ useEffect(() => {
     }
   }, [selectedTicket?.id]);
 
+  // Abrir o chat do ticket quando a URL for /tickets/:ticketId (ex.: clique em "Ver" no toast)
+  useEffect(() => {
+    if (!ticketIdParam || loading || tickets.length === 0) return;
+    if (selectedTicket?.id === ticketIdParam) return;
+    const ticket = tickets.find((t) => t.id === ticketIdParam);
+    if (ticket) {
+      openChat(ticket);
+    }
+  }, [ticketIdParam, loading, tickets]);
+
   const loadTickets = async () => {
     try {
       setLoading(true);
@@ -1232,13 +1245,14 @@ const closeChat = () => {
   setUploadingFiles([]);
   setTypingUsers({});
   setActiveChatId(null); // 🎯 NOVA LINHA
-  
+  if (ticketIdParam) navigate('/tickets', { replace: true });
+
   // Remover canais específicos do ticket
   if (channelsRef.current.messages) {
     supabase.removeChannel(channelsRef.current.messages);
     channelsRef.current.messages = undefined;
   }
-  
+
   if (channelsRef.current.typing) {
     supabase.removeChannel(channelsRef.current.typing);
     channelsRef.current.typing = undefined;
