@@ -46,12 +46,15 @@ export default async function handler(req, res) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const type = (body.type || body.eventType || '').toUpperCase();
+    const table = body.table || '';
+    const record = body.record || body.new || body.payload?.record || body;
+    console.log('[send-push] Webhook recebido:', { type, table, hasRecord: !!record?.ticket_id });
 
-    const type = body.type;
-    const table = body.table;
-    const record = body.record || body.new || body;
-
-    if (table === 'app_c009c0e4f1_chat_messages' && (type === 'INSERT' || record.ticket_id)) {
+    if (
+      (table === 'app_c009c0e4f1_chat_messages' || table === 'chat_messages') &&
+      (type === 'INSERT' || record.ticket_id)
+    ) {
       const ticketId = record.ticket_id;
       const senderUserId = record.user_id;
       const senderName = record.user_name || 'Alguém';
