@@ -41,13 +41,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Server misconfiguration' });
   }
 
-  const webpushModule = await import('web-push');
-  const webpush = webpushModule.default ?? webpushModule;
-  if (typeof webpush?.setVAPIDDetails !== 'function') {
-    console.error('[send-push] web-push sem setVAPIDDetails:', typeof webpush, Object.keys(webpush || {}));
-    return res.status(500).json({ error: 'web-push module invalid' });
-  }
-  webpush.setVAPIDDetails('mailto:support@example.com', vapidPublic, vapidPrivate);
+  const webpush = await import('web-push').then((m) => m.default ?? m);
+  webpush.setVapidDetails('mailto:support@example.com', vapidPublic, vapidPrivate);
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
