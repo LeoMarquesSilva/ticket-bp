@@ -12,10 +12,6 @@
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const wp = require('web-push');
-const webpush = (wp?.default && typeof wp.default.setVAPIDDetails === 'function')
-  ? wp.default
-  : (wp && typeof wp.setVAPIDDetails === 'function' ? wp : wp?.default || wp);
 const { createClient } = require('@supabase/supabase-js');
 
 const TABLES = {
@@ -45,6 +41,12 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Server misconfiguration' });
   }
 
+  const webpushModule = await import('web-push');
+  const webpush = webpushModule.default ?? webpushModule;
+  if (typeof webpush?.setVAPIDDetails !== 'function') {
+    console.error('[send-push] web-push sem setVAPIDDetails:', typeof webpush, Object.keys(webpush || {}));
+    return res.status(500).json({ error: 'web-push module invalid' });
+  }
   webpush.setVAPIDDetails('mailto:support@example.com', vapidPublic, vapidPrivate);
 
   try {
