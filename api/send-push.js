@@ -12,7 +12,10 @@
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const webpush = require('web-push');
+const wp = require('web-push');
+const webpush = (wp?.default && typeof wp.default.setVAPIDDetails === 'function')
+  ? wp.default
+  : (wp && typeof wp.setVAPIDDetails === 'function' ? wp : wp?.default || wp);
 const { createClient } = require('@supabase/supabase-js');
 
 const TABLES = {
