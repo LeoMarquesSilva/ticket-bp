@@ -17,7 +17,6 @@ import PasswordChangeHandler from '@/components/PasswordChangeHandler';
 import { initializeConnectionHandlers } from './utils/supabaseHelpers';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 // import { InactivityDetector } from '@/components/InactivityDetector'; // ← REMOVIDO para permitir login persistente
-import { useTabVisibility } from '@/hooks/useTabVisibility';
 import { usePermissions } from '@/hooks/usePermissions';
 import type { PermissionKey } from '@/services/roleService';
 
@@ -51,8 +50,7 @@ const ProtectedRoute = ({
   const { has, loading: permissionsLoading } = usePermissions();
   const location = useLocation();
   const firstAllowedPath = useFirstAllowedPath();
-  const isTabVisible = useTabVisibility();
-  
+
   const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'profile' => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return 'dashboard';
@@ -244,6 +242,7 @@ const App = () => {
           <Toaster
             position="top-right"
             richColors
+            closeButton
             toastOptions={{
               duration: 4000,
               style: {

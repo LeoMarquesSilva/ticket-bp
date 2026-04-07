@@ -51,7 +51,6 @@ interface TicketHeaderProps {
   supportUsers: User[];
   user: { role: string; id?: string } | null;
   setShowCreateForm: (show: boolean) => void;
-  onlineUsersCount?: number;
   setShowCreateForUserModal?: (show: boolean) => void;
   /** Criar ticket próprio (permissão create_ticket) */
   canCreateTicket?: boolean;
@@ -65,7 +64,6 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   supportUsers,
   user,
   setShowCreateForm,
-  onlineUsersCount = 0,
   setShowCreateForUserModal,
   canCreateTicket = false,
   canCreateTicketForUser = false
@@ -75,6 +73,21 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   const isLawyer = user?.role === 'lawyer';
   const isUser = user?.role === 'user';
   const isStaff = isAdmin || isSupport || isLawyer;
+
+  const normalizeRole = (role?: string) => String(role || '').trim().toLowerCase();
+  const isUserRole = (role?: string) => {
+    const normalizedRole = normalizeRole(role);
+    return normalizedRole === 'user' || normalizedRole === 'usuario' || normalizedRole === 'usuário';
+  };
+  const isSupportOrLawyerRole = (role?: string) => {
+    const normalizedRole = normalizeRole(role);
+    return (
+      normalizedRole === 'support' ||
+      normalizedRole === 'suporte' ||
+      normalizedRole === 'lawyer' ||
+      normalizedRole === 'advogado'
+    );
+  };
   
   // Estado para armazenar as estatísticas dos tickets
   const [ticketStats, setTicketStats] = useState({
@@ -114,26 +127,17 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
     // Usuários comuns veem apenas equipe de suporte e advogados
     if (isUser) {
       return supportUsers.filter(u => 
-        u.isOnline && (u.role === 'support' || u.role === 'lawyer')
+        u.isOnline && isSupportOrLawyerRole(u.role)
       );
     }
     
-    // Suporte vê outros suportes e advogados
-    if (isSupport) {
-      return supportUsers.filter(u => 
-        u.isOnline && (u.role === 'support' || u.role === 'lawyer')
-      );
-    }
-    
-    // Advogados veem suporte e outros advogados
-    if (isLawyer) {
-      return supportUsers.filter(u => 
-        u.isOnline && (u.role === 'support' || u.role === 'lawyer')
-      );
+    // Membros da equipe veem qualquer colaborador online que não seja usuário comum
+    if (isSupport || isLawyer || isAdmin) {
+      return supportUsers.filter((u) => u.isOnline && !isUserRole(u.role));
     }
     
     // Admin vê todos os membros da equipe online
-    return supportUsers.filter(u => u.isOnline && u.role !== 'user');
+    return supportUsers.filter((u) => u.isOnline && !isUserRole(u.role));
   }, [supportUsers, isUser, isSupport, isLawyer, isAdmin]);
 
   // Função para obter o texto do papel do usuário em português
@@ -224,75 +228,66 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
     
     // Buscar estatísticas iniciais
     fetchTicketStats();
-    
-    // Filtros para eventos em tempo real com base no tipo de usuário
-    const filters = [];
-    
-    if (isUser && user?.id) {
-      // Usuários comuns: apenas seus próprios tickets
-      filters.push({
-        schema: 'public',
-        table: TABLES.TICKETS,
-        filter: `created_by=eq.${user.id}`
-      });
-    } else if ((isSupport || isLawyer) && user?.id) {
-      // Suporte/Advogados: tickets atribuídos a eles
-      filters.push({
-        schema: 'public',
-        table: TABLES.TICKETS,
-        filter: `assigned_to=eq.${user.id}`
-      });
-    } else if (isAdmin) {
-      // Admin: todos os tickets (sem filtro adicional)
-      filters.push({
+
+    if (!user?.id) {
+      return () => {
+        isMountedRef.current = false;
+      };
+    }
+
+    let statsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleFetchTicketStats = () => {
+      if (!isMountedRef.current) return;
+      if (statsRefreshTimer) {
+        clearTimeout(statsRefreshTimer);
+      }
+      statsRefreshTimer = setTimeout(() => {
+        if (isMountedRef.current) {
+          fetchTicketStats();
+        }
+      }, 250);
+    };
+
+    // Canal sem filtro para garantir refresh ao entrar/sair da carteira por transferência.
+    const channel = supabase
+      .channel('ticket-stats-channel')
+      .on('postgres_changes', {
+        event: 'INSERT',
         schema: 'public',
         table: TABLES.TICKETS
-      });
-    }
-    
-    // Configurar um único canal para todas as atualizações
-    if (filters.length > 0) {
-      let channel = supabase.channel('ticket-stats-channel');
-      
-      // Adicionar eventos para cada filtro
-      filters.forEach(filter => {
-        // Inserções (novos tickets)
-        channel = channel.on('postgres_changes', {
-          event: 'INSERT',
-          ...filter
-        }, () => {
-          if (isMountedRef.current) fetchTicketStats();
-        });
-        
-        // Atualizações (mudanças de status)
-        channel = channel.on('postgres_changes', {
-          event: 'UPDATE',
-          ...filter
-        }, () => {
-          if (isMountedRef.current) fetchTicketStats();
-        });
-      });
-      
-      // Inscrever-se no canal
-      channel.subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.error('Erro no canal de tempo real para estatísticas de tickets');
-          // Tentar reconectar após um pequeno atraso
-          setTimeout(() => {
-            if (isMountedRef.current && channelRef.current) {
-              channelRef.current.subscribe();
-            }
-          }, 5000);
-        }
-      });
-      
-      // Armazenar referência ao canal
-      channelRef.current = channel;
-    }
+      }, scheduleFetchTicketStats)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: TABLES.TICKETS
+      }, scheduleFetchTicketStats)
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: TABLES.TICKETS
+      }, scheduleFetchTicketStats);
+
+    // Inscrever-se no canal
+    channel.subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.error('Erro no canal de tempo real para estatísticas de tickets');
+        setTimeout(() => {
+          if (isMountedRef.current && channelRef.current) {
+            channelRef.current.subscribe();
+          }
+        }, 5000);
+      }
+    });
+
+    // Armazenar referência ao canal
+    channelRef.current = channel;
     
     // Limpar ao desmontar
     return () => {
       isMountedRef.current = false;
+      if (statsRefreshTimer) {
+        clearTimeout(statsRefreshTimer);
+      }
       
       // Remover canal
       if (channelRef.current) {
@@ -352,17 +347,18 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-[#F69F19]/20 hover:text-white transition-all"
+                    className="group relative overflow-hidden rounded-xl border border-white/25 bg-white/10 px-4 text-white shadow-md shadow-black/10 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#F69F19]/45 hover:bg-[#F69F19]/15 hover:shadow-lg hover:shadow-[#F69F19]/20"
                   >
-                    <Circle className="h-3 w-3 fill-green-500 text-green-500 mr-2" />
-                    <span>Equipe Online</span>
+                    <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                    <Circle className="mr-2 h-3.5 w-3.5 fill-emerald-400 text-emerald-400 animate-pulse" />
+                    <span className="font-semibold tracking-[0.01em]">Equipe Online</span>
                     <Badge 
                       variant="outline" 
-                      className="ml-2 bg-green-500/20 text-green-100 border-green-500/30 px-1.5"
+                      className="ml-2 border-emerald-300/40 bg-emerald-400/20 px-2 text-emerald-50"
                     >
                       {filteredOnlineUsers.length}
                     </Badge>
-                    <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
+                    <ChevronDown className="ml-1 h-4 w-4 opacity-80 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-80 p-0 rounded-lg border-[#F69F19]/20 shadow-lg" align="end">

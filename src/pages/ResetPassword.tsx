@@ -205,7 +205,7 @@ const ResetPassword = () => {
         // Método 3: Listener para mudanças de autenticação (o Supabase pode processar automaticamente)
         console.log('🔄 Método 3: Configurando listener de autenticação...');
         
-        const { data: authData } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const { data: authData } = supabase.auth.onAuthStateChange((event, session) => {
           console.log('🔔 Evento de autenticação:', event, {
             hasSession: !!session,
             hasUser: !!session?.user,
@@ -213,17 +213,19 @@ const ResetPassword = () => {
           });
           
           if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
-            console.log('✅ Sessão criada via evento de autenticação!');
-            setSessionValid(true);
-            setValidatingToken(false);
-            window.history.replaceState({}, document.title, '/reset-password');
-            toast.success('Link válido! Você pode redefinir sua senha agora.');
-            
-            // Remover listener após sucesso
-            if (authListener) {
-              authListener.subscription.unsubscribe();
-              authListener = null;
-            }
+            queueMicrotask(() => {
+              console.log('✅ Sessão criada via evento de autenticação!');
+              setSessionValid(true);
+              setValidatingToken(false);
+              window.history.replaceState({}, document.title, '/reset-password');
+              toast.success('Link válido! Você pode redefinir sua senha agora.');
+
+              // Remover listener após sucesso
+              if (authListener) {
+                authListener.subscription.unsubscribe();
+                authListener = null;
+              }
+            });
           }
         });
         

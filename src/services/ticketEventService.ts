@@ -8,19 +8,29 @@ export type TicketFeedbackEvent = {
 
 class TicketEventService {
   private listeners: Set<(event: TicketFeedbackEvent) => void> = new Set();
+  private channel: ReturnType<typeof supabase.channel> | null = null;
+  private initialized = false;
 
   constructor() {
-    this.setupRealtimeSubscription();
+    this.initialize();
   }
 
   // Método de inicialização (compatibilidade com código existente)
   public initialize(): void {
-    // O serviço já é inicializado no constructor
-    console.log('🔧 TicketEventService já inicializado');
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+    this.setupRealtimeSubscription();
+    console.log('🔧 TicketEventService inicializado');
   }
 
   private setupRealtimeSubscription() {
-    supabase
+    if (this.channel) {
+      supabase.removeChannel(this.channel);
+    }
+
+    this.channel = supabase
       .channel('ticket-feedback-events')
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -28,17 +38,30 @@ class TicketEventService {
         table: TABLES.TICKETS,
         filter: "status=eq.resolved"
       }, (payload) => {
-        const newData = payload.new as any;
+        const newData = payload.new as {
+          id?: string;
+          status?: string;
+          created_by?: string;
+        };
         
-        if (newData && newData.status === 'resolved') {
+        if (newData?.status === 'resolved' && newData.id && newData.created_by) {
           this.notifyTicketStatusChanged({
             ticketId: newData.id,
-            status: newData.status,
+            status: 'resolved',
             userId: newData.created_by
           });
         }
       })
       .subscribe();
+  }
+
+  public destroy(): void {
+    this.listeners.clear();
+    if (this.channel) {
+      supabase.removeChannel(this.channel);
+      this.channel = null;
+    }
+    this.initialized = false;
   }
 
   // Adicionar listener para eventos de feedback

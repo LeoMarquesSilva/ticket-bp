@@ -1,4 +1,9 @@
-/* Service Worker para Web Push - notificações com aba fechada */
+/* Service Worker: PWA (fetch) + Web Push */
+
+/** Necessário para o Chrome considerar a app instalável (critério PWA). */
+self.addEventListener('fetch', (event) => {
+  event.respondWith(fetch(event.request));
+});
 
 self.addEventListener('push', (event) => {
   if (!event.data) return;
@@ -16,8 +21,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/images/favicon/web-app-manifest-192x192.png',
-      badge: '/images/favicon/favicon-96x96.png',
+      icon: new URL('images/favicon/favicon-96x96.png', self.location).href,
+      badge: new URL('images/favicon/favicon-96x96.png', self.location).href,
       tag,
       data: { url },
       requireInteraction: false,

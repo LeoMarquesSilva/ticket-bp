@@ -1253,7 +1253,7 @@ static async transferTicketWithUserLookup(ticketId: string, newSupportId: string
     // Return unsubscribe function
     return () => {
       console.log('Unsubscribing from ticket changes');
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }
 

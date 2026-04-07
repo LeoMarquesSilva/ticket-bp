@@ -140,6 +140,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isInitialized.current) return;
     isInitialized.current = true;
 
+    let cancelled = false;
+
     const initAuth = async () => {
       try {
         const cachedUser = getUserFromStorage();
@@ -147,6 +149,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(cachedUser);
           setRequiresPasswordChange(checkPasswordChangeRequired(cachedUser));
           setLoading(false);
+          try {
+            const { data: { session: s } } = await supabase.auth.getSession();
+            if (s?.user?.id) currentAuthUserId.current = s.user.id;
+          } catch {
+            /* ignore */
+          }
           return;
         }
 
@@ -171,27 +179,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    initAuth();
-
-    // Configurar listener de auth APENAS UMA VEZ
-    if (!authSubscription.current) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        const newAuthUserId = session?.user?.id ?? null;
-        if (event === 'SIGNED_IN' && newAuthUserId) {
-          if (newAuthUserId !== currentAuthUserId.current || !user) {
-            currentAuthUserId.current = newAuthUserId;
-            setLoading(true);
-            await loadUserProfile(newAuthUserId);
+    const start = async () => {
+      await initAuth();
+      if (cancelled) return;
+      // Depois do init: ref já alinhado (cache ou sessão), evitando SIGNED_IN redundante em corrida.
+      if (!authSubscription.current) {
+        // Não use `user` aqui: o effect tem deps [] então o closure teria sempre user === null e todo
+        // SIGNED_IN (ex.: ao voltar à aba / refresh de token) dispararia load de novo e loading infinito.
+        // Também não await loadUserProfile dentro do callback: getUser/getSession dentro dele pode travar (Supabase).
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          const newAuthUserId = session?.user?.id ?? null;
+          if (event === 'SIGNED_IN' && newAuthUserId) {
+            if (newAuthUserId !== currentAuthUserId.current) {
+              currentAuthUserId.current = newAuthUserId;
+              setLoading(true);
+              queueMicrotask(() => {
+                void loadUserProfile(newAuthUserId);
+              });
+            }
+          } else if (event === 'SIGNED_OUT') {
+            handleLogout();
           }
-        } else if (event === 'SIGNED_OUT') {
-          handleLogout();
-        }
-      });
-      
-      authSubscription.current = subscription;
-    }
+        });
+
+        authSubscription.current = subscription;
+      }
+    };
+
+    void start();
 
     return () => {
+      cancelled = true;
       if (authSubscription.current) {
         authSubscription.current.unsubscribe();
         authSubscription.current = null;

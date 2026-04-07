@@ -116,4 +116,13 @@
   [data-sonner-toast][data-type="warning"] { border-left: 4px solid #F59E0B; }
   [data-sonner-toast] [data-button] { background: #F69F19 !important; color: #2C2D2F !important; }
   [data-sonner-toast] [data-button]:hover { background: #DE5532 !important; color: white !important; }
+  [data-sonner-toast] [data-close-button] {
+    background: #BD2D29 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #9F2421 !important;
+  }
+  [data-sonner-toast] [data-close-button]:hover {
+    background: #A62A26 !important;
+    color: #FFFFFF !important;
+  }
 }

@@ -492,6 +492,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   onOpenChange={setTransferModalOpen}
                   ticketId={selectedTicket.id}
                   currentAssignee={selectedTicket.assignedTo}
+                  supportUsers={assignableUsers}
                   onTransfer={async (supportId, _supportName) => {
                     await handleAssignTicket(selectedTicket.id, supportId);
                   }}

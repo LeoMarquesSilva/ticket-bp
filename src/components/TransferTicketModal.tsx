@@ -39,6 +39,7 @@ interface TransferTicketModalProps {
   onOpenChange: (open: boolean) => void;
   ticketId: string;
   currentAssignee?: string;
+  supportUsers?: User[];
   onTransfer: (supportId: string, supportName: string) => Promise<void>;
 }
 
@@ -47,6 +48,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
   onOpenChange,
   ticketId,
   currentAssignee,
+  supportUsers: supportUsersProp = [],
   onTransfer,
 }) => {
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
@@ -62,7 +64,9 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
       setLoadingUsers(true);
       try {
         const [usersRes, deptsRes] = await Promise.allSettled([
-          UserService.getSupportUsers(),
+          supportUsersProp.length > 0
+            ? Promise.resolve(supportUsersProp)
+            : UserService.getSupportUsers(),
           DepartmentService.getActiveDepartments(),
         ]);
         const users = usersRes.status === 'fulfilled' ? usersRes.value : [];
@@ -83,7 +87,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
       }
     };
     load();
-  }, [open, currentAssignee]);
+  }, [open, currentAssignee, supportUsersProp]);
 
   const filteredUsers = selectedDept === 'all'
     ? supportUsers

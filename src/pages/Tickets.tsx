@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, TABLES } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { AlertCircle, X, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,14 +21,23 @@ import CreateTicketForUserModal from '@/components/CreateTicketForUserModal';
 import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
 import { useChatContext } from '@/contexts/ChatContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useRealtimeReconnectSignal } from '@/hooks/useRealtimeReconnectSignal';
 
 interface SupportUser {
   id: string;
   name: string;
   role: string;
   isOnline?: boolean;
+  manualOnline?: boolean;
   avatarUrl?: string;
 }
+
+interface PresenceUserData {
+  name?: string;
+  role?: string;
+}
+
+type PresenceState = Record<string, PresenceUserData[]>;
 
 interface UploadingFile {
   id: string;
@@ -57,6 +66,23 @@ interface CreateTicketForUserData {
   userName: string;
   userDepartment?: string;
 }
+
+type RealtimeTicketRow = {
+  id: string;
+  title: string;
+  description: string;
+  priority: Ticket['priority'];
+  category: string;
+  subcategory?: string | null;
+  status: Ticket['status'];
+  created_by: string;
+  created_by_name: string;
+  created_by_department?: string | null;
+  assigned_to?: string | null;
+  assigned_to_name?: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 const Tickets = () => {
   const { user } = useAuth();
@@ -114,37 +140,170 @@ const Tickets = () => {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<string>('connecting');
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
-  const [onlineUsers, setOnlineUsers] = useState<SupportUser[]>([]);
   const { setActiveChatId } = useChatContext();
+  const reconnectSignal = useRealtimeReconnectSignal();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCreateForUserModal, setShowCreateForUserModal] = useState(false);
+  const normalizeRole = (role?: string | null) => String(role ?? '').trim().toLowerCase();
+  const isStaffRole = (role?: string | null) => {
+    const normalized = normalizeRole(role);
+    return (
+      normalized === 'support' ||
+      normalized === 'lawyer' ||
+      normalized === 'admin' ||
+      normalized === 'advogado' ||
+      normalized === 'juridico' ||
+      normalized === 'jurídico'
+    );
+  };
+
 
 
   // Referências para controlar inscrições e evitar vazamentos de memória
   const channelsRef = useRef<{
     system?: ReturnType<typeof supabase.channel>;
     presence?: ReturnType<typeof supabase.channel>;
+    supportUsersStatus?: ReturnType<typeof supabase.channel>;
     messages?: ReturnType<typeof supabase.channel>;
     typing?: ReturnType<typeof supabase.channel>;
     tickets?: ReturnType<typeof supabase.channel>; // NOVO: Canal para tickets
     globalMessages?: ReturnType<typeof supabase.channel>; 
 
   }>({});
+
+  type ChannelKey = keyof typeof channelsRef.current;
   
   // Referência para verificar se o componente está montado
   const isMountedRef = useRef(true);
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
+  const channelRetryCountRef = useRef<Record<string, number>>({});
+  const channelRetryTimerRef = useRef<Record<string, NodeJS.Timeout | null>>({});
+  const selectedTicketIdRef = useRef<string | null>(null);
+  const lastMessageReconcileAtRef = useRef<Record<string, number>>({});
   
-  const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role === 'lawyer';
+  const canCreateTicketForUser = has('create_ticket_for_user');
+  const isStaffUser = Boolean(user && (isStaffRole(user.role) || has('assign_ticket') || has('view_all_tickets')));
+  const canUsePresenceChannel = Boolean(isStaffUser);
+  const mapRealtimeTicketRow = (ticketData: RealtimeTicketRow): Ticket => ({
+    id: ticketData.id,
+    title: ticketData.title,
+    description: ticketData.description,
+    priority: ticketData.priority,
+    category: ticketData.category,
+    subcategory: ticketData.subcategory ?? undefined,
+    status: ticketData.status,
+    createdBy: ticketData.created_by,
+    createdByName: ticketData.created_by_name,
+    createdByDepartment: ticketData.created_by_department ?? undefined,
+    assignedTo: ticketData.assigned_to ?? undefined,
+    assignedToName: ticketData.assigned_to_name ?? undefined,
+    createdAt: ticketData.created_at,
+    updatedAt: ticketData.updated_at,
+  });
+  const canUserSeeTicket = (ticket: Ticket) => {
+    if (has('view_all_tickets')) return true;
+    if (!user?.id) return false;
+    return ticket.createdBy === user.id || ticket.assignedTo === user.id;
+  };
+
+  const applyPresenceToSupportUsers = (users: SupportUser[], state: PresenceState) => {
+    const _onlineUserIds = new Set(Object.keys(state));
+    const mergedUsers = users.map((supportUser) => {
+      const manualOnline = supportUser.manualOnline ?? Boolean(supportUser.isOnline);
+      return {
+        ...supportUser,
+        manualOnline,
+        // Usabilidade: status de disponibilidade segue o toggle manual em tempo real.
+        isOnline: manualOnline,
+      };
+    });
+
+    return {
+      mergedUsers,
+    };
+  };
+
+  const clearRetryTimer = (key: string) => {
+    const timer = channelRetryTimerRef.current[key];
+    if (timer) {
+      clearTimeout(timer);
+      channelRetryTimerRef.current[key] = null;
+    }
+  };
+
+  const handleChannelStatus = (key: string, channelRefKey: ChannelKey, status: string) => {
+    if (status === 'SUBSCRIBED') {
+      channelRetryCountRef.current[key] = 0;
+      clearRetryTimer(key);
+      return;
+    }
+
+    const retryable = status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED';
+    if (!retryable) return;
+
+    const nextAttempt = (channelRetryCountRef.current[key] ?? 0) + 1;
+    channelRetryCountRef.current[key] = nextAttempt;
+    const delay = Math.min(1000 * 2 ** Math.min(nextAttempt, 5), 30000);
+    clearRetryTimer(key);
+
+    channelRetryTimerRef.current[key] = setTimeout(() => {
+      if (!isMountedRef.current) return;
+      const channel = channelsRef.current[channelRefKey];
+      if (!channel) return;
+      console.warn(`[realtime] retry ${key} status=${status} attempt=${nextAttempt} delay=${delay}`);
+      channel.subscribe((nextStatus) => handleChannelStatus(key, channelRefKey, nextStatus));
+    }, delay);
+  };
+
+  const removeChannelSafely = (key: string, channelRefKey: ChannelKey) => {
+    clearRetryTimer(key);
+    channelRetryCountRef.current[key] = 0;
+    const channel = channelsRef.current[channelRefKey];
+    if (channel) {
+      supabase.removeChannel(channel);
+      channelsRef.current[channelRefKey] = undefined;
+    }
+  };
+
+  const reconcileMessagesForTicket = async (ticketId: string, reason: 'subscribed' | 'reconnect') => {
+    const now = Date.now();
+    const lastRun = lastMessageReconcileAtRef.current[ticketId] ?? 0;
+    if (now - lastRun < 1500) return;
+    lastMessageReconcileAtRef.current[ticketId] = now;
+
+    try {
+      const latestMessages = await TicketService.getTicketMessages(ticketId);
+      if (!isMountedRef.current || selectedTicketIdRef.current !== ticketId) return;
+
+      setChatMessages((current) => {
+        const tempMessages = current.filter((m) => m.isTemp);
+        const merged = [...latestMessages];
+
+        tempMessages.forEach((temp) => {
+          const hasEquivalent = latestMessages.some((msg) => msg.id === temp.id || (
+            msg.userId === temp.userId &&
+            msg.message === temp.message &&
+            Math.abs(new Date(msg.createdAt).getTime() - new Date(temp.createdAt).getTime()) < 30000
+          ));
+          if (!hasEquivalent) merged.push(temp);
+        });
+
+        merged.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        return merged;
+      });
+
+      console.info(`[realtime] reconciled ticket=${ticketId} reason=${reason}`);
+    } catch (error) {
+      console.warn(`[realtime] reconcile failed ticket=${ticketId} reason=${reason}`, error);
+    }
+  };
   // NOVO: Função para configurar subscription de tickets em tempo real
   const setupTicketsChannel = () => {
     if (!user?.id) return;
     
     // Remover canal anterior se existir
-    if (channelsRef.current.tickets) {
-      supabase.removeChannel(channelsRef.current.tickets);
-    }
+    removeChannelSafely('tickets', 'tickets');
     
     // Criar novo canal para monitorar tickets
     const channel = supabase.channel('tickets-realtime');
@@ -156,57 +315,18 @@ const Tickets = () => {
       table: 'app_c009c0e4f1_tickets'
     }, (payload) => {
       if (!isMountedRef.current) return;
-      const newTicketData = payload.new;
-      
-      // Converter dados do banco para formato frontend
-      const newTicket: Ticket = {
-        id: newTicketData.id,
-        title: newTicketData.title,
-        description: newTicketData.description,
-        priority: newTicketData.priority,
-        category: newTicketData.category,
-        subcategory: newTicketData.subcategory,
-        status: newTicketData.status,
-        createdBy: newTicketData.created_by,
-        createdByName: newTicketData.created_by_name,
-        createdByDepartment: newTicketData.created_by_department,
-        assignedTo: newTicketData.assigned_to,
-        assignedToName: newTicketData.assigned_to_name,
-        createdAt: newTicketData.created_at,
-        updatedAt: newTicketData.updated_at,
-      };
-      
-      // Verificar se deve mostrar este ticket baseado na permissão view_all_tickets
-      const canViewAll = has('view_all_tickets');
-      const shouldShow = canViewAll
-        ? true
-        : newTicket.createdBy === user.id;
+      const newTicket = mapRealtimeTicketRow(payload.new as RealtimeTicketRow);
 
-      if (shouldShow && canViewAll && newTicket.createdBy !== user.id) {
-        const priorityEmoji = getPriorityEmoji(newTicket.priority);
-        toast.success(
-          `${priorityEmoji} Novo ticket criado!`,
-          {
-            description: `${newTicket.title} - por ${newTicket.createdByName}`,
-            duration: 8000,
-            action: {
-              label: 'Ver',
-              onClick: () => openChat(newTicket)
-            }
-          }
-        );
+      if (!canUserSeeTicket(newTicket)) {
+        return;
       }
-      
-      if (shouldShow) {
-        // Adicionar o novo ticket ao início da lista
-        setTickets(prev => {
-          // Verificar se o ticket já existe (evitar duplicatas)
-          const exists = prev.some(t => t.id === newTicket.id);
-          if (exists) return prev;
-          
-          return [newTicket, ...prev];
-        });
-      }
+
+      setTickets(prev => {
+        const exists = prev.some(t => t.id === newTicket.id);
+        if (exists) return prev;
+        console.info('[realtime] insert_visible', { ticketId: newTicket.id });
+        return [newTicket, ...prev];
+      });
     });
     
     // Monitorar ATUALIZAÇÕES de tickets
@@ -216,36 +336,43 @@ const Tickets = () => {
       table: 'app_c009c0e4f1_tickets'
     }, (payload) => {
       if (!isMountedRef.current) return;
-      const updatedTicketData = payload.new;
-      
-      // Converter dados do banco para formato frontend
-      const updatedTicket: Ticket = {
-        id: updatedTicketData.id,
-        title: updatedTicketData.title,
-        description: updatedTicketData.description,
-        priority: updatedTicketData.priority,
-        category: updatedTicketData.category,
-        subcategory: updatedTicketData.subcategory,
-        status: updatedTicketData.status,
-        createdBy: updatedTicketData.created_by,
-        createdByName: updatedTicketData.created_by_name,
-        createdByDepartment: updatedTicketData.created_by_department,
-        assignedTo: updatedTicketData.assigned_to,
-        assignedToName: updatedTicketData.assigned_to_name,
-        createdAt: updatedTicketData.created_at,
-        updatedAt: updatedTicketData.updated_at,
-      };
-      
-      // Atualizar o ticket na lista
-      setTickets(prev => 
-        prev.map(ticket => 
-          ticket.id === updatedTicket.id ? updatedTicket : ticket
-        )
-      );
-      
-      // Se o ticket selecionado foi atualizado, atualizar também
-      if (selectedTicket && selectedTicket.id === updatedTicket.id) {
+      const updatedTicket = mapRealtimeTicketRow(payload.new as RealtimeTicketRow);
+      const canSeeTicket = canUserSeeTicket(updatedTicket);
+      const isSelectedTicket = selectedTicketIdRef.current === updatedTicket.id;
+      let removedFromList = false;
+
+      setTickets(prev => {
+        const existingIndex = prev.findIndex(ticket => ticket.id === updatedTicket.id);
+        const exists = existingIndex >= 0;
+
+        if (canSeeTicket) {
+          if (!exists) {
+            console.info('[realtime] update_added', { ticketId: updatedTicket.id });
+            return [updatedTicket, ...prev];
+          }
+
+          console.info('[realtime] update_updated', { ticketId: updatedTicket.id });
+          const next = [...prev];
+          next[existingIndex] = updatedTicket;
+          return next;
+        }
+
+        if (!exists) {
+          return prev;
+        }
+
+        removedFromList = true;
+        console.info('[realtime] update_removed', { ticketId: updatedTicket.id });
+        return prev.filter(ticket => ticket.id !== updatedTicket.id);
+      });
+
+      if (canSeeTicket && isSelectedTicket) {
         setSelectedTicket(updatedTicket);
+      }
+
+      if (removedFromList && isSelectedTicket) {
+        console.info('[realtime] update_removed_selected_ticket', { ticketId: updatedTicket.id });
+        closeChat();
       }
     });
     
@@ -262,45 +389,21 @@ const Tickets = () => {
       setTickets(prev => prev.filter(ticket => ticket.id !== deletedTicketId));
       
       // Se o ticket excluído era o selecionado, fechar o chat
-      if (selectedTicket && selectedTicket.id === deletedTicketId) {
+      if (selectedTicketIdRef.current === deletedTicketId) {
         closeChat();
       }
     });
     
-    channel.subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        console.error('❌ Erro no canal de tickets');
-        
-        // Tentar reconectar após um pequeno atraso
-        setTimeout(() => {
-          if (isMountedRef.current && channelsRef.current.tickets) {
-            channelsRef.current.tickets.subscribe();
-          }
-        }, 5000);
-      }
-    });
+    channel.subscribe((status) => handleChannelStatus('tickets', 'tickets', status));
     
     // Armazenar referência ao canal
     channelsRef.current.tickets = channel;
   };
 
-  // Função para obter emoji de prioridade
-  const getPriorityEmoji = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return '🚨';
-      case 'high': return '🔥';
-      case 'medium': return '⚡';
-      case 'low': return '📝';
-      default: return '📋';
-    }
-  };
-
   // Função para configurar um único canal de sistema para monitorar conexão
   const setupSystemChannel = () => {
     // Remover canal anterior se existir
-    if (channelsRef.current.system) {
-      supabase.removeChannel(channelsRef.current.system);
-    }
+    removeChannelSafely('system', 'system');
     
     // Criar novo canal
     const channel = supabase.channel('system');
@@ -312,17 +415,7 @@ const Tickets = () => {
       }
     });
     
-    channel.subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        
-        // Tentar reconectar após um pequeno atraso
-        setTimeout(() => {
-          if (isMountedRef.current && channelsRef.current.system) {
-            channelsRef.current.system.subscribe();
-          }
-        }, 5000);
-      }
-    });
+    channel.subscribe((status) => handleChannelStatus('system', 'system', status));
     
     // Armazenar referência ao canal
     channelsRef.current.system = channel;
@@ -333,9 +426,7 @@ const Tickets = () => {
     if (!user) return;
     
     // Remover canal anterior se existir
-    if (channelsRef.current.presence) {
-      supabase.removeChannel(channelsRef.current.presence);
-    }
+    removeChannelSafely('presence', 'presence');
     
     // Criar novo canal
     const channel = supabase.channel('online-users', {
@@ -350,46 +441,18 @@ const Tickets = () => {
     channel.on('presence', { event: 'sync' }, () => {
       if (!isMountedRef.current) return;
       
-      // Quando o estado de presença é sincronizado, atualizar a lista de usuários online
-      const state = channel.presenceState() || {};
-      const onlineUserIds = Object.keys(state);
-      // Criar uma lista de usuários online diretamente dos dados de presença
-      const onlineSupportUsers: SupportUser[] = [];
-      
-      // Processar cada usuário presente no estado
-      Object.entries(state).forEach(([userId, presences]) => {
-        // O valor de presences é um array de presenças para o mesmo usuário
-        if (Array.isArray(presences) && presences.length > 0) {
-          const userPresence = presences[0] as any;
-          
-          // Verificar se é um usuário de suporte ou advogado
-          if (userPresence.role === 'support' || userPresence.role === 'lawyer' || userPresence.role === 'admin') {
-            onlineSupportUsers.push({
-              id: userId,
-              name: userPresence.name || 'Usuário',
-              role: userPresence.role,
-              isOnline: true
-            });
-          }
-        }
+      // Regra: online efetivo = toggle no banco (manualOnline) E presença ativa no canal
+      const state = (channel.presenceState() || {}) as PresenceState;
+      setSupportUsers((prev) => {
+        const { mergedUsers } = applyPresenceToSupportUsers(prev, state);
+        return mergedUsers;
       });
-      
-      // Atualizar o estado dos usuários de suporte para mostrar quem está online
-      setSupportUsers(prev => 
-        prev.map(supportUser => ({
-          ...supportUser,
-          isOnline: onlineUserIds.includes(supportUser.id)
-        }))
-      );
-      
-      // Atualizar a lista separada de usuários online
-      setOnlineUsers(onlineSupportUsers);
     });
     
     // Inscrever-se no canal
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        if (user.role === 'support' || user.role === 'lawyer' || user.role === 'admin') {
+        if (canUsePresenceChannel) {
           channel.track({
             id: user.id,
             name: user.name,
@@ -397,13 +460,8 @@ const Tickets = () => {
             online_at: new Date().toISOString(),
           });
         }
-      } else if (status === 'CHANNEL_ERROR') {
-        // Tentar reconectar após um pequeno atraso
-        setTimeout(() => {
-          if (isMountedRef.current && channelsRef.current.presence) {
-            channelsRef.current.presence.subscribe();
-          }
-        }, 5000);
+      } else {
+        handleChannelStatus('presence', 'presence', status);
       }
     });
     
@@ -411,13 +469,47 @@ const Tickets = () => {
     channelsRef.current.presence = channel;
   };
 
+  const setupSupportUsersStatusChannel = () => {
+    if (!user?.id) return;
+
+    removeChannelSafely('supportUsersStatus', 'supportUsersStatus');
+
+    const channel = supabase.channel('support-users-status');
+    channel.on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: TABLES.USERS,
+    }, (payload) => {
+      if (!isMountedRef.current) return;
+
+      const updatedUserId = String(payload.new?.id ?? '');
+      if (!updatedUserId) return;
+      const manualOnline = Boolean(payload.new?.is_online);
+
+      setSupportUsers((prev) => {
+        const exists = prev.some((supportUser) => supportUser.id === updatedUserId);
+        if (!exists) return prev;
+
+        return prev.map((supportUser) => {
+          if (supportUser.id !== updatedUserId) return supportUser;
+          return {
+            ...supportUser,
+            manualOnline,
+            isOnline: manualOnline,
+          };
+        });
+      });
+    });
+
+    channel.subscribe((status) => handleChannelStatus('supportUsersStatus', 'supportUsersStatus', status));
+    channelsRef.current.supportUsersStatus = channel;
+  };
+
   // Função para configurar um único canal de mensagens para o ticket selecionado
   const setupMessagesChannel = (ticketId: string) => {
     if (!ticketId || !user?.id) return;
     // Remover canal anterior se existir
-    if (channelsRef.current.messages) {
-      supabase.removeChannel(channelsRef.current.messages);
-    }
+    removeChannelSafely('messages', 'messages');
     
     // Criar novo canal
     const channel = supabase.channel(`ticket-${ticketId}`);
@@ -507,14 +599,9 @@ const Tickets = () => {
     });
     
     channel.subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        
-        // Tentar reconectar após um pequeno atraso
-        setTimeout(() => {
-          if (isMountedRef.current && channelsRef.current.messages) {
-            channelsRef.current.messages.subscribe();
-          }
-        }, 5000);
+      handleChannelStatus('messages', 'messages', status);
+      if (status === 'SUBSCRIBED') {
+        void reconcileMessagesForTicket(ticketId, 'subscribed');
       }
     });
     
@@ -530,9 +617,7 @@ const Tickets = () => {
     if (!ticketId || !user?.id) return;
     
     // Remover canal anterior se existir
-    if (channelsRef.current.typing) {
-      supabase.removeChannel(channelsRef.current.typing);
-    }
+    removeChannelSafely('typing', 'typing');
     
     // Criar novo canal
     const channel = supabase.channel(`typing-${ticketId}`);
@@ -563,16 +648,7 @@ const Tickets = () => {
       });
     });
     
-    channel.subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        // Tentar reconectar após um pequeno atraso
-        setTimeout(() => {
-          if (isMountedRef.current && channelsRef.current.typing) {
-            channelsRef.current.typing.subscribe();
-          }
-        }, 5000);
-      }
-    });
+    channel.subscribe((status) => handleChannelStatus('typing', 'typing', status));
     
     // Armazenar referência ao canal
     channelsRef.current.typing = channel;
@@ -583,9 +659,7 @@ const setupGlobalMessagesChannel = () => {
   if (!user?.id) return;
   
   // Remover canal anterior se existir
-  if (channelsRef.current.globalMessages) {
-    supabase.removeChannel(channelsRef.current.globalMessages);
-  }
+  removeChannelSafely('globalMessages', 'globalMessages');
   // Criar novo canal para monitorar todas as mensagens
   const channel = supabase.channel('global-messages-counters');
   
@@ -647,16 +721,7 @@ const setupGlobalMessagesChannel = () => {
     }
   });
   
-  channel.subscribe((status) => {
-    if (status === 'CHANNEL_ERROR') {
-      // Tentar reconectar após um pequeno atraso
-      setTimeout(() => {
-        if (isMountedRef.current && channelsRef.current.globalMessages) {
-          channelsRef.current.globalMessages.subscribe();
-        }
-      }, 5000);
-    }
-  });
+  channel.subscribe((status) => handleChannelStatus('globalMessages', 'globalMessages', status));
   
   // Armazenar referência ao canal
   channelsRef.current.globalMessages = channel;
@@ -735,40 +800,90 @@ useEffect(() => {
   setupSystemChannel();
   setupTicketsChannel();
   setupGlobalMessagesChannel(); // ✅ Garantir que este canal seja configurado
+  setupSupportUsersStatusChannel();
   
   // Configurar monitoramento de presença para usuários da equipe
-  if (user && (user.role === 'admin' || user.role === 'lawyer' || user.role === 'support')) {
+  if (canUsePresenceChannel) {
     setupPresenceChannel();
   }
   
   // Limpar ao desmontar
   return () => {
+    // Este cleanup roda também em reconnectSignal; não derrubar canal de chat ativo aqui.
+    removeChannelSafely('system', 'system');
+    removeChannelSafely('tickets', 'tickets');
+    removeChannelSafely('globalMessages', 'globalMessages');
+    removeChannelSafely('presence', 'presence');
+    removeChannelSafely('supportUsersStatus', 'supportUsersStatus');
+  };
+}, [canUsePresenceChannel, user?.id, has]);
+
+// Cleanup final no unmount: remover todos os canais restantes.
+useEffect(() => {
+  return () => {
+    // Evita estado stale no contexto que pode suprimir som indevidamente.
+    setActiveChatId(null);
     isMountedRef.current = false;
-    
-    // Limpar timeout de digitação
+
     if (typingTimeout.current) {
       clearTimeout(typingTimeout.current);
     }
-    
-    // Remover todos os canais
-    Object.values(channelsRef.current).forEach(channel => {
+
+    Object.values(channelsRef.current).forEach((channel) => {
       if (channel) {
         supabase.removeChannel(channel);
       }
     });
-    
-    // Limpar referência aos canais
+
+    Object.keys(channelRetryTimerRef.current).forEach((key) => {
+      clearRetryTimer(key);
+      channelRetryCountRef.current[key] = 0;
+    });
+
     channelsRef.current = {};
   };
-}, [user?.id, has]);
+}, [setActiveChatId]);
+
+// Mantém o contexto de chat ativo sincronizado com o estado visual real.
+useEffect(() => {
+  if (showChat && selectedTicket?.id) {
+    setActiveChatId(selectedTicket.id);
+    return;
+  }
+
+  setActiveChatId(null);
+}, [showChat, selectedTicket?.id, setActiveChatId]);
 
   // Configurar canal de mensagens quando o ticket selecionado mudar
   useEffect(() => {
+    selectedTicketIdRef.current = selectedTicket?.id ?? null;
+
     if (selectedTicket?.id) {
       loadMessages(selectedTicket.id);
       setupMessagesChannel(selectedTicket.id);
     }
   }, [selectedTicket?.id]);
+
+// Reconnect sem mini reload visual: rebind silencioso de canais.
+useEffect(() => {
+  if (reconnectSignal === 0) return;
+  if (!user?.id) return;
+
+  setupSystemChannel();
+  setupTicketsChannel();
+  setupGlobalMessagesChannel();
+  setupSupportUsersStatusChannel();
+
+  if (canUsePresenceChannel) {
+    setupPresenceChannel();
+  }
+
+  const currentTicketId = selectedTicketIdRef.current;
+  if (currentTicketId) {
+    setupMessagesChannel(currentTicketId);
+    void reconcileMessagesForTicket(currentTicketId, 'reconnect');
+  }
+}, [canUsePresenceChannel, reconnectSignal, user?.id]);
 
   // Abrir o chat do ticket quando a URL for /tickets/:ticketId (ex.: clique em "Ver" no toast)
   useEffect(() => {
@@ -820,7 +935,14 @@ useEffect(() => {
     try {
       const users = await TicketService.getSupportUsers();
       if (isMountedRef.current) {
-        setSupportUsers(users as SupportUser[]);
+        const normalizedUsers = (users as SupportUser[]).map((supportUser) => ({
+          ...supportUser,
+          manualOnline: Boolean(supportUser.isOnline),
+          isOnline: false,
+        }));
+        const presenceState = (channelsRef.current.presence?.presenceState?.() || {}) as PresenceState;
+        const { mergedUsers } = applyPresenceToSupportUsers(normalizedUsers, presenceState);
+        setSupportUsers(mergedUsers);
       }
     } catch (error) {
       console.error('Error loading support users:', error);
@@ -1002,7 +1124,7 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
 };
 
 const handleCreateTicketForUser = async (ticketData: CreateTicketForUserData) => {
-  if (!user || !isStaff) {
+  if (!user || !canCreateTicketForUser) {
     toast.error('Você não tem permissão para criar tickets em nome de usuários');
     return;
   }
@@ -1248,15 +1370,8 @@ const closeChat = () => {
   if (ticketIdParam) navigate('/tickets', { replace: true });
 
   // Remover canais específicos do ticket
-  if (channelsRef.current.messages) {
-    supabase.removeChannel(channelsRef.current.messages);
-    channelsRef.current.messages = undefined;
-  }
-
-  if (channelsRef.current.typing) {
-    supabase.removeChannel(channelsRef.current.typing);
-    channelsRef.current.typing = undefined;
-  }
+  removeChannelSafely('messages', 'messages');
+  removeChannelSafely('typing', 'typing');
 };
 
 // Função para lidar com feedback enviado
@@ -1367,11 +1482,6 @@ const renderTicketCard = (ticket: Ticket) => {
   );
 };
 
-// Filtrar usuários online para mostrar apenas support e lawyer
-const getOnlineStaff = () => {
-  return onlineUsers;
-};
-
 return (
   <div className="h-screen flex flex-col overflow-hidden">
     {/* PendingFeedbackHandler - só mostrar para usuários comuns */}
@@ -1392,9 +1502,8 @@ return (
         setShowCreateForUserModal={setShowCreateForUserModal}
         supportUsers={supportUsers}
         user={user}
-        onlineUsersCount={getOnlineStaff().length}
         canCreateTicket={has('create_ticket')}
-        canCreateTicketForUser={has('create_ticket_for_user')}
+        canCreateTicketForUser={canCreateTicketForUser}
       />
 
       {/* Filtros sempre visíveis */}
@@ -1411,7 +1520,7 @@ return (
           userFilter={userFilter}
           onUserFilterChange={setUserFilter}
           supportUsers={supportUsers}
-          isSupport={user?.role === 'admin' || user?.role === 'lawyer' || user?.role === 'support'}
+          isSupport={isStaffUser}
         />
       </div>
 

@@ -27,12 +27,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
- * Registra o Service Worker e retorna o Registration.
+ * Registra o Service Worker (PWA + push) e retorna a Registration.
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
-  if (!isPushSupported()) return null;
+  if (!('serviceWorker' in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const base = import.meta.env.BASE_URL;
+    const swUrl = `${base}sw.js`;
+    const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     return reg;
   } catch (e) {
     console.error('Erro ao registrar Service Worker:', e);
