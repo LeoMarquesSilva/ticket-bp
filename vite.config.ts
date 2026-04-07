@@ -5,7 +5,7 @@ import { viteSourceLocator } from "@metagptx/vite-plugin-source-locator";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: './',  // Use caminho relativo em vez de '/ticket-bp/'
+  base: '/',
   plugins: [
     viteSourceLocator({
       prefix: "mgx",
