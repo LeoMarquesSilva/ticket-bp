@@ -9,6 +9,9 @@ export interface Subcategory {
   slaHours: number;
   defaultAssignedTo?: string; // ID do usuário que receberá automaticamente
   defaultAssignedToName?: string;
+  whatsappNotifyEnabled?: boolean;
+  whatsappMessageTemplate?: string;
+  whatsappRecipient?: string;
   isActive: boolean;
   order: number; // Ordem de exibição
   createdAt: string;
@@ -69,6 +72,9 @@ export interface CreateSubcategoryData {
   slaHours: number;
   defaultAssignedTo?: string;
   order?: number;
+  whatsappNotifyEnabled?: boolean;
+  whatsappMessageTemplate?: string;
+  whatsappRecipient?: string;
 }
 
 export class CategoryService {
@@ -564,6 +570,9 @@ export class CategoryService {
           sla_hours: data.slaHours,
           default_assigned_to: data.defaultAssignedTo || null,
           default_assigned_to_name: assignedToName || null,
+          whatsapp_notify_enabled: data.whatsappNotifyEnabled ?? false,
+          whatsapp_message_template: data.whatsappMessageTemplate?.trim() || null,
+          whatsapp_recipient: data.whatsappRecipient?.trim() || null,
           is_active: true,
           order: order,
           created_at: new Date().toISOString(),
@@ -601,6 +610,16 @@ export class CategoryService {
 
       // Buscar nome do usuário se defaultAssignedTo foi alterado
       // IMPORTANTE: data.defaultAssignedTo pode ser null (para remover) ou userId (para atribuir)
+      if (data.whatsappNotifyEnabled !== undefined) {
+        updateData.whatsapp_notify_enabled = data.whatsappNotifyEnabled;
+      }
+      if (data.whatsappMessageTemplate !== undefined) {
+        updateData.whatsapp_message_template = data.whatsappMessageTemplate?.trim() || null;
+      }
+      if (data.whatsappRecipient !== undefined) {
+        updateData.whatsapp_recipient = data.whatsappRecipient?.trim() || null;
+      }
+
       if (data.defaultAssignedTo !== undefined) {
         if (data.defaultAssignedTo && data.defaultAssignedTo !== '' && data.defaultAssignedTo !== 'none') {
           // Atribuir a um usuário específico
@@ -838,6 +857,9 @@ export class CategoryService {
       slaHours: data.sla_hours,
       defaultAssignedTo: data.default_assigned_to,
       defaultAssignedToName: data.default_assigned_to_name,
+      whatsappNotifyEnabled: data.whatsapp_notify_enabled ?? false,
+      whatsappMessageTemplate: data.whatsapp_message_template ?? undefined,
+      whatsappRecipient: data.whatsapp_recipient ?? undefined,
       isActive: data.is_active,
       order: data.order,
       createdAt: data.created_at,

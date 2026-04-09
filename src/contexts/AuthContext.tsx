@@ -146,16 +146,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const cachedUser = getUserFromStorage();
         if (cachedUser) {
-          setUser(cachedUser);
-          setRequiresPasswordChange(checkPasswordChangeRequired(cachedUser));
-          setLoading(false);
-          try {
-            const { data: { session: s } } = await supabase.auth.getSession();
-            if (s?.user?.id) currentAuthUserId.current = s.user.id;
-          } catch {
-            /* ignore */
+          const { data: { session: cachedSession } } = await supabase.auth.getSession();
+          if (cachedSession?.user?.id) {
+            currentAuthUserId.current = cachedSession.user.id;
+            setUser(cachedUser);
+            setRequiresPasswordChange(checkPasswordChangeRequired(cachedUser));
+            setLoading(false);
+            return;
           }
-          return;
+          // Cache de perfil sem sessão JWT válida: limpa e segue fluxo normal.
+          saveUserToStorage(null);
         }
 
         const { data: { session }, error } = await supabase.auth.getSession();

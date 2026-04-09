@@ -1,0 +1,7 @@
+# https://supabase.com/docs/guides/cli/config
+
+[functions.evolution-admin]
+verify_jwt = true
+
+[functions.notify-ticket-whatsapp]
+verify_jwt = true

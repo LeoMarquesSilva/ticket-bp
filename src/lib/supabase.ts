@@ -6,8 +6,20 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 // Adicione sua chave service_role aqui (você precisará adicionar ao .env)
 const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 
-// Gerar um ID único para esta instância do aplicativo
-const instanceId = `app-${Math.random().toString(36).substring(2, 9)}`;
+// Mantém o mesmo ID entre recargas para não "perder" a sessão no storage.
+const APP_INSTANCE_STORAGE_KEY = 'helpdesk_app_instance_id';
+function getStableInstanceId(): string {
+  try {
+    const existing = localStorage.getItem(APP_INSTANCE_STORAGE_KEY);
+    if (existing) return existing;
+    const generated = `app-${Math.random().toString(36).substring(2, 9)}`;
+    localStorage.setItem(APP_INSTANCE_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return 'app-fallback';
+  }
+}
+const instanceId = getStableInstanceId();
 
 // Tabelas do banco de dados
 export const TABLES = {
@@ -21,6 +33,7 @@ export const TABLES = {
   ROLE_PERMISSIONS: 'app_c009c0e4f1_role_permissions',
   DEPARTMENTS: 'app_c009c0e4f1_departments',
   PUSH_SUBSCRIPTIONS: 'app_c009c0e4f1_push_subscriptions',
+  INTEGRATION_SETTINGS: 'app_c009c0e4f1_integration_settings',
 };
 
 // Database types

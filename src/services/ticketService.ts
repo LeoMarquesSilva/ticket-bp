@@ -5,6 +5,7 @@ import { saveForLater } from '../utils/offlineStorage';
 import ticketEventService from './ticketEventService';
 import { notifyDetractorFeedback, notifyUnfulfilledRequest } from './webhookService';
 import { CategoryService } from './categoryService';
+import { notifyTicketWhatsApp } from './evolutionEdgeService';
 
 export interface Ticket {
   id: string;
@@ -1005,7 +1006,9 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
     }
 
     console.log('Created ticket data from DB:', data); // Log para verificar o resultado
-    return mapFromDatabase(data);
+    const ticket = mapFromDatabase(data);
+    void notifyTicketWhatsApp(ticket.id);
+    return ticket;
   } catch (error) {
     console.error('Error in createTicket:', error);
     throw error;
