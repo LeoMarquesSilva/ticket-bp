@@ -556,7 +556,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
       {/* Modal de detalhes do ticket */}
       <Dialog open={showTicketDetails} onOpenChange={setShowTicketDetails}>
-        <DialogContent className="sm:max-w-xl p-0 gap-0 overflow-hidden">
+        <DialogContent className="sm:max-w-xl p-0 gap-0 min-w-0 max-h-[90dvh] overflow-x-hidden overflow-y-auto">
           {/* Header com gradiente */}
           <div 
             className="px-6 pt-6 pb-5 relative"
@@ -588,7 +588,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
           </div>
 
           {/* Conteúdo */}
-          <div className="px-6 pb-6 pt-4 space-y-4">
+          <div className="px-6 pb-6 pt-4 space-y-4 min-w-0">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
                 <UserAvatar
@@ -654,13 +654,13 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             </div>
 
             {selectedTicket.description && (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
+              <div className="min-w-0 w-full">
+                <div className="flex items-center gap-2 mb-2 min-w-0">
                   <div className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent" />
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Descrição</p>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider shrink-0">Descrição</p>
                   <div className="h-px flex-1 bg-gradient-to-l from-slate-200 to-transparent" />
                 </div>
-                <div className="max-h-[220px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap break-words custom-scrollbar shadow-inner">
+                <div className="max-h-[min(50vh,24rem)] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white p-4 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] custom-scrollbar shadow-inner">
                   {selectedTicket.description}
                 </div>
               </div>
