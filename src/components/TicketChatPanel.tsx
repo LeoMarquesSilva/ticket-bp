@@ -1,11 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle, Bold, Italic, List, ListOrdered, Link2, Code, Maximize2, Minimize2 } from 'lucide-react';
 import FinishTicketButton from './FinishTicketButton';
 import TransferTicketModal from './TransferTicketModal';
 import { Ticket, ChatMessage } from '@/types';
@@ -26,6 +28,13 @@ import {
 } from "@/components/ui/dialog";
 import { usePasteImage } from '@/hooks/usePasteImage';
 import PastedImagePreview from '@/components/PastedImagePreview';
+import {
+  FormattedChatMessage,
+  applyWrap,
+  applyBulletLines,
+  applyNumberedLines,
+  applyLinkTemplate,
+} from '@/lib/chatMessageFormatting';
 
 // Interface para dados de feedback
 interface TicketFeedbackData {
@@ -101,12 +110,13 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
   const [createdByAvatarUrl, setCreatedByAvatarUrl] = useState<string | null>(null);
+  const [composerExpanded, setComposerExpanded] = useState(false);
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
 
-  // Referência para o input de mensagem
-  const inputRef = useRef<HTMLInputElement>(null);
+  // Referência para o campo de mensagem (textarea)
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Hook para colar imagens com limite de 300MB
   const { attachPasteListener } = usePasteImage({
@@ -124,27 +134,59 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     }
   });
 
-  // Função para focar no input
+  // Função para focar no textarea
   const focusInput = () => {
-    if (!inputRef.current || isTicketFinalized(selectedTicket)) return;
-    
+    if (!textareaRef.current || isTicketFinalized(selectedTicket)) return;
+
     const attemptFocus = () => {
-      if (inputRef.current && !isTicketFinalized(selectedTicket)) {
-        inputRef.current.focus();
-        if (document.activeElement !== inputRef.current) {
+      const el = textareaRef.current;
+      if (el && !isTicketFinalized(selectedTicket)) {
+        el.focus();
+        if (document.activeElement !== el) {
           setTimeout(() => {
-            if (inputRef.current && !isTicketFinalized(selectedTicket)) {
-              inputRef.current.focus();
-              inputRef.current.setSelectionRange(inputRef.current.value.length, inputRef.current.value.length);
+            const t = textareaRef.current;
+            if (t && !isTicketFinalized(selectedTicket)) {
+              t.focus();
+              t.setSelectionRange(t.value.length, t.value.length);
             }
           }, 10);
         }
       }
     };
-    
+
     attemptFocus();
     requestAnimationFrame(() => attemptFocus());
     setTimeout(() => attemptFocus(), 50);
+  };
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el || isTicketFinalized(selectedTicket)) return;
+    const collapsedMin = 52;
+    const expandedMin = Math.min(Math.round(window.innerHeight * 0.38), 360);
+    const minPx = composerExpanded ? expandedMin : collapsedMin;
+    const maxPx = composerExpanded
+      ? Math.min(Math.round(window.innerHeight * 0.72), 560)
+      : Math.min(Math.round(window.innerHeight * 0.28), 200);
+    el.style.height = '0px';
+    const sh = el.scrollHeight;
+    el.style.height = `${Math.max(minPx, Math.min(sh, maxPx))}px`;
+  }, [newMessage, composerExpanded, selectedTicket.id]);
+
+  const applyComposerFormat = (
+    fn: (v: string, s: number, e: number) => { value: string; selectionStart: number; selectionEnd: number }
+  ) => {
+    const ta = textareaRef.current;
+    if (!ta || sending || isTicketFinalized(selectedTicket)) return;
+    const res = fn(newMessage, ta.selectionStart, ta.selectionEnd);
+    setNewMessage(res.value);
+    handleTyping();
+    setTimeout(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(res.selectionStart, res.selectionEnd);
+    }, 0);
   };
 
   // Buscar avatar do solicitante quando o modal de detalhes abre
@@ -190,17 +232,41 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     setPastedImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleLocalKeyPress = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleLocalKeyPress = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isEnter = e.key === 'Enter' || e.key === 'NumpadEnter';
+    if (!isEnter) return;
+
+    if (e.nativeEvent.isComposing) return;
+
+    if (e.shiftKey) {
       e.preventDefault();
-      if (pastedImages.length > 0) {
-        await handlePastedImagesUpload();
-      }
-      sendMessage();
-      setPastedImages([]);
-      setImageError(null);
-      setTimeout(() => focusInput(), 100);
+      e.stopPropagation();
+      const ta = e.currentTarget;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? 0;
+      const val = ta.value;
+      const next = val.slice(0, start) + '\n' + val.slice(end);
+      setNewMessage(next);
+      handleTyping();
+      const pos = start + 1;
+      queueMicrotask(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(pos, pos);
+      });
+      return;
     }
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (pastedImages.length > 0) {
+      await handlePastedImagesUpload();
+    }
+    sendMessage();
+    setPastedImages([]);
+    setImageError(null);
+    setTimeout(() => focusInput(), 100);
   };
 
   useEffect(() => {
@@ -753,7 +819,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                       `}
                     >
                       {message.message && (
-                        <div className="whitespace-pre-wrap leading-relaxed">{message.message}</div>
+                        <FormattedChatMessage text={message.message} tone={isOwnMessage ? 'own' : 'other'} />
                       )}
                       {renderAttachments(message.attachments)}
                     </div>
@@ -864,47 +930,180 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <QuickReplyTemplates
                 onSelectTemplate={(message) => {
                   setNewMessage(message);
-                  // Focar o input após inserir o template
+                  // Focar o textarea após inserir o template
                   setTimeout(() => {
-                    inputRef.current?.focus();
+                    textareaRef.current?.focus();
                   }, 100);
                 }}
                 disabled={sending || isTicketFinalized(selectedTicket)}
               />
             )}
-            <div className="flex-1 relative">
-              <Input
-                ref={inputRef}
-                type="text"
-                value={newMessage}
-                onChange={(e) => {
-                  setNewMessage(e.target.value);
-                  handleTyping();
-                }}
-                onKeyDown={handleLocalKeyPress}
-                placeholder={Object.keys(typingUsers).length > 0 
-                  ? `${Object.values(typingUsers).join(', ')} está digitando...` 
-                  : "Digite sua mensagem..."}
-                className="flex-1 pr-10 py-6 border-slate-200 focus-visible:ring-[#F69F19] focus-visible:border-[#F69F19]"
-                disabled={sending}
-              />
-              
-              {/* Botão de anexar arquivo */}
-              <label className="absolute right-3 top-1/2 transform -translate-y-1/2 cursor-pointer p-1 hover:bg-slate-100 rounded-full transition-colors">
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
+            <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+              <TooltipProvider delayDuration={400}>
+                <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50/90 px-1 py-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyComposerFormat((v, s, e) => applyWrap(v, s, e, '**', '**', 'negrito'))}
+                        disabled={sending}
+                        aria-label="Negrito"
+                      >
+                        <Bold className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Negrito (**texto**)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyComposerFormat((v, s, e) => applyWrap(v, s, e, '*', '*', 'itálico'))}
+                        disabled={sending}
+                        aria-label="Itálico"
+                      >
+                        <Italic className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Itálico (*texto*)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyComposerFormat(applyBulletLines)}
+                        disabled={sending}
+                        aria-label="Lista com marcadores"
+                      >
+                        <List className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Lista (- item)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyComposerFormat(applyNumberedLines)}
+                        disabled={sending}
+                        aria-label="Lista numerada"
+                      >
+                        <ListOrdered className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Lista numerada (1. item)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyComposerFormat((v, s, e) => applyWrap(v, s, e, '`', '`', 'código'))}
+                        disabled={sending}
+                        aria-label="Código"
+                      >
+                        <Code className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Código (`trecho`)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyComposerFormat(applyLinkTemplate)}
+                        disabled={sending}
+                        aria-label="Link"
+                      >
+                        <Link2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Link ([texto](url))</TooltipContent>
+                  </Tooltip>
+                  <div className="ml-auto flex items-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#F69F19]"
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        setComposerExpanded((x) => !x);
+                      }}
+                      disabled={sending}
+                      aria-expanded={composerExpanded}
+                      title={composerExpanded ? 'Recolher área de digitação' : 'Expandir área de digitação (altura maior)'}
+                      aria-label={composerExpanded ? 'Recolher campo de mensagem' : 'Expandir campo de mensagem'}
+                    >
+                      {composerExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </TooltipProvider>
+
+              <div className="relative">
+                <Textarea
+                  ref={textareaRef}
+                  value={newMessage}
                   onChange={(e) => {
-                    if (e.target.files) {
-                      handleFileUpload(e.target.files);
-                      e.target.value = ''; // Limpar o input
-                    }
+                    setNewMessage(e.target.value);
+                    handleTyping();
                   }}
-                  accept="image/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+                  onKeyDown={handleLocalKeyPress}
+                  placeholder={
+                    Object.keys(typingUsers).length > 0
+                      ? `${Object.values(typingUsers).join(', ')} está digitando...`
+                      : 'Digite sua mensagem...'
+                  }
+                  rows={composerExpanded ? 5 : 1}
+                  disabled={sending}
+                  className={`resize-none overflow-y-auto pr-11 py-3 text-base leading-snug border-slate-200 focus-visible:ring-[#F69F19] focus-visible:border-[#F69F19] [overflow-wrap:anywhere] break-words ${
+                    composerExpanded
+                      ? 'min-h-[min(38vh,360px)] max-h-[min(72vh,560px)]'
+                      : 'min-h-[52px] max-h-[min(28vh,200px)]'
+                  }`}
                 />
-                <Paperclip className="h-5 w-5 text-slate-400 hover:text-[#F69F19] transition-colors" />
-              </label>
+
+                <label className="absolute bottom-2 right-2 cursor-pointer rounded-full p-1.5 transition-colors hover:bg-slate-100">
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        handleFileUpload(e.target.files);
+                        e.target.value = '';
+                      }
+                    }}
+                    accept="image/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+                  />
+                  <Paperclip className="h-5 w-5 text-slate-400 transition-colors hover:text-[#F69F19]" />
+                </label>
+              </div>
             </div>
             
             <Button
@@ -928,9 +1127,9 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               )}
             </Button>
           </div>
-          <div className="mt-2 text-[10px] text-slate-400 flex justify-between px-1">
-             <span>Pressione Enter para enviar</span>
-             <span>Cole imagens com Ctrl+V</span>
+          <div className="mt-2 text-[10px] text-slate-400 flex flex-wrap gap-x-3 gap-y-1 justify-between px-1">
+            <span>Enter envia mensagem · Shift+Enter pula linha</span>
+            <span className="shrink-0">Cole imagens com Ctrl+V</span>
           </div>
         </div>
       ) : (
