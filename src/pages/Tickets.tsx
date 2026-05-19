@@ -1140,6 +1140,7 @@ const handleCreateTicketForUser = async (ticketData: CreateTicketForUserData) =>
       createdBy: ticketData.userId,
       createdByName: ticketData.userName,
       createdByDepartment: ticketData.userDepartment,
+      skipFeedbackCheck: true,
     });
     
     // Depois, atribuir ao criador (membro da equipe)
@@ -1484,14 +1485,12 @@ const renderTicketCard = (ticket: Ticket) => {
 
 return (
   <div className="h-screen flex flex-col overflow-hidden">
-    {/* PendingFeedbackHandler - só mostrar para usuários comuns */}
-    {user?.role === 'user' && (
-      <PendingFeedbackHandler
-        tickets={tickets}
-        onFeedbackSubmitted={handleFeedbackSubmitted}
-        onOpenTicket={openChat}
-      />
-    )}
+    {/* PendingFeedbackHandler - mostrar para todos os perfis que tenham tickets a avaliar */}
+    <PendingFeedbackHandler
+      tickets={tickets}
+      onFeedbackSubmitted={handleFeedbackSubmitted}
+      onOpenTicket={openChat}
+    />
 
 {/* Cabeçalho com filtros e botões - altura fixa */}
 <div className="flex-shrink-0 bg-[#F6F6F6] border-b border-[#F69F19]/20 shadow-sm w-full">
