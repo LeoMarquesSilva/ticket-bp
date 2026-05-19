@@ -23,12 +23,14 @@ interface CreateTicketModalProps {
     category: string;
     subcategory: string;
   }) => void;
+  onOpenTicket?: (ticket: any) => void;
 }
 
 const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  onOpenTicket,
 }) => {
   const { user } = useAuth();
   const [hasPendingFeedback, setHasPendingFeedback] = useState<boolean>(false);
@@ -90,8 +92,20 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   };
 
   const handleClose = () => {
-    // Permitir fechar o modal mesmo com feedback pendente
     onClose();
+  };
+
+  const handleOpenTicket = (ticket: any) => {
+    onClose();
+    onOpenTicket?.(ticket);
+  };
+
+  const handleEntendi = () => {
+    if (pendingTickets.length > 0 && onOpenTicket) {
+      handleOpenTicket(pendingTickets[0]);
+    } else {
+      onClose();
+    }
   };
 
   return (
@@ -150,13 +164,14 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 </div>
                 
                 {pendingTickets.map((ticket) => (
-                  <div 
-                    key={ticket.id} 
-                    className="group p-4 border border-slate-200 rounded-lg bg-white hover:border-[#F69F19]/30 hover:shadow-md transition-all duration-200 relative overflow-hidden"
+                  <div
+                    key={ticket.id}
+                    className="group p-4 border border-slate-200 rounded-lg bg-white hover:border-[#F69F19]/30 hover:shadow-md transition-all duration-200 relative overflow-hidden cursor-pointer"
+                    onClick={() => handleOpenTicket(ticket)}
                   >
                     {/* Borda lateral indicativa */}
                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#F69F19]"></div>
-                    
+
                     <div className="flex items-start justify-between pl-2">
                       <div className="flex-1">
                         <h4 className="font-semibold text-[#2C2D2F] mb-1 group-hover:text-[#DE5532] transition-colors">
@@ -169,10 +184,13 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                           <span>
                             Finalizado em: {formatDate(ticket.resolvedAt)}
                           </span>
-                          <span className="flex items-center gap-1 text-[#F69F19] font-medium">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleOpenTicket(ticket); }}
+                            className="flex items-center gap-1 text-[#F69F19] font-medium hover:text-[#DE5532] transition-colors"
+                          >
                             <Star className="h-3 w-3 fill-current" />
                             Avaliar agora
-                          </span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -189,17 +207,16 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   <div className="text-sm text-slate-600">
                     <p className="font-bold text-[#2C2D2F] mb-1">Como prosseguir?</p>
                     <ol className="list-decimal list-inside space-y-1 text-xs">
-                      <li>Clique em <strong>"Entendi"</strong> abaixo para fechar esta janela.</li>
-                      <li>Localize a barra de <strong>"Feedback Pendente"</strong> no topo do seu painel.</li>
-                      <li>Avalie os atendimentos listados.</li>
+                      <li>Clique em <strong>"Avaliar agora"</strong> no ticket desejado, ou</li>
+                      <li>Clique em <strong>"Entendi"</strong> para ir direto ao primeiro ticket pendente.</li>
                     </ol>
                   </div>
                 </div>
               </div>
-              
+
               <DialogFooter className="mt-6">
-                <Button 
-                  onClick={handleClose} 
+                <Button
+                  onClick={handleEntendi}
                   className="w-full text-white font-bold shadow-md border-0 hover:opacity-90 transition-opacity"
                   style={{ background: brandGradient }}
                 >
