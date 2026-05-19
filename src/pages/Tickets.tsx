@@ -1485,11 +1485,12 @@ const renderTicketCard = (ticket: Ticket) => {
 
 return (
   <div className="h-screen flex flex-col overflow-hidden">
-    {/* PendingFeedbackHandler - mostrar para todos os perfis que tenham tickets a avaliar */}
+    {/* PendingFeedbackHandler - mostra apenas tickets criados pelo próprio usuário logado */}
     <PendingFeedbackHandler
       tickets={tickets}
       onFeedbackSubmitted={handleFeedbackSubmitted}
       onOpenTicket={openChat}
+      currentUserId={user?.id}
     />
 
 {/* Cabeçalho com filtros e botões - altura fixa */}
