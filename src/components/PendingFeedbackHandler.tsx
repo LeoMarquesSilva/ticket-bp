@@ -8,15 +8,21 @@ interface PendingFeedbackHandlerProps {
   tickets: Ticket[];
   onFeedbackSubmitted: () => void;
   onOpenTicket?: (ticket: Ticket) => void;
+  currentUserId?: string;
 }
 
 const PendingFeedbackHandler: React.FC<PendingFeedbackHandlerProps> = ({
   tickets,
   onFeedbackSubmitted,
   onOpenTicket,
+  currentUserId,
 }) => {
   const pendingFeedbackTickets = (tickets || []).filter(
-    ticket => ticket && ticket.status === 'resolved' && !ticket.feedbackSubmittedAt
+    ticket =>
+      ticket &&
+      ticket.status === 'resolved' &&
+      !ticket.feedbackSubmittedAt &&
+      (!currentUserId || ticket.createdBy === currentUserId)
   );
 
   const handleOpenFirstTicket = () => {
