@@ -1528,6 +1528,7 @@ return (
         isOpen={showCreateForm}
         onClose={() => setShowCreateForm(false)}
         onSubmit={handleCreateTicket}
+        onOpenTicket={openChat}
       />
 
       {/* Mensagem de erro */}
