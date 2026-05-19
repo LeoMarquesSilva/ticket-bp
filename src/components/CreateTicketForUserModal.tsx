@@ -233,6 +233,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
         createdBy: selectedUser.id,
         createdByName: selectedUser.name,
         createdByDepartment: selectedUser.department,
+        skipFeedbackCheck: true,
       };
 
       const newTicket = await TicketService.createTicket(ticketData);
