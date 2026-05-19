@@ -63,6 +63,7 @@ export interface CreateTicketData {
   createdBy: string;
   createdByName: string;
   createdByDepartment?: string;
+  skipFeedbackCheck?: boolean;
 }
 
 export interface UpdateTicketData {
@@ -934,11 +935,13 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
     console.log('Creating ticket with data:', ticketData);
     console.log('Department from user:', ticketData.createdByDepartment);
     
-    // Verificar se o usuário tem feedback pendente
-    const hasPendingFeedback = await this.hasUnsubmittedFeedback(ticketData.createdBy);
-    
-    if (hasPendingFeedback) {
-      throw new Error('Você tem tickets finalizados que precisam de avaliação. Por favor, avalie-os antes de criar um novo ticket.');
+    // Verificar se o usuário tem feedback pendente (ignorado quando suporte cria em nome do usuário)
+    if (!ticketData.skipFeedbackCheck) {
+      const hasPendingFeedback = await this.hasUnsubmittedFeedback(ticketData.createdBy);
+
+      if (hasPendingFeedback) {
+        throw new Error('Você tem tickets finalizados que precisam de avaliação. Por favor, avalie-os antes de criar um novo ticket.');
+      }
     }
     
     // Preparar os dados básicos do ticket
