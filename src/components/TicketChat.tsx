@@ -61,10 +61,10 @@ const TicketChat: React.FC<TicketChatProps> = ({
   
   // Mostrar o formulário de NPS diretamente no chat quando o ticket estiver finalizado
   // e o usuário precisar dar feedback e ainda não enviou o feedback
-  const showNPSForm = ticketStatus === 'resolved' && 
-                      needsFeedback && 
+  const showNPSForm = ticketStatus === 'resolved' &&
+                      needsFeedback &&
                       !feedbackSubmitted &&
-                      user?.role === 'user';
+                      !!user?.id;
 
   // Função melhorada para focar no textarea
   const focusTextarea = useCallback(() => {
@@ -698,9 +698,9 @@ const TicketChat: React.FC<TicketChatProps> = ({
         )}
         
         {/* Mensagem de feedback enviado quando o usuário já enviou o feedback */}
-        {ticketStatus === 'resolved' && 
-         !needsFeedback && 
-         user?.role === 'user' && (
+        {ticketStatus === 'resolved' &&
+         !needsFeedback &&
+         !!user?.id && (
           <div className="flex justify-center">
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
               <div className="flex items-center justify-center gap-2 mb-2">

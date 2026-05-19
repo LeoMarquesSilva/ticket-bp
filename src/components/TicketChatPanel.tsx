@@ -277,7 +277,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
   useEffect(() => {
     const checkNeedsFeedback = async () => {
-      if (selectedTicket && user && user.role === 'user' && selectedTicket.createdBy === user.id) {
+      if (selectedTicket && user && selectedTicket.createdBy === user.id) {
         const showFeedbackParam = searchParams.get('showFeedback') === 'true';
         const needsFeedback = await TicketService.checkTicketNeedsFeedback(selectedTicket.id);
         setShowFeedback(showFeedbackParam || needsFeedback);
@@ -1143,7 +1143,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
           </div>
           
           {/* Mostrar botão de feedback se necessário */}
-          {showFeedback && user?.role === 'user' && selectedTicket.createdBy === user.id && (
+          {showFeedback && selectedTicket.createdBy === user?.id && (
             <div className="mt-2 p-4 bg-[#F69F19]/5 border border-[#F69F19]/20 rounded-xl animate-in fade-in slide-in-from-bottom-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
