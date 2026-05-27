@@ -5,14 +5,13 @@ import { Button } from '@/components/ui/button';
 import { 
   MessageSquare, 
   Clock, 
-  User, 
   AlertCircle, 
   CheckCircle,
   Calendar,
-  UserCheck,
   Star
 } from 'lucide-react';
 import { Ticket } from '@/types';
+import UserMention from '@/components/UserMention';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -120,20 +119,23 @@ const TicketCard: React.FC<TicketCardProps> = ({
 
           {/* Informações do usuário e data */}
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <User className="h-3 w-3" />
-              <span className="truncate">
-                {ticket.createdByName}
-                {ticket.createdByDepartment && (
-                  <span className="text-slate-400"> • {ticket.createdByDepartment}</span>
-                )}
-              </span>
-            </div>
+            <UserMention
+              name={ticket.createdByName}
+              avatarUrl={ticket.createdByAvatarUrl}
+              subtitle={ticket.createdByDepartment}
+              size="sm"
+              nameClassName="text-xs text-slate-600"
+            />
 
-            {ticket.assignedTo && (
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <UserCheck className="h-3 w-3" />
-                <span className="truncate">Atribuído a {ticket.assignedToName}</span>
+            {ticket.assignedTo && ticket.assignedToName && (
+              <div className="pl-0.5">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">Atendente</span>
+                <UserMention
+                  name={ticket.assignedToName}
+                  avatarUrl={ticket.assignedToAvatarUrl}
+                  size="sm"
+                  nameClassName="text-xs text-slate-600"
+                />
               </div>
             )}
 

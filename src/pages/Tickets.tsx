@@ -1586,6 +1586,11 @@ return (
           userFilter={userFilter}
           onUserFilterChange={setUserFilter}
           supportUsers={supportUsers}
+          currentUser={
+            user
+              ? { id: user.id, name: user.name, avatarUrl: user.avatarUrl }
+              : undefined
+          }
           isSupport={isStaffUser}
           frentes={frentes}
           categoriesConfig={categoriesConfig}

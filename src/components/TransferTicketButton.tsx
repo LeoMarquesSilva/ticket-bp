@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { UserService } from '@/services/userService';
 import { User } from '@/types';
 import { toast } from 'sonner';
+import UserMention from '@/components/UserMention';
 
 interface TransferTicketButtonProps {
   ticketId: string;
@@ -109,13 +110,13 @@ const TransferTicketButton: React.FC<TransferTicketButtonProps> = ({
               {supportUsers.map((user) => (
                 <div key={user.id} className="flex items-center space-x-2 p-2 rounded hover:bg-slate-50">
                   <RadioGroupItem value={user.id} id={user.id} />
-                  <Label htmlFor={user.id} className="flex items-center justify-between w-full cursor-pointer">
-                    <span>
-                      {user.name}
-                      <span className="text-xs text-slate-500 ml-2">
-                        ({user.role === 'lawyer' ? 'Advogado' : 'Suporte'})
-                      </span>
-                    </span>
+                  <Label htmlFor={user.id} className="flex items-center justify-between w-full cursor-pointer gap-2">
+                    <UserMention
+                      name={user.name}
+                      avatarUrl={user.avatarUrl}
+                      subtitle={user.role === 'lawyer' ? 'Advogado' : 'Suporte'}
+                      size="sm"
+                    />
                     {user.isOnline ? (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         Online

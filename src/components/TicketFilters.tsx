@@ -2,9 +2,19 @@ import React, { useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Search, X } from 'lucide-react';
+import UserMention from '@/components/UserMention';
 import type { CategoriesConfigMap } from '@/utils/ticketFilterUtils';
 import { getCategoryKeysForFrente } from '@/utils/ticketFilterUtils';
+
+export interface FilterSupportUser {
+  id: string;
+  name: string;
+  role: string;
+  avatarUrl?: string;
+}
 
 interface TicketFiltersProps {
   searchTerm: string;
@@ -19,7 +29,8 @@ interface TicketFiltersProps {
   onAssignedFilterChange: (value: string) => void;
   userFilter: string;
   onUserFilterChange: (value: string) => void;
-  supportUsers: Array<{ id: string; name: string; role: string }>;
+  supportUsers: FilterSupportUser[];
+  currentUser?: { id: string; name: string; avatarUrl?: string };
   isSupport: boolean;
   frentes: Array<{ id: string; label: string; color: string }>;
   categoriesConfig: CategoriesConfigMap;
@@ -40,6 +51,7 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
   userFilter,
   onUserFilterChange,
   supportUsers,
+  currentUser,
   isSupport,
   frentes,
   categoriesConfig,
@@ -51,6 +63,14 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
     const keys = new Set(getCategoryKeysForFrente(categoriesConfig, frenteFilter));
     return entries.filter(([key]) => keys.has(key));
   }, [categoriesConfig, frenteFilter]);
+
+  const onlyMyTickets = userFilter === 'mine';
+
+  const selectedResponsible = useMemo(() => {
+    if (onlyMyTickets && currentUser) return currentUser;
+    if (userFilter === 'all') return null;
+    return supportUsers.find((u) => u.id === userFilter) ?? null;
+  }, [onlyMyTickets, currentUser, userFilter, supportUsers]);
 
   const hasActiveFilters =
     searchTerm.trim() !== '' ||
@@ -69,8 +89,12 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
     onUserFilterChange('all');
   };
 
+  const handleResponsibleChange = (value: string) => {
+    onUserFilterChange(value);
+  };
+
   return (
-    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <div className="relative sm:col-span-2 xl:col-span-4">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
@@ -150,16 +174,32 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
         )}
 
         {isSupport && (
-          <Select value={userFilter} onValueChange={onUserFilterChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Responsável" />
+          <Select
+            value={onlyMyTickets ? 'all' : userFilter}
+            onValueChange={handleResponsibleChange}
+            disabled={onlyMyTickets}
+          >
+            <SelectTrigger className="h-auto min-h-10 py-1.5">
+              <div className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                {selectedResponsible ? (
+                  <UserMention
+                    name={selectedResponsible.name}
+                    avatarUrl={selectedResponsible.avatarUrl}
+                    size="sm"
+                    className="flex-1 min-w-0"
+                  />
+                ) : (
+                  <SelectValue placeholder="Responsável" />
+                )}
+              </div>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os responsáveis</SelectItem>
-              <SelectItem value="mine">Meus tickets</SelectItem>
+              <SelectItem value="all">
+                <span className="text-sm">Todos os responsáveis</span>
+              </SelectItem>
               {supportUsers.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
-                  {u.name}
+                  <UserMention name={u.name} avatarUrl={u.avatarUrl} size="sm" />
                 </SelectItem>
               ))}
             </SelectContent>
@@ -167,8 +207,33 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
         )}
       </div>
 
+      {isSupport && currentUser && (
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2">
+            <Switch
+              id="only-my-tickets"
+              checked={onlyMyTickets}
+              onCheckedChange={(checked) => onUserFilterChange(checked ? 'mine' : 'all')}
+              className="data-[state=checked]:bg-[#F69F19]"
+            />
+            <Label
+              htmlFor="only-my-tickets"
+              className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#2C2D2F]"
+            >
+              <UserMention
+                name={currentUser.name}
+                avatarUrl={currentUser.avatarUrl}
+                size="sm"
+                nameClassName="font-medium"
+              />
+              <span>Mostrar apenas meus tickets</span>
+            </Label>
+          </div>
+        </div>
+      )}
+
       {hasActiveFilters && (
-        <div className="mt-3 flex justify-end">
+        <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={clearFilters} className="flex items-center gap-2">
             <X className="h-4 w-4" />
             Limpar filtros
