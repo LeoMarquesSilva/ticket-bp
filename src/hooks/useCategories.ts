@@ -138,8 +138,8 @@ export function useCategories() {
 
   // --- Category CRUD ---
   const handleCreateCategory = async () => {
-    if (!newCategory.key || !newCategory.label) {
-      toast.error('Campos obrigatórios', { description: 'Preencha pelo menos a chave e o nome da categoria.' });
+    if (!newCategory.label?.trim()) {
+      toast.error('Campos obrigatórios', { description: 'Informe o nome da categoria.' });
       return;
     }
     try {
@@ -194,17 +194,8 @@ export function useCategories() {
 
   // --- Subcategory CRUD ---
   const handleCreateSubcategory = async () => {
-    if (!newSubcategory.key || !newSubcategory.label || !newSubcategory.categoryId) {
-      toast.error('Campos obrigatórios', { description: 'Preencha todos os campos obrigatórios.' });
-      return false;
-    }
-    const fmt = CategoryService.validateKeyFormat(newSubcategory.key);
-    if (!fmt.valid) { toast.error('Chave inválida', { description: fmt.error || 'A chave não está no formato correto.' }); return false; }
-    try {
-      const exists = await CategoryService.subcategoryKeyExists(newSubcategory.categoryId, newSubcategory.key);
-      if (exists) { toast.error('Chave já existe', { description: `A chave "${newSubcategory.key}" já está em uso nesta categoria.` }); return false; }
-    } catch {
-      toast.error('Erro ao validar chave', { description: 'Não foi possível verificar se a chave já existe.' });
+    if (!newSubcategory.label?.trim() || !newSubcategory.categoryId) {
+      toast.error('Campos obrigatórios', { description: 'Informe o nome da subcategoria.' });
       return false;
     }
     try {
@@ -276,15 +267,13 @@ export function useCategories() {
 
   // --- Frentes (Tags) CRUD ---
   const handleCreateFrente = async () => {
-    if (!newFrente.key?.trim() || !newFrente.label?.trim()) {
-      toast.error('Campos obrigatórios', { description: 'Preencha chave e nome da frente de atuação.' });
+    if (!newFrente.label?.trim()) {
+      toast.error('Campos obrigatórios', { description: 'Informe o nome da frente de atuação.' });
       return false;
     }
-    const key = newFrente.key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-    if (!key) { toast.error('Chave inválida', { description: 'Use apenas letras minúsculas, números e underscores.' }); return false; }
     try {
       setCreateFrenteLoading(true);
-      await CategoryService.createTag({ ...newFrente, key });
+      await CategoryService.createTag(newFrente);
       toast.success('Frente de atuação criada', { description: `${newFrente.label} foi criada com sucesso.` });
       setNewFrente({ key: '', label: '', color: '#3B82F6' });
       loadData();
@@ -347,7 +336,6 @@ export function useCategories() {
         cat.subcategories?.some(sub => sub.label.toLowerCase().includes(s) || sub.key.toLowerCase().includes(s))
       );
     }
-    filtered = filtered.filter((cat) => !cat.tag || cat.tag.isActive !== false);
     if (statusFilter === 'active') filtered = filtered.filter(cat => cat.isActive);
     else if (statusFilter === 'inactive') filtered = filtered.filter(cat => !cat.isActive);
     filtered.sort((a, b) => {
@@ -369,6 +357,13 @@ export function useCategories() {
     acc[tagKey].categories.push(category);
     return acc;
   }, {} as Record<string, { tag: TagType | null; tagLabel: string; categories: Category[] }>);
+
+  // Incluir frentes sem categorias ainda (ex.: Marketing recém-criada)
+  for (const tag of tags) {
+    if (!groupedByTag[tag.id]) {
+      groupedByTag[tag.id] = { tag, tagLabel: tag.label, categories: [] };
+    }
+  }
 
   const sortedTagGroups = Object.entries(groupedByTag).sort((a, b) => {
     if (a[0] === 'sem-tag') return -1;

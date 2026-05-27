@@ -48,7 +48,7 @@ export interface Category {
 }
 
 export interface CreateCategoryData {
-  key: string;
+  key?: string;
   label: string;
   slaHours?: number;
   defaultAssignedTo?: string;
@@ -57,7 +57,7 @@ export interface CreateCategoryData {
 }
 
 export interface CreateTagData {
-  key: string;
+  key?: string;
   label: string;
   color: string;
   icon?: string;
@@ -67,7 +67,7 @@ export interface CreateTagData {
 
 export interface CreateSubcategoryData {
   categoryId: string;
-  key: string;
+  key?: string;
   label: string;
   slaHours: number;
   defaultAssignedTo?: string;
@@ -181,6 +181,79 @@ export class CategoryService {
     }
 
     return { valid: true };
+  }
+
+  /** Converte nome legível em slug de chave (a-z, 0-9, _). */
+  static slugifyKeyFromLabel(label: string): string {
+    return label
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private static async generateUniqueKey(
+    label: string,
+    exists: (key: string) => Promise<boolean>
+  ): Promise<string> {
+    let base = this.slugifyKeyFromLabel(label);
+    if (!base || base.length < 2) base = 'item';
+    if (base.length > 50) base = base.replace(/_+$/, '').slice(0, 50).replace(/_+$/, '') || 'item';
+
+    let candidate = base;
+    let counter = 2;
+    while (await exists(candidate)) {
+      const suffix = `_${counter}`;
+      const trimmedBase = base.slice(0, Math.max(2, 50 - suffix.length)).replace(/_+$/, '') || 'item';
+      candidate = `${trimmedBase}${suffix}`;
+      counter += 1;
+      if (counter > 999) {
+        candidate = `item_${Date.now().toString(36).slice(-6)}`;
+        break;
+      }
+    }
+
+    const validation = this.validateKeyFormat(candidate);
+    if (!validation.valid) {
+      candidate = `item_${Date.now().toString(36).slice(-6)}`;
+    }
+    return candidate;
+  }
+
+  static async generateCategoryKeyFromLabel(label: string): Promise<string> {
+    return this.generateUniqueKey(label, (key) => this.categoryKeyExists(key));
+  }
+
+  static async generateSubcategoryKeyFromLabel(categoryId: string, label: string): Promise<string> {
+    return this.generateUniqueKey(label, (key) => this.subcategoryKeyExists(categoryId, key));
+  }
+
+  static async tagKeyExists(key: string, excludeId?: string): Promise<boolean> {
+    try {
+      let query = supabase
+        .from('app_c009c0e4f1_tags')
+        .select('id')
+        .eq('key', key)
+        .limit(1);
+
+      if (excludeId) {
+        query = query.neq('id', excludeId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return !!(data && data.length > 0);
+    } catch (error) {
+      console.error('Error in tagKeyExists:', error);
+      throw error;
+    }
+  }
+
+  static async generateTagKeyFromLabel(label: string): Promise<string> {
+    return this.generateUniqueKey(label, (key) => this.tagKeyExists(key));
   }
 
   // Obter todas as categorias ativas com suas subcategorias
@@ -307,16 +380,23 @@ export class CategoryService {
   // Criar uma nova categoria
   static async createCategory(data: CreateCategoryData): Promise<Category> {
     try {
-      // Validar formato da chave
-      const keyValidation = this.validateKeyFormat(data.key);
+      if (!data.label?.trim()) {
+        throw new Error('O nome da categoria é obrigatório.');
+      }
+
+      const key = data.key?.trim()
+        ? data.key.trim()
+        : await this.generateCategoryKeyFromLabel(data.label);
+
+      const keyValidation = this.validateKeyFormat(key);
       if (!keyValidation.valid) {
         throw new Error(keyValidation.error || 'Formato de chave inválido.');
       }
 
       // Verificar se a chave já existe
-      const keyExists = await this.categoryKeyExists(data.key);
+      const keyExists = await this.categoryKeyExists(key);
       if (keyExists) {
-        throw new Error(`A chave "${data.key}" já está em uso por outra categoria. Por favor, escolha uma chave diferente.`);
+        throw new Error(`A chave "${key}" já está em uso por outra categoria. Por favor, escolha uma chave diferente.`);
       }
 
       // Obter o próximo order se não fornecido
@@ -343,7 +423,7 @@ export class CategoryService {
       const { data: category, error } = await supabase
         .from('app_c009c0e4f1_categories')
         .insert([{
-          key: data.key,
+          key,
           label: data.label,
           sla_hours: data.slaHours || null,
           default_assigned_to: data.defaultAssignedTo || null,
@@ -527,16 +607,23 @@ export class CategoryService {
   // Criar uma nova subcategoria
   static async createSubcategory(data: CreateSubcategoryData): Promise<Subcategory> {
     try {
-      // Validar formato da chave
-      const keyValidation = this.validateKeyFormat(data.key);
+      if (!data.label?.trim()) {
+        throw new Error('O nome da subcategoria é obrigatório.');
+      }
+
+      const key = data.key?.trim()
+        ? data.key.trim()
+        : await this.generateSubcategoryKeyFromLabel(data.categoryId, data.label);
+
+      const keyValidation = this.validateKeyFormat(key);
       if (!keyValidation.valid) {
         throw new Error(keyValidation.error || 'Formato de chave inválido.');
       }
 
       // Verificar se a chave já existe na mesma categoria
-      const keyExists = await this.subcategoryKeyExists(data.categoryId, data.key);
+      const keyExists = await this.subcategoryKeyExists(data.categoryId, key);
       if (keyExists) {
-        throw new Error(`A chave "${data.key}" já está em uso por outra subcategoria nesta categoria. Por favor, escolha uma chave diferente.`);
+        throw new Error(`A chave "${key}" já está em uso por outra subcategoria nesta categoria. Por favor, escolha uma chave diferente.`);
       }
 
       // Obter o próximo order se não fornecido
@@ -565,7 +652,7 @@ export class CategoryService {
         .from('app_c009c0e4f1_subcategories')
         .insert([{
           category_id: data.categoryId,
-          key: data.key,
+          key,
           label: data.label,
           sla_hours: data.slaHours,
           default_assigned_to: data.defaultAssignedTo || null,
@@ -840,7 +927,7 @@ export class CategoryService {
       color: data.color,
       icon: data.icon,
       description: data.description,
-      isActive: data.is_active,
+      isActive: data.is_active ?? true,
       order: data.order,
       createdAt: data.created_at,
       updatedAt: data.updated_at
@@ -986,6 +1073,24 @@ export class CategoryService {
   // Criar uma nova tag
   static async createTag(data: CreateTagData): Promise<Tag> {
     try {
+      if (!data.label?.trim()) {
+        throw new Error('O nome da frente de atuação é obrigatório.');
+      }
+
+      const key = data.key?.trim()
+        ? data.key.trim()
+        : await this.generateTagKeyFromLabel(data.label);
+
+      const keyValidation = this.validateKeyFormat(key);
+      if (!keyValidation.valid) {
+        throw new Error(keyValidation.error || 'Formato de chave inválido.');
+      }
+
+      const keyExists = await this.tagKeyExists(key);
+      if (keyExists) {
+        throw new Error(`A chave "${key}" já está em uso por outra frente de atuação.`);
+      }
+
       // Obter o próximo order se não fornecido
       const { data: lastTag } = await supabase
         .from('app_c009c0e4f1_tags')
@@ -999,7 +1104,7 @@ export class CategoryService {
       const { data: tag, error } = await supabase
         .from('app_c009c0e4f1_tags')
         .insert([{
-          key: data.key,
+          key,
           label: data.label,
           color: data.color,
           icon: data.icon || null,

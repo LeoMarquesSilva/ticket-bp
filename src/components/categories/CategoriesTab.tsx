@@ -47,6 +47,7 @@ interface Props {
   onDeleteCategory: (cat: Category) => void;
   onEditSubcategory: (sub: Subcategory) => void;
   onDeleteSubcategory: (sub: Subcategory) => void;
+  onCreateCategoryForFrente: (tag: TagType | null) => void;
   loadData: () => void;
 }
 
@@ -57,7 +58,7 @@ export default function CategoriesTab({
   hasActiveFilters, clearFilters,
   expandedCategories, setExpandedCategories, expandedTags, setExpandedTags,
   onCreateSubcategory, onEditCategory, onDeleteCategory,
-  onEditSubcategory, onDeleteSubcategory, loadData,
+  onEditSubcategory, onDeleteSubcategory, onCreateCategoryForFrente, loadData,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -170,9 +171,9 @@ export default function CategoriesTab({
         <CardContent>
           {loading ? (
             <div className="flex justify-center py-8"><RefreshCw className="h-8 w-8 animate-spin text-[#F69F19]" /></div>
-          ) : categories.length === 0 ? (
+          ) : sortedTagGroups.length === 0 ? (
             <div className="text-center py-8 text-slate-500">Nenhuma categoria encontrada. Crie uma nova categoria para começar.</div>
-          ) : filteredCategories.length === 0 ? (
+          ) : filteredCategories.length === 0 && hasActiveFilters ? (
             <div className="text-center py-8 text-slate-500">
               Nenhuma categoria encontrada com os filtros aplicados.
               {hasActiveFilters && <Button variant="link" onClick={clearFilters} className="mt-2 text-[#F69F19]">Limpar filtros</Button>}
@@ -195,6 +196,9 @@ export default function CategoriesTab({
                       <div className="flex-1 text-left">
                         <div className="flex items-center gap-3">
                           <span className="font-semibold text-lg">{group.tagLabel}</span>
+                          {group.tag && !group.tag.isActive && (
+                            <Badge variant="secondary" className="text-xs">Frente inativa</Badge>
+                          )}
                           <Badge variant="secondary" className="bg-slate-100 text-slate-600">
                             {group.categories.length} {group.categories.length === 1 ? 'categoria' : 'categorias'}
                           </Badge>
@@ -203,9 +207,39 @@ export default function CategoriesTab({
                           Clique para {expandedTags.includes(tagKey) ? 'minimizar' : 'expandir'} categorias
                         </p>
                       </div>
+                      {group.categories.length === 0 && (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="shrink-0 h-9 w-9 border-[#F69F19] text-[#F69F19] hover:bg-[#F69F19]/10"
+                          title={`Adicionar categoria em ${group.tagLabel}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCreateCategoryForFrente(group.tag);
+                          }}
+                        >
+                          <PlusCircle className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-4">
+                    {group.categories.length === 0 ? (
+                      <div className="flex flex-col items-center gap-3 py-6">
+                        <p className="text-sm text-slate-500 text-center">
+                          Nenhuma categoria nesta frente ainda.
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={() => onCreateCategoryForFrente(group.tag)}
+                          className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]"
+                        >
+                          <PlusCircle className="h-4 w-4 mr-2" />
+                          Adicionar categoria
+                        </Button>
+                      </div>
+                    ) : (
                     <Accordion type="multiple" value={expandedCategories} onValueChange={setExpandedCategories} className="w-full space-y-2 mt-2">
                       {group.categories.map((category) => (
                         <AccordionItem key={category.id} value={category.id} className="border rounded-md px-3">
@@ -308,6 +342,7 @@ export default function CategoriesTab({
                         </AccordionItem>
                       ))}
                     </Accordion>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               ))}

@@ -46,28 +46,19 @@ export default function FrenteFormDialog(props: Props) {
           <DialogHeader>
             <DialogTitle>Nova Frente de Atuação</DialogTitle>
             <DialogDescription>
-              Crie uma frente de atuação para organizar categorias (ex: Controladoria Jurídica).
+              Informe o nome da frente. A chave interna é gerada automaticamente pelo sistema.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label>Chave (única)</Label>
-              <Input
-                value={data.key}
-                onChange={(e) => setData({ ...data, key: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })}
-                placeholder="ex: inteligencia_dados"
-              />
-              <p className="text-xs text-slate-500">Apenas letras minúsculas, números e _</p>
-            </div>
-            <div className="grid gap-2">
-              <Label>Nome</Label>
+              <Label>Nome <span className="text-red-500">*</span></Label>
               <Input value={data.label} onChange={(e) => setData({ ...data, label: e.target.value })} placeholder="ex: Inteligência de Dados" />
             </div>
             <ColorPicker color={data.color} onChange={(c) => setData({ ...data, color: c })} />
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={handleSubmit} disabled={loading || !data.key?.trim() || !data.label?.trim()} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+            <Button onClick={handleSubmit} disabled={loading || !data.label?.trim()} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
               {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Criar'}
             </Button>
           </div>
@@ -82,7 +73,7 @@ export default function FrenteFormDialog(props: Props) {
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Editar Frente de Atuação</DialogTitle>
-          <DialogDescription>Altere o nome ou a cor. A chave não pode ser alterada.</DialogDescription>
+          <DialogDescription>Altere o nome ou a cor. A chave interna não pode ser alterada.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">

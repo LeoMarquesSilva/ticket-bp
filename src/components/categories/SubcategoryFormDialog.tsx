@@ -6,7 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import UserAssigneePicker from '@/components/UserAssigneePicker';
+import { RefreshCw } from 'lucide-react';
 import WhatsAppTemplateBuilder, { appendTemplateToken } from './WhatsAppTemplateBuilder';
 import type { Subcategory, CreateSubcategoryData, Category } from '@/services/categoryService';
 import type { EvolutionChatOption } from '@/services/evolutionEdgeService';
@@ -23,9 +24,6 @@ interface CreateProps {
   onSubmit: () => Promise<boolean | void>;
   supportUsers: User[];
   getRoleLabel: (role: string) => string;
-  keyError: string | null;
-  isValidatingKey: boolean;
-  onValidateKey: (key: string, categoryId: string) => void;
   whatsappChats: EvolutionChatOption[];
   whatsappChatsLoading: boolean;
   onLoadChats: () => void;
@@ -58,7 +56,7 @@ export default function SubcategoryFormDialog(props: Props) {
   };
 
   if (isCreate) {
-    const { data, setData, parentCategory, keyError, isValidatingKey, onValidateKey } = props as CreateProps;
+    const { data, setData, parentCategory } = props as CreateProps;
     const whatsappEnabled = data.whatsappNotifyEnabled ?? false;
 
     return (
@@ -67,33 +65,10 @@ export default function SubcategoryFormDialog(props: Props) {
           <DialogHeader>
             <DialogTitle>Criar Nova Subcategoria</DialogTitle>
             <DialogDescription>
-              Nova subcategoria para <strong>{parentCategory?.label}</strong>.
+              Nova subcategoria para <strong>{parentCategory?.label}</strong>. A chave interna é gerada automaticamente.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label>Chave (Única) <span className="text-red-500">*</span></Label>
-              <div className="relative">
-                <Input
-                  value={data.key}
-                  onChange={(e) => {
-                    const k = e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-                    setData({ ...data, key: k });
-                    if (data.categoryId) setTimeout(() => onValidateKey(k, data.categoryId), 500);
-                  }}
-                  placeholder="ex: pedido_urgencia"
-                  className={keyError ? 'border-red-500 focus-visible:ring-red-500' : ''}
-                />
-                {isValidatingKey && <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-slate-400" />}
-              </div>
-              {keyError ? (
-                <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle className="h-3 w-3" />{keyError}</p>
-              ) : data.key && !isValidatingKey ? (
-                <p className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />Chave disponível</p>
-              ) : (
-                <p className="text-xs text-slate-500">Apenas letras minúsculas, números e underscores (_)</p>
-              )}
-            </div>
             <div className="grid gap-2">
               <Label>Nome <span className="text-red-500">*</span></Label>
               <Input value={data.label} onChange={(e) => setData({ ...data, label: e.target.value })} placeholder="ex: Pedido de urgência" />
@@ -104,13 +79,13 @@ export default function SubcategoryFormDialog(props: Props) {
             </div>
             <div className="grid gap-2">
               <Label>Atribuição Automática</Label>
-              <Select value={data.defaultAssignedTo || 'none'} onValueChange={(v) => setData({ ...data, defaultAssignedTo: v === 'none' ? undefined : v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione um usuário" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum (Padrão da Categoria)</SelectItem>
-                  {supportUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name} ({getRoleLabel(u.role)})</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <UserAssigneePicker
+                value={data.defaultAssignedTo}
+                onChange={(userId) => setData({ ...data, defaultAssignedTo: userId })}
+                users={supportUsers}
+                getRoleLabel={getRoleLabel}
+                noneLabel="Nenhum (Padrão da Categoria)"
+              />
             </div>
             <Separator />
             <WhatsAppSection
@@ -126,7 +101,7 @@ export default function SubcategoryFormDialog(props: Props) {
             />
           </div>
           <div className="flex justify-end">
-            <Button onClick={handleSubmit} disabled={loading || !!keyError || isValidatingKey} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
+            <Button onClick={handleSubmit} disabled={loading || !data.label?.trim()} className="bg-[#F69F19] hover:bg-[#F69F19]/90 text-[#2C2D2F]">
               {loading ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Criando...</> : 'Criar Subcategoria'}
             </Button>
           </div>
@@ -162,19 +137,13 @@ export default function SubcategoryFormDialog(props: Props) {
           </div>
           <div className="grid gap-2">
             <Label>Atribuição Automática</Label>
-            <Select
-              value={data.defaultAssignedTo || 'none'}
-              onValueChange={(v) => setData({ ...data, defaultAssignedTo: v === 'none' || v === '' ? undefined : v })}
-            >
-              <SelectTrigger><SelectValue placeholder="Selecione um usuário" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Nenhum (Padrão da Categoria)</SelectItem>
-                {supportUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name} ({getRoleLabel(u.role)})</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {data.defaultAssignedTo && (
-              <p className="text-xs text-slate-500">Selecionado: {supportUsers.find(u => u.id === data.defaultAssignedTo)?.name}</p>
-            )}
+            <UserAssigneePicker
+              value={data.defaultAssignedTo}
+              onChange={(userId) => setData({ ...data, defaultAssignedTo: userId })}
+              users={supportUsers}
+              getRoleLabel={getRoleLabel}
+              noneLabel="Nenhum (Padrão da Categoria)"
+            />
           </div>
           <Separator />
           <WhatsAppSection

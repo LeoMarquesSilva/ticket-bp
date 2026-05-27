@@ -128,6 +128,14 @@ export default function CategoryManagement() {
             onDeleteCategory={(c) => { cat.setPendingDeleteCategory(c); setDeleteCategoryDialogOpen(true); }}
             onEditSubcategory={(s) => { cat.setEditingSubcategory(s); setEditSubcategoryDialogOpen(true); }}
             onDeleteSubcategory={(s) => { cat.setPendingDeleteSubcategory(s); setDeleteSubcategoryDialogOpen(true); }}
+            onCreateCategoryForFrente={(tag) => {
+              cat.setNewCategory({
+                key: '', label: '', slaHours: undefined,
+                defaultAssignedTo: undefined, tagId: tag?.id, order: undefined,
+              });
+              cat.setCategoryKeyError(null);
+              setCreateCategoryDialogOpen(true);
+            }}
             loadData={cat.loadData}
           />
         </TabsContent>
@@ -196,9 +204,6 @@ export default function CategoryManagement() {
         tags={cat.tags}
         supportUsers={cat.supportUsers}
         getRoleLabel={cat.getRoleLabel}
-        keyError={cat.categoryKeyError}
-        isValidatingKey={cat.isValidatingCategoryKey}
-        onValidateKey={cat.validateCategoryKey}
       />
 
       {/* Edit Category */}
@@ -229,9 +234,6 @@ export default function CategoryManagement() {
         onSubmit={cat.handleCreateSubcategory}
         supportUsers={cat.supportUsers}
         getRoleLabel={cat.getRoleLabel}
-        keyError={cat.subcategoryKeyError}
-        isValidatingKey={cat.isValidatingSubcategoryKey}
-        onValidateKey={cat.validateSubcategoryKey}
         whatsappChats={evo.whatsappChats}
         whatsappChatsLoading={evo.whatsappChatsLoading}
         onLoadChats={() => void evo.loadWhatsappChats()}
