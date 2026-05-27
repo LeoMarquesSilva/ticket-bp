@@ -22,6 +22,12 @@ import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
 import { useChatContext } from '@/contexts/ChatContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRealtimeReconnectSignal } from '@/hooks/useRealtimeReconnectSignal';
+import { CategoryService } from '@/services/categoryService';
+import {
+  type CategoriesConfigMap,
+  getCategoryKeysForFrente,
+  ticketMatchesFrente,
+} from '@/utils/ticketFilterUtils';
 
 interface SupportUser {
   id: string;
@@ -130,10 +136,14 @@ const Tickets = () => {
   }, [user?.id, user?.ticketViewPreference]);
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [frenteFilter, setFrenteFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [assignedFilter, setAssignedFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
+  const [categoriesConfig, setCategoriesConfig] = useState<CategoriesConfigMap>({});
+  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>({});
   const [showImagePreview, setShowImagePreview] = useState<string | null>(null);
@@ -205,6 +215,37 @@ const Tickets = () => {
     if (has('view_all_tickets')) return true;
     if (!user?.id) return false;
     return ticket.createdBy === user.id || ticket.assignedTo === user.id;
+  };
+
+  useEffect(() => {
+    const loadFilterData = async () => {
+      try {
+        setLoadingCategories(true);
+        const [config, tags] = await Promise.all([
+          CategoryService.getCategoriesConfig(),
+          CategoryService.getAllTags(false),
+        ]);
+        setCategoriesConfig(config);
+        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color })));
+      } catch (error) {
+        console.error('Erro ao carregar dados dos filtros:', error);
+        setCategoriesConfig({});
+        setFrentes([]);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+    loadFilterData();
+  }, []);
+
+  const handleFrenteFilterChange = (value: string) => {
+    setFrenteFilter(value);
+    if (categoryFilter !== 'all' && value !== 'all') {
+      const keys = getCategoryKeysForFrente(categoriesConfig, value);
+      if (!keys.includes(categoryFilter)) {
+        setCategoryFilter('all');
+      }
+    }
   };
 
   const applyPresenceToSupportUsers = (users: SupportUser[], state: PresenceState) => {
@@ -1383,40 +1424,63 @@ const handleFeedbackSubmitted = () => {
 
 // Funções para filtrar tickets
 const getFilteredTickets = () => {
-  return tickets.filter(ticket => {
-    // Filtro de pesquisa
-    const matchesSearch = searchTerm === '' || 
-      ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Filtro de status
+  const searchLower = searchTerm.trim().toLowerCase();
+
+  return tickets.filter((ticket) => {
+    const categoryLabel = categoriesConfig[ticket.category]?.label ?? '';
+    const subcategoryLabel =
+      categoriesConfig[ticket.category]?.subcategories?.find((s) => s.value === ticket.subcategory)
+        ?.label ?? '';
+
+    const matchesSearch =
+      searchLower === '' ||
+      [
+        ticket.title,
+        ticket.description,
+        ticket.id,
+        ticket.createdByName,
+        ticket.assignedToName,
+        categoryLabel,
+        subcategoryLabel,
+        ticket.subcategory,
+      ].some((field) => field?.toLowerCase().includes(searchLower));
+
     const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-    
-    // Filtro de categorias
+
     const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
-    
-    // Filtro de atribuição
-    const matchesAssigned = assignedFilter === 'all' || 
-      (assignedFilter === 'assigned' && ticket.assignedTo) ||
+
+    const matchesFrente = ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig);
+
+    const matchesAssigned =
+      assignedFilter === 'all' ||
+      (assignedFilter === 'assigned' && Boolean(ticket.assignedTo)) ||
       (assignedFilter === 'unassigned' && !ticket.assignedTo);
-    
-    // Filtro de usuário (para atribuição)
-    const matchesUser = userFilter === 'all' || 
+
+    const matchesUser =
+      userFilter === 'all' ||
       (userFilter === 'mine' && ticket.assignedTo === user?.id) ||
       (userFilter !== 'mine' && userFilter !== 'all' && ticket.assignedTo === userFilter);
-    
-    return matchesSearch && matchesStatus && matchesCategory && matchesAssigned && matchesUser;
+
+    return (
+      matchesSearch &&
+      matchesStatus &&
+      matchesCategory &&
+      matchesFrente &&
+      matchesAssigned &&
+      matchesUser
+    );
   });
 };
 
 // Organizar tickets por status para o quadro Kanban
 const getTicketsByStatus = () => {
   const filteredTickets = getFilteredTickets();
-  
+
   return {
-    open: filteredTickets.filter(ticket => ticket.status === 'open'),
-    in_progress: filteredTickets.filter(ticket => ticket.status === 'in_progress'),
-    resolved: filteredTickets.filter(ticket => ticket.status === 'resolved')
+    open: filteredTickets.filter((ticket) => ticket.status === 'open'),
+    assigned: filteredTickets.filter((ticket) => ticket.status === 'assigned'),
+    in_progress: filteredTickets.filter((ticket) => ticket.status === 'in_progress'),
+    resolved: filteredTickets.filter((ticket) => ticket.status === 'resolved'),
   };
 };
 
@@ -1511,6 +1575,8 @@ return (
         <TicketFilters
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
+          frenteFilter={frenteFilter}
+          onFrenteFilterChange={handleFrenteFilterChange}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
           categoryFilter={categoryFilter}
@@ -1521,6 +1587,9 @@ return (
           onUserFilterChange={setUserFilter}
           supportUsers={supportUsers}
           isSupport={isStaffUser}
+          frentes={frentes}
+          categoriesConfig={categoriesConfig}
+          loadingCategories={loadingCategories}
         />
       </div>
 

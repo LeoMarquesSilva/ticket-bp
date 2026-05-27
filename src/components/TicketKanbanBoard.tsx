@@ -1,11 +1,12 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Clock, CheckCircle, Inbox } from 'lucide-react';
+import { Clock, CheckCircle, Inbox, UserCheck } from 'lucide-react';
 import { Ticket } from '@/types';
 
 interface TicketKanbanBoardProps {
   ticketsByStatus: {
     open: Ticket[];
+    assigned: Ticket[];
     in_progress: Ticket[];
     resolved: Ticket[];
   };
@@ -18,13 +19,10 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
 }) => {
   return (
     <div className="h-full w-full flex flex-col bg-slate-50/50">
-      {/* Container principal com rolagem horizontal */}
       <div className="flex-1 overflow-x-auto">
-        {/* Largura mínima para garantir que as colunas não fiquem espremidas */}
-        <div className="flex p-4 gap-4 h-full min-w-[1050px]">
-          
-          {/* Coluna: Abertos (Neutro/Slate) */}
-          <div className="flex-shrink-0 flex flex-col h-full w-[350px] bg-slate-100/50 rounded-lg border border-slate-200">
+        <div className="flex p-4 gap-4 h-full min-w-[1400px]">
+
+          <div className="flex-shrink-0 flex flex-col h-full w-[320px] bg-slate-100/50 rounded-lg border border-slate-200">
             <div className="bg-white p-3 rounded-t-lg border-b border-slate-200 border-t-4 border-t-slate-400 flex items-center justify-between sticky top-0 z-10 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-slate-100 rounded-md">
@@ -50,8 +48,33 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             </div>
           </div>
 
-          {/* Coluna: Em Progresso (Laranja/Marca - Foco de Ação) */}
-          <div className="flex-shrink-0 flex flex-col h-full w-[350px] bg-[#F69F19]/5 rounded-lg border border-[#F69F19]/20">
+          <div className="flex-shrink-0 flex flex-col h-full w-[320px] bg-blue-50/50 rounded-lg border border-blue-100">
+            <div className="bg-white p-3 rounded-t-lg border-b border-blue-100 border-t-4 border-t-blue-500 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-blue-50 rounded-md">
+                  <UserCheck className="h-4 w-4 text-blue-600" />
+                </div>
+                <h3 className="font-bold text-blue-700 text-sm uppercase tracking-wide">Atribuídos</h3>
+              </div>
+              <Badge className="bg-blue-50 text-blue-700 border-blue-200 font-bold hover:bg-blue-100 shadow-none">
+                {ticketsByStatus.assigned.length}
+              </Badge>
+            </div>
+            <div className="flex-1 p-2 overflow-y-auto custom-scrollbar">
+              <div className="space-y-3 pb-2">
+                {ticketsByStatus.assigned.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-32 text-blue-800/30 border-2 border-dashed border-blue-200 rounded-lg m-2">
+                    <UserCheck className="h-8 w-8 mb-2 opacity-50" />
+                    <span className="text-sm font-medium">Nenhum ticket atribuído</span>
+                  </div>
+                ) : (
+                  ticketsByStatus.assigned.map(ticket => renderTicketCard(ticket))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-shrink-0 flex flex-col h-full w-[320px] bg-[#F69F19]/5 rounded-lg border border-[#F69F19]/20">
             <div className="bg-white p-3 rounded-t-lg border-b border-[#F69F19]/20 border-t-4 border-t-[#F69F19] flex items-center justify-between sticky top-0 z-10 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-[#F69F19]/10 rounded-md">
@@ -77,8 +100,7 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             </div>
           </div>
 
-          {/* Coluna: Resolvidos (Verde/Sucesso) */}
-          <div className="flex-shrink-0 flex flex-col h-full w-[350px] bg-green-50/50 rounded-lg border border-green-100">
+          <div className="flex-shrink-0 flex flex-col h-full w-[320px] bg-green-50/50 rounded-lg border border-green-100">
             <div className="bg-white p-3 rounded-t-lg border-b border-green-100 border-t-4 border-t-green-500 flex items-center justify-between sticky top-0 z-10 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-green-50 rounded-md">
