@@ -1445,7 +1445,10 @@ const getFilteredTickets = () => {
         ticket.subcategory,
       ].some((field) => field?.toLowerCase().includes(searchLower));
 
-    const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'all' ||
+      ticket.status === statusFilter ||
+      (statusFilter === 'open' && ticket.status === 'assigned');
 
     const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
 
@@ -1476,9 +1479,11 @@ const getFilteredTickets = () => {
 const getTicketsByStatus = () => {
   const filteredTickets = getFilteredTickets();
 
+  // Fluxo ativo: open → in_progress → resolved (status "assigned" é legado, exibido em Abertos)
   return {
-    open: filteredTickets.filter((ticket) => ticket.status === 'open'),
-    assigned: filteredTickets.filter((ticket) => ticket.status === 'assigned'),
+    open: filteredTickets.filter(
+      (ticket) => ticket.status === 'open' || ticket.status === 'assigned'
+    ),
     in_progress: filteredTickets.filter((ticket) => ticket.status === 'in_progress'),
     resolved: filteredTickets.filter((ticket) => ticket.status === 'resolved'),
   };

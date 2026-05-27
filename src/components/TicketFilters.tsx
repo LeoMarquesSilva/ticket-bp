@@ -134,7 +134,6 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
           <SelectContent>
             <SelectItem value="all">Todos os status</SelectItem>
             <SelectItem value="open">Aberto</SelectItem>
-            <SelectItem value="assigned">Atribuído</SelectItem>
             <SelectItem value="in_progress">Em progresso</SelectItem>
             <SelectItem value="resolved">Resolvido</SelectItem>
           </SelectContent>
