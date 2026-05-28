@@ -279,31 +279,56 @@ export class CategoryService {
         return [];
       }
 
-      // Buscar subcategorias e tags para cada categoria
-      const categoriesWithSubcategories = await Promise.all(
-        categories.map(async (cat) => {
-          const subcategories = await this.getSubcategoriesByCategory(cat.id, includeInactive);
-          let tag: Tag | undefined;
-          
-          // Carregar tag se existir
-          if (cat.tag_id) {
-            try {
-              const tagData = await this.getTagById(cat.tag_id);
-              if (tagData) tag = tagData;
-            } catch (error) {
-              console.warn('Error loading tag for category:', error);
-            }
-          }
-          
-          return {
-            ...this.mapCategoryFromDatabase(cat),
-            subcategories,
-            tag
-          };
-        })
+      // Buscar todas as subcategorias e tags em duas consultas (evita N+1)
+      const categoryIds = categories.map((cat) => cat.id);
+      const tagIds = Array.from(
+        new Set(categories.map((cat) => cat.tag_id).filter((id): id is string => !!id))
       );
 
-      return categoriesWithSubcategories;
+      let subcategoriesQuery = supabase
+        .from('app_c009c0e4f1_subcategories')
+        .select('*')
+        .in('category_id', categoryIds)
+        .order('order', { ascending: true });
+
+      if (!includeInactive) {
+        subcategoriesQuery = subcategoriesQuery.eq('is_active', true);
+      }
+
+      const [subcategoriesResult, tagsResult] = await Promise.all([
+        subcategoriesQuery,
+        tagIds.length > 0
+          ? supabase.from('app_c009c0e4f1_tags').select('*').in('id', tagIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (subcategoriesResult.error) {
+        console.error('Error fetching subcategories:', subcategoriesResult.error);
+        throw subcategoriesResult.error;
+      }
+      if (tagsResult.error) {
+        console.warn('Error loading tags for categories:', tagsResult.error);
+      }
+
+      // Indexar subcategorias por categoria e tags por id
+      const subcategoriesByCategory = new Map<string, Subcategory[]>();
+      for (const row of subcategoriesResult.data || []) {
+        const mapped = this.mapSubcategoryFromDatabase(row);
+        const list = subcategoriesByCategory.get(mapped.categoryId) || [];
+        list.push(mapped);
+        subcategoriesByCategory.set(mapped.categoryId, list);
+      }
+
+      const tagsById = new Map<string, Tag>();
+      for (const row of tagsResult.data || []) {
+        tagsById.set(row.id, this.mapTagFromDatabase(row));
+      }
+
+      return categories.map((cat) => ({
+        ...this.mapCategoryFromDatabase(cat),
+        subcategories: subcategoriesByCategory.get(cat.id) || [],
+        tag: cat.tag_id ? tagsById.get(cat.tag_id) : undefined,
+      }));
     } catch (error) {
       console.error('Error in getAllCategories:', error);
       throw error;
@@ -683,8 +708,6 @@ export class CategoryService {
   // Atualizar uma subcategoria
   static async updateSubcategory(subcategoryId: string, data: Partial<CreateSubcategoryData>): Promise<Subcategory> {
     try {
-      console.log('updateSubcategory chamado com:', { subcategoryId, data });
-      
       const updateData: any = {
         updated_at: new Date().toISOString()
       };
@@ -695,8 +718,6 @@ export class CategoryService {
       if (data.order !== undefined) updateData.order = data.order;
       if (data.categoryId !== undefined) updateData.category_id = data.categoryId;
 
-      // Buscar nome do usuário se defaultAssignedTo foi alterado
-      // IMPORTANTE: data.defaultAssignedTo pode ser null (para remover) ou userId (para atribuir)
       if (data.whatsappNotifyEnabled !== undefined) {
         updateData.whatsapp_notify_enabled = data.whatsappNotifyEnabled;
       }
@@ -707,98 +728,47 @@ export class CategoryService {
         updateData.whatsapp_recipient = data.whatsappRecipient?.trim() || null;
       }
 
+      // defaultAssignedTo pode ser null/'' /'none' (remover) ou um userId (atribuir)
       if (data.defaultAssignedTo !== undefined) {
         if (data.defaultAssignedTo && data.defaultAssignedTo !== '' && data.defaultAssignedTo !== 'none') {
-          // Atribuir a um usuário específico
-          console.log('Buscando nome do usuário para atribuição:', data.defaultAssignedTo);
           const { data: user, error: userError } = await supabase
             .from('app_c009c0e4f1_users')
             .select('name')
             .eq('id', data.defaultAssignedTo)
             .single();
-          
+
           if (userError && userError.code !== 'PGRST116') {
             console.warn('Erro ao buscar nome do usuário:', userError);
           }
-          
-          console.log('Usuário encontrado:', user);
+
           updateData.default_assigned_to = data.defaultAssignedTo;
           updateData.default_assigned_to_name = user?.name || null;
         } else {
-          // Remover atribuição automática - null foi enviado explicitamente
-          console.log('Removendo atribuição automática (valor null/vazio/none)');
           updateData.default_assigned_to = null;
           updateData.default_assigned_to_name = null;
         }
       }
-      
-      console.log('Dados finais para atualizar:', updateData);
 
-      // Fazer o update
-      console.log('🔄 Executando UPDATE na subcategoria:', subcategoryId);
-      console.log('📝 Dados do update:', JSON.stringify(updateData, null, 2));
-      
-      // Verificar estado antes
-      const { data: checkBefore } = await supabase
-        .from('app_c009c0e4f1_subcategories')
-        .select('id, default_assigned_to, default_assigned_to_name')
-        .eq('id', subcategoryId)
-        .single();
-      
-      console.log('📋 Estado ANTES do update:', checkBefore);
-      
-      // Fazer o update
-      const { error: updateError, data: updateResult } = await supabase
+      const { error: updateError } = await supabase
         .from('app_c009c0e4f1_subcategories')
         .update(updateData)
-        .eq('id', subcategoryId)
-        .select('id'); // Tentar selecionar para verificar se atualizou
-
-      console.log('📊 Resultado do UPDATE:', { 
-        updateError, 
-        updateResult,
-        rowsAffected: updateResult?.length || 0 
-      });
+        .eq('id', subcategoryId);
 
       if (updateError) {
-        console.error('❌ Error updating subcategory:', updateError);
-        console.error('Código do erro:', updateError.code);
-        console.error('Detalhes:', updateError.details);
-        console.error('Hint:', updateError.hint);
-        console.error('Mensagem:', updateError.message);
+        console.error('Error updating subcategory:', updateError);
         throw updateError;
       }
 
-      // Se não retornou resultado mas também não teve erro, pode ser RLS bloqueando silenciosamente
-      if (!updateResult || updateResult.length === 0) {
-        console.warn('⚠️ UPDATE executado mas nenhuma linha retornada. Pode ser RLS bloqueando.');
-        console.warn('⚠️ Verificando se o update realmente aconteceu...');
-      }
-
-      // Aguardar um pouco para garantir que o update foi commitado
-      console.log('⏳ Aguardando commit do banco...');
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Buscar a subcategoria atualizada separadamente (evita problemas com RLS)
-      console.log('🔍 Buscando subcategoria atualizada:', subcategoryId);
-      
-      // IMPORTANTE: Não filtrar por is_active aqui, pois pode estar desativada
+      // Buscar a subcategoria atualizada separadamente (evita problemas com RLS).
+      // Não filtrar por is_active aqui, pois pode estar desativada.
       const { data: subcategory, error: fetchError } = await supabase
         .from('app_c009c0e4f1_subcategories')
         .select('*')
         .eq('id', subcategoryId)
-        .maybeSingle(); // Usar maybeSingle para não dar erro se não encontrar
-
-      console.log('📥 Resultado do FETCH:', { 
-        subcategory, 
-        fetchError,
-        defaultAssignedTo: subcategory?.default_assigned_to,
-        defaultAssignedToName: subcategory?.default_assigned_to_name,
-        isActive: subcategory?.is_active
-      });
+        .maybeSingle();
 
       if (fetchError) {
-        console.error('❌ Error fetching updated subcategory:', fetchError);
+        console.error('Error fetching updated subcategory:', fetchError);
         throw fetchError;
       }
 
@@ -806,15 +776,66 @@ export class CategoryService {
         throw new Error('Subcategoria não encontrada após atualização');
       }
 
-      const mapped = this.mapSubcategoryFromDatabase(subcategory);
-      console.log('✅ Subcategoria mapeada retornada:', mapped);
-      console.log('✅ defaultAssignedTo final:', mapped.defaultAssignedTo);
-      console.log('✅ defaultAssignedToName final:', mapped.defaultAssignedToName);
-      return mapped;
+      return this.mapSubcategoryFromDatabase(subcategory);
     } catch (error) {
       console.error('Error in updateSubcategory:', error);
       throw error;
     }
+  }
+
+  // Atribuir (ou remover) responsável padrão em massa para categorias e/ou subcategorias
+  static async bulkAssignDefaultUser(params: {
+    categoryIds?: string[];
+    subcategoryIds?: string[];
+    userId: string | null;
+  }): Promise<{ categories: number; subcategories: number }> {
+    const { categoryIds = [], subcategoryIds = [], userId } = params;
+
+    // Resolver o nome do usuário uma única vez
+    let assignedToName: string | null = null;
+    if (userId) {
+      const { data: user } = await supabase
+        .from('app_c009c0e4f1_users')
+        .select('name')
+        .eq('id', userId)
+        .single();
+      assignedToName = user?.name ?? null;
+    }
+
+    const payload = {
+      default_assigned_to: userId,
+      default_assigned_to_name: assignedToName,
+      updated_at: new Date().toISOString(),
+    };
+
+    let categoriesUpdated = 0;
+    let subcategoriesUpdated = 0;
+
+    if (categoryIds.length > 0) {
+      const { error } = await supabase
+        .from('app_c009c0e4f1_categories')
+        .update(payload)
+        .in('id', categoryIds);
+      if (error) {
+        console.error('Error bulk assigning categories:', error);
+        throw error;
+      }
+      categoriesUpdated = categoryIds.length;
+    }
+
+    if (subcategoryIds.length > 0) {
+      const { error } = await supabase
+        .from('app_c009c0e4f1_subcategories')
+        .update(payload)
+        .in('id', subcategoryIds);
+      if (error) {
+        console.error('Error bulk assigning subcategories:', error);
+        throw error;
+      }
+      subcategoriesUpdated = subcategoryIds.length;
+    }
+
+    return { categories: categoriesUpdated, subcategories: subcategoriesUpdated };
   }
 
   // Ativar/Desativar subcategoria

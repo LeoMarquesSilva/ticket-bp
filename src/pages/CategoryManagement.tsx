@@ -109,16 +109,32 @@ export default function CategoryManagement() {
             categories={cat.categories}
             filteredCategories={cat.filteredCategories}
             sortedTagGroups={cat.sortedTagGroups}
+            tags={cat.tags}
+            supportUsers={cat.supportUsers}
+            getRoleLabel={cat.getRoleLabel}
             searchTerm={cat.searchTerm}
             setSearchTerm={cat.setSearchTerm}
             statusFilter={cat.statusFilter}
             setStatusFilter={cat.setStatusFilter}
+            frenteFilter={cat.frenteFilter}
+            setFrenteFilter={cat.setFrenteFilter}
             sortBy={cat.sortBy}
             setSortBy={cat.setSortBy}
             sortDirection={cat.sortDirection}
             setSortDirection={cat.setSortDirection}
             hasActiveFilters={cat.hasActiveFilters}
             clearFilters={cat.clearFilters}
+            bulkAssignUserId={cat.bulkAssignUserId}
+            setBulkAssignUserId={cat.setBulkAssignUserId}
+            bulkAssignFrenteId={cat.bulkAssignFrenteId}
+            setBulkAssignFrenteId={cat.setBulkAssignFrenteId}
+            bulkAssignCategoryId={cat.bulkAssignCategoryId}
+            setBulkAssignCategoryId={cat.setBulkAssignCategoryId}
+            bulkAssignFrenteCategories={cat.bulkAssignFrenteCategories}
+            bulkAssignTarget={cat.bulkAssignTarget}
+            setBulkAssignTarget={cat.setBulkAssignTarget}
+            bulkAssignApplying={cat.bulkAssignApplying}
+            onApplyBulkAssign={cat.handleBulkAssign}
             expandedCategories={cat.expandedCategories}
             setExpandedCategories={cat.setExpandedCategories}
             expandedTags={cat.expandedTags}
@@ -126,8 +142,10 @@ export default function CategoryManagement() {
             onCreateSubcategory={(c) => { cat.handleOpenCreateSubcategory(c); setCreateSubcategoryDialogOpen(true); }}
             onEditCategory={(c) => { cat.setEditingCategory(c); setEditCategoryDialogOpen(true); }}
             onDeleteCategory={(c) => { cat.setPendingDeleteCategory(c); setDeleteCategoryDialogOpen(true); }}
+            onToggleCategoryStatus={cat.handleToggleCategoryStatus}
             onEditSubcategory={(s) => { cat.setEditingSubcategory(s); setEditSubcategoryDialogOpen(true); }}
             onDeleteSubcategory={(s) => { cat.setPendingDeleteSubcategory(s); setDeleteSubcategoryDialogOpen(true); }}
+            onToggleSubcategoryStatus={cat.handleToggleSubcategoryStatus}
             onCreateCategoryForFrente={(tag) => {
               cat.setNewCategory({
                 key: '', label: '', slaHours: undefined,
@@ -136,7 +154,7 @@ export default function CategoryManagement() {
               cat.setCategoryKeyError(null);
               setCreateCategoryDialogOpen(true);
             }}
-            loadData={cat.loadData}
+            onToggleFrenteStatus={cat.handleToggleFrenteStatus}
           />
         </TabsContent>
 

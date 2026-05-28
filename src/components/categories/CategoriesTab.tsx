@@ -3,16 +3,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Info } from 'lucide-react';
 import {
   PlusCircle, Trash2, Pencil, Tag, Clock, User as UserIcon,
-  Settings2, Search, ArrowUpDown, X, RefreshCw,
-  Filter,
+  Search, ArrowUpDown, X, RefreshCw,
+  Filter, Power, CheckCircle2, Users, CornerDownRight,
 } from 'lucide-react';
-import { CategoryService, type Category, type Subcategory, type Tag as TagType } from '@/services/categoryService';
+import { type Category, type Subcategory, type Tag as TagType } from '@/services/categoryService';
 import type { StatusFilter, SortField, SortDir } from '@/hooks/useCategories';
+import type { User } from '@/types';
 
 interface TagGroup {
   tag: TagType | null;
@@ -20,22 +22,46 @@ interface TagGroup {
   categories: Category[];
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 interface Props {
   loading: boolean;
   categories: Category[];
   filteredCategories: Category[];
   sortedTagGroups: [string, TagGroup][];
+  tags: TagType[];
+  supportUsers: User[];
+  getRoleLabel: (role: string) => string;
   // Filter
   searchTerm: string;
   setSearchTerm: (v: string) => void;
   statusFilter: StatusFilter;
   setStatusFilter: (v: StatusFilter) => void;
+  frenteFilter: string;
+  setFrenteFilter: (v: string) => void;
   sortBy: SortField;
   setSortBy: (v: SortField) => void;
   sortDirection: SortDir;
   setSortDirection: (v: SortDir) => void;
   hasActiveFilters: boolean;
   clearFilters: () => void;
+  // Bulk assignment
+  bulkAssignUserId: string;
+  setBulkAssignUserId: (v: string) => void;
+  bulkAssignFrenteId: string;
+  setBulkAssignFrenteId: (v: string) => void;
+  bulkAssignCategoryId: string;
+  setBulkAssignCategoryId: (v: string) => void;
+  bulkAssignFrenteCategories: Category[];
+  bulkAssignTarget: 'categories' | 'subcategories' | 'both';
+  setBulkAssignTarget: (v: 'categories' | 'subcategories' | 'both') => void;
+  bulkAssignApplying: boolean;
+  onApplyBulkAssign: () => void;
   // Accordion
   expandedCategories: string[];
   setExpandedCategories: (v: string[]) => void;
@@ -45,20 +71,29 @@ interface Props {
   onCreateSubcategory: (cat: Category) => void;
   onEditCategory: (cat: Category) => void;
   onDeleteCategory: (cat: Category) => void;
+  onToggleCategoryStatus: (cat: Category) => void;
   onEditSubcategory: (sub: Subcategory) => void;
   onDeleteSubcategory: (sub: Subcategory) => void;
+  onToggleSubcategoryStatus: (sub: Subcategory) => void;
   onCreateCategoryForFrente: (tag: TagType | null) => void;
-  loadData: () => void;
+  onToggleFrenteStatus: (tag: TagType) => void;
 }
 
 export default function CategoriesTab({
-  loading, categories, filteredCategories, sortedTagGroups,
+  loading, categories, filteredCategories, sortedTagGroups, tags, supportUsers, getRoleLabel,
   searchTerm, setSearchTerm, statusFilter, setStatusFilter,
+  frenteFilter, setFrenteFilter,
   sortBy, setSortBy, sortDirection, setSortDirection,
   hasActiveFilters, clearFilters,
+  bulkAssignUserId, setBulkAssignUserId,
+  bulkAssignFrenteId, setBulkAssignFrenteId,
+  bulkAssignCategoryId, setBulkAssignCategoryId, bulkAssignFrenteCategories,
+  bulkAssignTarget, setBulkAssignTarget,
+  bulkAssignApplying, onApplyBulkAssign,
   expandedCategories, setExpandedCategories, expandedTags, setExpandedTags,
-  onCreateSubcategory, onEditCategory, onDeleteCategory,
-  onEditSubcategory, onDeleteSubcategory, onCreateCategoryForFrente, loadData,
+  onCreateSubcategory, onEditCategory, onDeleteCategory, onToggleCategoryStatus,
+  onEditSubcategory, onDeleteSubcategory, onToggleSubcategoryStatus,
+  onCreateCategoryForFrente, onToggleFrenteStatus,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -81,6 +116,18 @@ export default function CategoriesTab({
                   </button>
                 )}
               </div>
+            </div>
+            <div className="w-full md:w-[200px]">
+              <Select value={frenteFilter} onValueChange={setFrenteFilter}>
+                <SelectTrigger><Tag className="h-4 w-4 mr-2" /><SelectValue placeholder="Frente" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as frentes</SelectItem>
+                  {tags.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                  ))}
+                  <SelectItem value="sem-tag">Sem frente</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="w-full md:w-[180px]">
               <Select value={statusFilter} onValueChange={(v: StatusFilter) => setStatusFilter(v)}>
@@ -162,6 +209,114 @@ export default function CategoriesTab({
         </CardContent>
       </Card>
 
+      {/* Bulk assignment */}
+      <Card className="border-[#F69F19]/20 bg-gradient-to-r from-[#DE5532]/5 to-transparent">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#DE5532]/10">
+              <Users className="h-5 w-5 text-[#DE5532]" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-[#2C2D2F]">Atribuição em Massa de Responsável</h3>
+              <p className="text-xs text-slate-500">
+                Escolha a frente e a categoria, defina o responsável e aplique de uma vez.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            {/* Frente */}
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">1. Frente</label>
+              <Select value={bulkAssignFrenteId} onValueChange={setBulkAssignFrenteId}>
+                <SelectTrigger><Tag className="h-4 w-4 mr-2 shrink-0" /><SelectValue placeholder="Selecione a frente" /></SelectTrigger>
+                <SelectContent>
+                  {tags.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                        {t.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="sem-tag">Sem frente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Categoria */}
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">2. Categoria</label>
+              <Select value={bulkAssignCategoryId} onValueChange={setBulkAssignCategoryId} disabled={!bulkAssignFrenteId}>
+                <SelectTrigger><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as categorias da frente</SelectItem>
+                  {bulkAssignFrenteCategories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Responsável */}
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">3. Responsável</label>
+              <Select value={bulkAssignUserId} onValueChange={setBulkAssignUserId}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    <span className="flex items-center gap-2 text-slate-500">
+                      <UserIcon className="h-4 w-4" /> Remover responsável (manual)
+                    </span>
+                  </SelectItem>
+                  {supportUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      <span className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={u.avatarUrl} alt={u.name} />
+                          <AvatarFallback className="text-[10px] bg-[#F69F19]/15 text-[#DE5532]">{getInitials(u.name)}</AvatarFallback>
+                        </Avatar>
+                        <span className="truncate">{u.name}</span>
+                        <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 bg-slate-100 text-slate-600">{getRoleLabel(u.role)}</Badge>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Aplicar em */}
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">4. Aplicar em</label>
+              <Select value={bulkAssignTarget} onValueChange={(v) => setBulkAssignTarget(v as 'categories' | 'subcategories' | 'both')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both">Categorias e subcategorias</SelectItem>
+                  <SelectItem value="categories">Apenas categorias</SelectItem>
+                  <SelectItem value="subcategories">Apenas subcategorias</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 mt-4">
+            <p className="text-xs text-slate-500">
+              {bulkAssignFrenteId
+                ? `Escopo: ${bulkAssignCategoryId === 'all' ? `${bulkAssignFrenteCategories.length} categoria(s)` : '1 categoria'} selecionada(s).`
+                : 'Selecione uma frente para começar.'}
+            </p>
+            <Button
+              className="bg-[#DE5532] hover:bg-[#DE5532]/90 text-white border-0"
+              disabled={bulkAssignApplying || !bulkAssignFrenteId}
+              onClick={() => onApplyBulkAssign()}
+            >
+              {bulkAssignApplying ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
+              Aplicar em massa
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Categories List */}
       <Card className="border-[#F69F19]/20">
         <CardHeader>
@@ -207,21 +362,38 @@ export default function CategoriesTab({
                           Clique para {expandedTags.includes(tagKey) ? 'minimizar' : 'expandir'} categorias
                         </p>
                       </div>
-                      {group.categories.length === 0 && (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="outline"
-                          className="shrink-0 h-9 w-9 border-[#F69F19] text-[#F69F19] hover:bg-[#F69F19]/10"
-                          title={`Adicionar categoria em ${group.tagLabel}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCreateCategoryForFrente(group.tag);
-                          }}
-                        >
-                          <PlusCircle className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-1.5 mr-3 shrink-0">
+                        {group.tag && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className={`shrink-0 h-9 w-9 ${group.tag.isActive ? 'border-amber-500 text-amber-600 hover:bg-amber-50' : 'border-green-500 text-green-600 hover:bg-green-50'}`}
+                            title={group.tag.isActive ? `Inativar frente ${group.tagLabel}` : `Ativar frente ${group.tagLabel}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleFrenteStatus(group.tag!);
+                            }}
+                          >
+                            {group.tag.isActive ? <Power className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                          </Button>
+                        )}
+                        {group.categories.length === 0 && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="shrink-0 h-9 w-9 border-[#F69F19] text-[#F69F19] hover:bg-[#F69F19]/10"
+                            title={`Adicionar categoria em ${group.tagLabel}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCreateCategoryForFrente(group.tag);
+                            }}
+                          >
+                            <PlusCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-4">
@@ -257,7 +429,19 @@ export default function CategoriesTab({
                                   <span>Chave: {category.key}</span>
                                   {category.slaHours && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />SLA: {category.slaHours}h</span>}
                                   {category.defaultAssignedToName && <span className="flex items-center gap-1"><UserIcon className="h-3 w-3" />Atribuição: {category.defaultAssignedToName}</span>}
-                                  <span>Subcategorias: {category.subcategories?.length || 0}</span>
+                                  {(() => {
+                                    const subs = category.subcategories ?? [];
+                                    const active = subs.filter((s) => s.isActive).length;
+                                    const inactive = subs.length - active;
+                                    return (
+                                      <span>
+                                        Subcategorias: {subs.length}
+                                        {subs.length > 0 && (
+                                          <span className="text-slate-400"> ({active} ativa{active !== 1 ? 's' : ''}{inactive > 0 ? ` · ${inactive} inativa${inactive !== 1 ? 's' : ''}` : ''})</span>
+                                        )}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -272,7 +456,7 @@ export default function CategoriesTab({
                                   <Pencil className="h-4 w-4 mr-2" />Editar Categoria
                                 </Button>
                                 <Button variant="outline" size="sm"
-                                  onClick={() => CategoryService.toggleCategoryStatus(category.id, !category.isActive).then(() => loadData())}
+                                  onClick={() => onToggleCategoryStatus(category)}
                                   className={category.isActive ? 'border-orange-500 text-orange-600 hover:bg-orange-50' : 'border-green-500 text-green-600 hover:bg-green-50'}
                                 >
                                   {category.isActive ? 'Desativar' : 'Ativar'}
@@ -302,10 +486,16 @@ export default function CategoriesTab({
                                           <span className="flex items-center gap-1 text-sm"><Clock className="h-3 w-3 text-[#F69F19]" />{sub.slaHours}h</span>
                                         </TableCell>
                                         <TableCell>
-                                          {sub.defaultAssignedToName
-                                            ? <span className="text-sm text-slate-700">{sub.defaultAssignedToName}</span>
-                                            : <span className="text-sm text-slate-400 italic">Manual</span>
-                                          }
+                                          {sub.defaultAssignedToName ? (
+                                            <span className="text-sm text-slate-700">{sub.defaultAssignedToName}</span>
+                                          ) : category.defaultAssignedToName ? (
+                                            <span className="flex items-center gap-1 text-sm text-slate-500" title={`Herda o responsável da categoria ${category.label}`}>
+                                              <CornerDownRight className="h-3 w-3 text-slate-400" />
+                                              Herda: {category.defaultAssignedToName}
+                                            </span>
+                                          ) : (
+                                            <span className="text-sm text-slate-400 italic">Manual</span>
+                                          )}
                                         </TableCell>
                                         <TableCell>
                                           <Badge variant="outline" className={sub.isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}>
@@ -318,10 +508,13 @@ export default function CategoriesTab({
                                               <Pencil className="h-4 w-4 text-[#DE5532]" />
                                             </Button>
                                             <Button variant="ghost" size="icon"
-                                              onClick={() => CategoryService.toggleSubcategoryStatus(sub.id, !sub.isActive).then(() => loadData())}
+                                              onClick={() => onToggleSubcategoryStatus(sub)}
+                                              title={sub.isActive ? 'Desativar' : 'Ativar'}
                                               className="h-8 w-8"
                                             >
-                                              <Settings2 className={`h-4 w-4 ${sub.isActive ? 'text-orange-600' : 'text-green-600'}`} />
+                                              {sub.isActive
+                                                ? <Power className="h-4 w-4 text-orange-600" />
+                                                : <CheckCircle2 className="h-4 w-4 text-green-600" />}
                                             </Button>
                                             <Button variant="ghost" size="icon" onClick={() => onDeleteSubcategory(sub)} className="h-8 w-8">
                                               <Trash2 className="h-4 w-4 text-[#BD2D29]" />

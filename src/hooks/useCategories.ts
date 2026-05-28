@@ -63,8 +63,16 @@ export function useCategories() {
   // Search / filter / sort
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [frenteFilter, setFrenteFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<SortField>('order');
   const [sortDirection, setSortDirection] = useState<SortDir>('asc');
+
+  // Bulk assignment
+  const [bulkAssignUserId, setBulkAssignUserId] = useState<string>('none');
+  const [bulkAssignFrenteId, setBulkAssignFrenteId] = useState<string>('');
+  const [bulkAssignCategoryId, setBulkAssignCategoryId] = useState<string>('all');
+  const [bulkAssignTarget, setBulkAssignTarget] = useState<'categories' | 'subcategories' | 'both'>('both');
+  const [bulkAssignApplying, setBulkAssignApplying] = useState(false);
 
   // Accordion state
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
@@ -192,6 +200,18 @@ export function useCategories() {
     }
   };
 
+  const handleToggleCategoryStatus = async (category: Category) => {
+    try {
+      await CategoryService.toggleCategoryStatus(category.id, !category.isActive);
+      toast.success(category.isActive ? 'Categoria desativada' : 'Categoria ativada', {
+        description: `${category.label} foi ${category.isActive ? 'desativada' : 'ativada'}.`,
+      });
+      await loadData();
+    } catch (error: any) {
+      toast.error('Erro ao alterar status', { description: error.message || 'Não foi possível alterar o status da categoria.' });
+    }
+  };
+
   // --- Subcategory CRUD ---
   const handleCreateSubcategory = async () => {
     if (!newSubcategory.label?.trim() || !newSubcategory.categoryId) {
@@ -253,6 +273,18 @@ export function useCategories() {
       loadData();
     } catch (error: any) {
       toast.error('Erro ao excluir subcategoria', { description: error.message || 'Não foi possível excluir a subcategoria.' });
+    }
+  };
+
+  const handleToggleSubcategoryStatus = async (subcategory: Subcategory) => {
+    try {
+      await CategoryService.toggleSubcategoryStatus(subcategory.id, !subcategory.isActive);
+      toast.success(subcategory.isActive ? 'Subcategoria desativada' : 'Subcategoria ativada', {
+        description: `${subcategory.label} foi ${subcategory.isActive ? 'desativada' : 'ativada'}.`,
+      });
+      await loadData();
+    } catch (error: any) {
+      toast.error('Erro ao alterar status', { description: error.message || 'Não foi possível alterar o status da subcategoria.' });
     }
   };
 
@@ -326,6 +358,66 @@ export function useCategories() {
     }
   };
 
+  // --- Bulk assignment ---
+  // Categorias disponíveis para a frente escolhida no formulário de atribuição em massa
+  const bulkAssignFrenteCategories = bulkAssignFrenteId
+    ? categories.filter((c) =>
+        bulkAssignFrenteId === 'sem-tag' ? !c.tagId : c.tagId === bulkAssignFrenteId
+      )
+    : [];
+
+  // Resetar a categoria escolhida ao trocar de frente
+  useEffect(() => {
+    setBulkAssignCategoryId('all');
+  }, [bulkAssignFrenteId]);
+
+  const handleBulkAssign = async () => {
+    if (!bulkAssignFrenteId) {
+      toast.error('Selecione uma frente para aplicar a atribuição.');
+      return false;
+    }
+
+    const targetCategories = bulkAssignCategoryId === 'all'
+      ? bulkAssignFrenteCategories
+      : bulkAssignFrenteCategories.filter((c) => c.id === bulkAssignCategoryId);
+
+    if (targetCategories.length === 0) {
+      toast.error('Nenhuma categoria encontrada no escopo selecionado.');
+      return false;
+    }
+
+    const userId = bulkAssignUserId === 'none' ? null : bulkAssignUserId;
+    const categoryIds = bulkAssignTarget !== 'subcategories' ? targetCategories.map((c) => c.id) : [];
+    const subcategoryIds = bulkAssignTarget !== 'categories'
+      ? targetCategories.flatMap((c) => (c.subcategories ?? []).map((s) => s.id))
+      : [];
+
+    if (categoryIds.length === 0 && subcategoryIds.length === 0) {
+      toast.error('Nada para atualizar no escopo selecionado.');
+      return false;
+    }
+
+    try {
+      setBulkAssignApplying(true);
+      const result = await CategoryService.bulkAssignDefaultUser({ categoryIds, subcategoryIds, userId });
+      const userName = supportUsers.find((u) => u.id === userId)?.name;
+      const parts: string[] = [];
+      if (result.categories > 0) parts.push(`${result.categories} categoria(s)`);
+      if (result.subcategories > 0) parts.push(`${result.subcategories} subcategoria(s)`);
+      toast.success(
+        userId ? `Responsável definido em massa` : 'Atribuição removida em massa',
+        { description: `${parts.join(' e ')} ${userId ? `atribuída(s) a ${userName ?? 'usuário'}` : 'sem responsável'}.` },
+      );
+      await loadData();
+      return true;
+    } catch (error: any) {
+      toast.error('Erro ao aplicar atribuição em massa', { description: error.message || 'Não foi possível atualizar os itens.' });
+      return false;
+    } finally {
+      setBulkAssignApplying(false);
+    }
+  };
+
   // --- Filtering / Sorting ---
   const getFilteredAndSortedCategories = useCallback(() => {
     let filtered = [...categories];
@@ -338,6 +430,11 @@ export function useCategories() {
     }
     if (statusFilter === 'active') filtered = filtered.filter(cat => cat.isActive);
     else if (statusFilter === 'inactive') filtered = filtered.filter(cat => !cat.isActive);
+    if (frenteFilter !== 'all') {
+      filtered = frenteFilter === 'sem-tag'
+        ? filtered.filter(cat => !cat.tagId)
+        : filtered.filter(cat => cat.tagId === frenteFilter);
+    }
     filtered.sort((a, b) => {
       let cmp = 0;
       if (sortBy === 'name') cmp = a.label.localeCompare(b.label, 'pt-BR');
@@ -346,7 +443,7 @@ export function useCategories() {
       return sortDirection === 'asc' ? cmp : -cmp;
     });
     return filtered;
-  }, [categories, searchTerm, statusFilter, sortBy, sortDirection]);
+  }, [categories, searchTerm, statusFilter, frenteFilter, sortBy, sortDirection]);
 
   const filteredCategories = getFilteredAndSortedCategories();
 
@@ -371,8 +468,8 @@ export function useCategories() {
     return ((a[1].tag?.order || 0) - (b[1].tag?.order || 0));
   });
 
-  const hasActiveFilters = searchTerm.trim() !== '' || statusFilter !== 'all' || sortBy !== 'order';
-  const clearFilters = () => { setSearchTerm(''); setStatusFilter('all'); setSortBy('order'); setSortDirection('asc'); };
+  const hasActiveFilters = searchTerm.trim() !== '' || statusFilter !== 'all' || frenteFilter !== 'all' || sortBy !== 'order';
+  const clearFilters = () => { setSearchTerm(''); setStatusFilter('all'); setFrenteFilter('all'); setSortBy('order'); setSortDirection('asc'); };
 
   const getRoleLabel = (role: string) => {
     switch (role) { case 'admin': return 'Admin'; case 'lawyer': return 'Advogado'; case 'support': return 'Suporte'; default: return 'Suporte'; }
@@ -386,6 +483,7 @@ export function useCategories() {
     newCategory, setNewCategory, editingCategory, setEditingCategory,
     createCategoryLoading, editCategoryLoading,
     handleCreateCategory, handleEditCategory, handleDeleteCategory,
+    handleToggleCategoryStatus,
     pendingDeleteCategory, setPendingDeleteCategory,
     categoryKeyError, setCategoryKeyError, isValidatingCategoryKey, validateCategoryKey,
     // Subcategory
@@ -393,7 +491,7 @@ export function useCategories() {
     selectedCategoryForSubcategory, setSelectedCategoryForSubcategory,
     createSubcategoryLoading, editSubcategoryLoading,
     handleCreateSubcategory, handleEditSubcategory, handleDeleteSubcategory,
-    handleOpenCreateSubcategory,
+    handleToggleSubcategoryStatus, handleOpenCreateSubcategory,
     pendingDeleteSubcategory, setPendingDeleteSubcategory,
     subcategoryKeyError, setSubcategoryKeyError, isValidatingSubcategoryKey, validateSubcategoryKey,
     // Frentes
@@ -401,8 +499,16 @@ export function useCategories() {
     createFrenteLoading, editFrenteLoading,
     handleCreateFrente, handleEditFrente, handleDeleteFrente, handleToggleFrenteStatus,
     pendingDeleteFrente, setPendingDeleteFrente,
+    // Bulk assignment
+    bulkAssignUserId, setBulkAssignUserId,
+    bulkAssignFrenteId, setBulkAssignFrenteId,
+    bulkAssignCategoryId, setBulkAssignCategoryId,
+    bulkAssignFrenteCategories,
+    bulkAssignTarget, setBulkAssignTarget,
+    bulkAssignApplying, handleBulkAssign,
     // Filters
     searchTerm, setSearchTerm, statusFilter, setStatusFilter,
+    frenteFilter, setFrenteFilter,
     sortBy, setSortBy, sortDirection, setSortDirection,
     filteredCategories, sortedTagGroups, hasActiveFilters, clearFilters,
     expandedCategories, setExpandedCategories, expandedTags, setExpandedTags,
