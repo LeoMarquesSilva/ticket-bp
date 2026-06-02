@@ -94,8 +94,8 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+    <div className="bg-white p-3 tall:p-4 rounded-lg border border-slate-200 shadow-sm space-y-2 tall:space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 tall:gap-3">
         <div className="relative sm:col-span-2 xl:col-span-4">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
           <Input

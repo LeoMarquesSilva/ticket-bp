@@ -4,9 +4,8 @@ import {
   List, 
   LayoutGrid, 
   Users, 
-  Plus, 
+  Plus,
   Filter,
-  SlidersHorizontal,
   Circle,
   ChevronDown,
   UserPlus
@@ -17,14 +16,6 @@ import {
   TooltipProvider, 
   TooltipTrigger 
 } from '@/components/ui/tooltip';
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel
-} from '@/components/ui/dropdown-menu';
 import {
   Popover,
   PopoverContent,
@@ -56,6 +47,10 @@ interface TicketHeaderProps {
   canCreateTicket?: boolean;
   /** Criar ticket em nome de usuário (permissão create_ticket_for_user) */
   canCreateTicketForUser?: boolean;
+  /** Se o painel de filtros está visível */
+  filtersOpen?: boolean;
+  /** Alterna a visibilidade do painel de filtros */
+  onToggleFilters?: () => void;
 }
 
 const TicketHeader: React.FC<TicketHeaderProps> = ({
@@ -66,7 +61,9 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   setShowCreateForm,
   setShowCreateForUserModal,
   canCreateTicket = false,
-  canCreateTicketForUser = false
+  canCreateTicketForUser = false,
+  filtersOpen = true,
+  onToggleFilters
 }) => {
   const isAdmin = user?.role === 'admin';
   const isSupport = user?.role === 'support';
@@ -305,10 +302,10 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   };
 
   return (
-    <div className="w-full bg-white border-b border-[#F69F19]/10 shadow-sm mb-6 rounded-lg overflow-hidden">
+    <div className="w-full bg-white border-b border-[#F69F19]/10 shadow-sm mb-2 tall:mb-6 rounded-lg overflow-hidden">
       {/* Header principal com design sofisticado */}
-      <div 
-        className="relative py-6 px-6 overflow-hidden"
+      <div
+        className="relative py-3 px-4 sm:px-6 tall:py-6 overflow-hidden"
         style={{ 
           background: `linear-gradient(135deg, #2C2D2F 0%, #444546 100%)`,
           boxShadow: 'inset 0 0 30px rgba(0,0,0,0.2)'
@@ -323,13 +320,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
           <div>
-            <h1 className="text-2xl font-bold flex items-center">
+            <h1 className="text-lg tall:text-2xl font-bold flex items-center">
               <span className="text-white relative">
                 Tickets de Suporte
                 <span className="absolute -bottom-1 left-0 w-1/2 h-[2px] bg-[#F69F19]"></span>
               </span>
             </h1>
-            <p className="text-slate-200 text-sm mt-2 max-w-md">
+            <p className="text-slate-200 text-sm mt-1 tall:mt-2 max-w-md hidden tall:block">
               {isUser 
                 ? 'Suas solicitações de suporte jurídico'
                 : isSupport || isLawyer
@@ -450,7 +447,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
       </div>
       
       {/* Barra de ferramentas com botões de visualização e filtros */}
-      <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3 bg-white">
+      <div className="px-4 py-2 sm:px-6 tall:py-4 flex flex-wrap items-center justify-between gap-3 bg-white">
         <div className="flex items-center gap-4">
           {/* Botões de visualização com design mais sofisticado */}
           <div className="flex rounded-md overflow-hidden border border-[#F69F19]/20 shadow-sm">
@@ -618,38 +615,21 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
             </div>
           )}
           
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="border-[#F69F19]/20 hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5 transition-colors"
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                <span>Filtros</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 border-[#F69F19]/20">
-              <DropdownMenuLabel>Filtrar por</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="hover:bg-[#F69F19]/5 cursor-pointer">
-                <span className="flex-1">Prioridade</span>
-                <SlidersHorizontal className="h-4 w-4 ml-2" />
-              </DropdownMenuItem>
-              <DropdownMenuItem className="hover:bg-[#F69F19]/5 cursor-pointer">
-                <span className="flex-1">Categoria</span>
-                <SlidersHorizontal className="h-4 w-4 ml-2" />
-              </DropdownMenuItem>
-              <DropdownMenuItem className="hover:bg-[#F69F19]/5 cursor-pointer">
-                <span className="flex-1">Data</span>
-                <SlidersHorizontal className="h-4 w-4 ml-2" />
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="hover:bg-[#F69F19]/5 cursor-pointer">
-                <span className="text-[#F69F19]">Limpar filtros</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleFilters}
+            aria-expanded={filtersOpen}
+            aria-label={filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros'}
+            className={cn(
+              'border-[#F69F19]/20 hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5 transition-colors',
+              filtersOpen && 'bg-[#F69F19]/10 border-[#F69F19]/40 text-[#F69F19]'
+            )}
+          >
+            <Filter className="h-4 w-4 mr-2" />
+            <span>Filtros</span>
+            <ChevronDown className={cn('h-4 w-4 ml-2 transition-transform', filtersOpen && 'rotate-180')} />
+          </Button>
         </div>
       </div>
     </div>

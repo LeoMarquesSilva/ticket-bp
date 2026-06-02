@@ -141,6 +141,11 @@ const Tickets = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [assignedFilter, setAssignedFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
+  // Painel de filtros recolhível: aberto por padrão em telas altas, recolhido em telas baixas
+  // (notebooks) para devolver altura à lista de tickets e ao chat.
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(
+    () => (typeof window === 'undefined' ? true : window.innerHeight >= 850)
+  );
   const [categoriesConfig, setCategoriesConfig] = useState<CategoriesConfigMap>({});
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
@@ -1553,7 +1558,7 @@ const renderTicketCard = (ticket: Ticket) => {
 };
 
 return (
-  <div className="h-screen flex flex-col overflow-hidden">
+  <div className="flex flex-col overflow-hidden w-full h-[calc(100dvh-var(--layout-chrome-height))] max-h-[calc(100dvh-var(--layout-chrome-height))] pb-2 sm:pb-3 lg:pb-4">
     {/* PendingFeedbackHandler - mostra apenas tickets criados pelo próprio usuário logado */}
     <PendingFeedbackHandler
       tickets={tickets}
@@ -1573,9 +1578,12 @@ return (
         user={user}
         canCreateTicket={has('create_ticket')}
         canCreateTicketForUser={canCreateTicketForUser}
+        filtersOpen={filtersOpen}
+        onToggleFilters={() => setFiltersOpen((v) => !v)}
       />
 
-      {/* Filtros sempre visíveis */}
+      {/* Filtros recolhíveis (toggle no botão "Filtros" do cabeçalho) */}
+      {filtersOpen && (
       <div className="px-4 pb-4">
         <TicketFilters
           searchTerm={searchTerm}
@@ -1602,6 +1610,7 @@ return (
           loadingCategories={loadingCategories}
         />
       </div>
+      )}
 
       {/* Modal para criação de ticket - sempre modal ao clicar em Novo Ticket */}
       <CreateTicketModal
@@ -1641,7 +1650,7 @@ return (
         )}
 
     {/* Conteúdo principal - ocupa todo o espaço restante */}
-    <div className="flex-1 flex overflow-hidden w-full h-full">
+    <div className="flex-1 flex min-h-0 overflow-hidden w-full">
       {/* Carregando */}
         {loading && (
           <div className="flex-1 flex items-center justify-center">
@@ -1654,9 +1663,9 @@ return (
         {!loading && (
           <>
             {/* Mobile: chat fullscreen quando aberto, lista fullscreen quando fechado */}
-            <div className="flex w-full h-full lg:hidden">
+            <div className="flex w-full min-h-0 flex-1 lg:hidden">
               {!showChat && (
-                <div className="flex-1 flex flex-col min-w-0 border-r border-slate-200 bg-white">
+                <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden border-r border-slate-200 bg-white">
                   {view === 'list' && (
                     <TicketList
                       filteredTickets={getFilteredTickets()}
@@ -1715,9 +1724,9 @@ return (
             </div>
 
             {/* Desktop (lg+): painel redimensionável ou lista única */}
-            <div className="hidden lg:flex w-full h-full">
+            <div className="hidden lg:flex w-full min-h-0 flex-1">
               {!showChat ? (
-                <div className="flex-1 flex flex-col min-w-0 border-r border-slate-200 bg-white">
+                <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden border-r border-slate-200 bg-white">
                   {view === 'list' && (
                     <TicketList
                       filteredTickets={getFilteredTickets()}
@@ -1742,12 +1751,12 @@ return (
                   )}
                 </div>
               ) : (
-                <ResizablePanelGroup direction="horizontal" className="w-full">
+                <ResizablePanelGroup direction="horizontal" className="w-full h-full min-h-0">
                   <ResizablePanel
-                    defaultSize={28}
-                    minSize={20}
-                    maxSize={40}
-                    className="flex flex-col min-w-[280px]"
+                    defaultSize={30}
+                    minSize={24}
+                    maxSize={42}
+                    className="flex flex-col min-w-[320px]"
                   >
                     <div className="flex-1 flex flex-col min-h-0 border-r border-slate-200 bg-white">
                       {view === 'list' && (

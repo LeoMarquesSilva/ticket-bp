@@ -15,6 +15,12 @@ export default {
       },
     },
     extend: {
+      // Breakpoints baseados em ALTURA (além dos de largura padrão).
+      // `tall` aplica em telas altas (desktop); a ausência dele = tela baixa
+      // (notebooks), onde o chrome fica compacto para sobrar espaço ao conteúdo.
+      screens: {
+        tall: { raw: "(min-height: 850px)" },
+      },
       fontFamily: {
         sans: ["Montserrat", "sans-serif"],
       },

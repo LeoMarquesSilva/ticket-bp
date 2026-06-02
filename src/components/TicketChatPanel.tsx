@@ -492,7 +492,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden border-l border-slate-200 chat-container bg-white">
       {/* Chat Header - mesmo estilo do header da página de tickets */}
       <div className="flex-shrink-0 bg-[#F6F6F6] border-b border-[#F69F19]/20 shadow-sm z-10">
-        <div className="px-4 py-3 flex items-center justify-between gap-4">
+        <div className="px-4 py-2 tall:py-3 flex items-center justify-between gap-4">
           {/* Lado esquerdo: voltar (mobile) + info do ticket */}
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Button
@@ -736,7 +736,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       </Dialog>
 
       {/* Chat Messages */}
-      <ScrollArea className="flex-1 min-h-0 p-4 relative bg-slate-50/30">
+      <ScrollArea className="flex-1 min-h-0 p-3 tall:p-4 relative bg-slate-50/30">
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 p-4 text-center">
             <div className="bg-slate-100 p-4 rounded-full mb-3">
@@ -849,7 +849,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
       {/* Input de mensagem */}
       {!isTicketFinalized(selectedTicket) ? (
-        <div className="p-4 border-t border-slate-200 bg-white">
+        <div className="p-2 tall:p-4 border-t border-slate-200 bg-white">
           {/* Lista de arquivos sendo carregados */}
           {uploadingFiles.length > 0 && (
             <div className="mb-3 p-2 bg-slate-50 rounded-lg border border-slate-200">
@@ -1081,10 +1081,10 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   }
                   rows={composerExpanded ? 5 : 1}
                   disabled={sending}
-                  className={`resize-none overflow-y-auto pr-11 py-3 text-base leading-snug border-slate-200 focus-visible:ring-[#F69F19] focus-visible:border-[#F69F19] [overflow-wrap:anywhere] break-words ${
+                  className={`resize-none overflow-y-auto pr-11 py-2 tall:py-3 text-base leading-snug border-slate-200 focus-visible:ring-[#F69F19] focus-visible:border-[#F69F19] [overflow-wrap:anywhere] break-words ${
                     composerExpanded
                       ? 'min-h-[min(38vh,360px)] max-h-[min(72vh,560px)]'
-                      : 'min-h-[52px] max-h-[min(28vh,200px)]'
+                      : 'min-h-[44px] tall:min-h-[52px] max-h-[min(28vh,200px)]'
                   }`}
                 />
 
@@ -1127,7 +1127,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               )}
             </Button>
           </div>
-          <div className="mt-2 text-[10px] text-slate-400 flex flex-wrap gap-x-3 gap-y-1 justify-between px-1">
+          <div className="mt-2 text-[10px] text-slate-400 hidden tall:flex flex-wrap gap-x-3 gap-y-1 justify-between px-1">
             <span>Enter envia mensagem · Shift+Enter pula linha</span>
             <span className="shrink-0">Cole imagens com Ctrl+V</span>
           </div>

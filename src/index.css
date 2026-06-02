@@ -46,6 +46,11 @@
     --sidebar-accent-foreground: 0 0% 100%; /* branco */
     --sidebar-border: 0 0% 30%;
     --sidebar-ring: 35 93% 53%; /* #F69F19 */
+
+    /* Altura do header (h-1 + h-16) + padding-top do main (pt-4) */
+    --layout-header-height: 4.25rem;
+    --layout-main-padding-top: 1rem;
+    --layout-chrome-height: calc(var(--layout-header-height) + var(--layout-main-padding-top));
   }
 
   .dark {
