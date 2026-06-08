@@ -43,7 +43,7 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
   const handleFinishTicket = async () => {
     try {
       setIsLoading(true);
-      await TicketService.finishTicket(ticketId);
+      await TicketService.finishTicket(ticketId, user ? { userId: user.id, userName: user.name } : undefined);
       setIsConfirmDialogOpen(false);
       
       // Apenas support/lawyer podem finalizar tickets agora

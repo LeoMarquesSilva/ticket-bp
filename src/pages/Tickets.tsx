@@ -571,7 +571,6 @@ const Tickets = () => {
       const messageId = payload.new.id;
       const userId = payload.new.user_id;
       const userName = payload.new.user_name;
-
       setChatMessages(prevMessages => {
         const existingAvatar = prevMessages.find(m => m.userId === userId && m.avatarUrl)?.avatarUrl;
         const newMessage: ChatMessage = {
@@ -1716,6 +1715,7 @@ return (
                     supportUsers={supportUsers}
                     handleAssignTicket={handleAssignTicket}
                     canAssignTicket={has('assign_ticket')}
+                    canEditTicketCategory={has('assign_ticket')}
                     canDeleteTicket={has('delete_ticket')}
                     canFinishTicket={has('finish_ticket')}
                   />
@@ -1810,6 +1810,7 @@ return (
                         supportUsers={supportUsers}
                         handleAssignTicket={handleAssignTicket}
                         canAssignTicket={has('assign_ticket')}
+                        canEditTicketCategory={has('assign_ticket')}
                         canDeleteTicket={has('delete_ticket')}
                         canFinishTicket={has('finish_ticket')}
                       />

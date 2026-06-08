@@ -162,7 +162,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         const newAssignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
         const oldAssignedTo = normalizeId((payload.old?.assigned_to as string | null | undefined) ?? null);
-
         // Ticket transferido para o usuário atual: dispara notificação com som de novo ticket.
         if (newAssignedTo === normalizedUserId && oldAssignedTo !== normalizedUserId) {
           console.info('[notify] notify_ticket_assigned', { ticketId, oldAssignedTo, newAssignedTo, userId: normalizedUserId });
@@ -204,6 +203,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           const { assignee, requester } = await getTicketParticipants(ticketId);
           const isAssignee = Boolean(assignee && assignee === normalizedUserId);
           const isRequester = Boolean(requester && requester === normalizedUserId);
+
           if (!isAssignee && !isRequester) {
             console.info('[notify] skip_not_recipient', {
               type: 'message_received',
@@ -220,7 +220,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             assignee,
             requester,
             userId: normalizedUserId,
-            recipientType: isAssignee && isRequester ? 'assignee_and_requester' : isAssignee ? 'assignee' : 'requester'
+            recipientType: isAssignee && isRequester ? 'assignee_and_requester' : isAssignee ? 'assignee' : 'requester',
           });
           await notifyRef.current({
             type: 'message_received',

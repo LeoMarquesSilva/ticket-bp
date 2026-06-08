@@ -412,33 +412,38 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
     }
   }
 
+  private static buildNpsRequestMessage(ticketTitle?: string): string {
+    const titlePart = ticketTitle?.trim() ? ` sobre "${ticketTitle.trim()}"` : '';
+    return `✅ Seu atendimento${titlePart} foi finalizado! Por favor, avalie nossa experiência clicando no botão "Avaliar Agora" abaixo. Sua opinião é muito importante para nós.`;
+  }
+
   // Finalizar um ticket (marcar como resolvido)
-  static async finishTicket(ticketId: string): Promise<Ticket> {
+  static async finishTicket(
+    ticketId: string,
+    finalizedBy?: { userId: string; userName: string }
+  ): Promise<Ticket> {
     try {
       console.log('Finalizando ticket:', ticketId);
-      
-      const now = new Date().toISOString();
-      
-      const updates = {
-        status: 'resolved',
-        resolved_at: now,
-        updated_at: now,
-      };
 
-      const { data, error } = await supabase
+      const { data: currentTicket } = await supabase
         .from(TABLES.TICKETS)
-        .update(updates)
+        .select('status, feedback_submitted_at, title')
         .eq('id', ticketId)
-        .select()
         .single();
 
-      if (error) {
-        console.error('Error finishing ticket:', error);
-        throw error;
+      const isNewlyResolved =
+        currentTicket?.status !== 'resolved' && !currentTicket?.feedback_submitted_at;
+
+      if (isNewlyResolved && finalizedBy?.userId && finalizedBy?.userName) {
+        await this.sendChatMessage(
+          ticketId,
+          finalizedBy.userId,
+          finalizedBy.userName,
+          this.buildNpsRequestMessage(currentTicket?.title)
+        );
       }
 
-      console.log('Finished ticket data:', data);
-      return mapFromDatabase(data);
+      return await this.updateTicket(ticketId, { status: 'resolved' });
     } catch (error) {
       console.error('Error in finishTicket:', error);
       throw error;

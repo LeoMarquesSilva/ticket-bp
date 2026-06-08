@@ -7,9 +7,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle, Bold, Italic, List, ListOrdered, Link2, Code, Maximize2, Minimize2 } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle, Bold, Italic, List, ListOrdered, Link2, Code, Maximize2, Minimize2, Pencil } from 'lucide-react';
 import FinishTicketButton from './FinishTicketButton';
 import TransferTicketModal from './TransferTicketModal';
+import ChangeTicketCategoryModal from './ChangeTicketCategoryModal';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
 import { UserService } from '@/services/userService';
@@ -69,6 +70,7 @@ interface TicketChatPanelProps {
   handleAssignTicket?: (ticketId: string, supportUserId: string) => void;
   onCreateNewTicket?: () => void;
   canAssignTicket?: boolean;
+  canEditTicketCategory?: boolean;
   canDeleteTicket?: boolean;
   canFinishTicket?: boolean;
 }
@@ -97,11 +99,13 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   handleAssignTicket,
   onCreateNewTicket,
   canAssignTicket = false,
+  canEditTicketCategory = false,
   canDeleteTicket = false,
   canFinishTicket = false
 }) => {
   const [showTicketDetails, setShowTicketDetails] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
@@ -280,7 +284,11 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       if (selectedTicket && user && selectedTicket.createdBy === user.id) {
         const showFeedbackParam = searchParams.get('showFeedback') === 'true';
         const needsFeedback = await TicketService.checkTicketNeedsFeedback(selectedTicket.id);
-        setShowFeedback(showFeedbackParam || needsFeedback);
+        const shouldShowFeedback = showFeedbackParam || needsFeedback;
+        setShowFeedback(shouldShowFeedback);
+        if (showFeedbackParam && shouldShowFeedback) {
+          setShowFeedbackModal(true);
+        }
       } else {
         setShowFeedback(false);
       }
@@ -386,11 +394,36 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     if (Object.keys(categoriesConfig).length === 0 || !category || !subcategory) return subcategory || '';
     const categoryConfig = categoriesConfig[category];
     if (!categoryConfig) return subcategory || '';
-    
+
     const subcategoryConfig = categoryConfig.subcategories.find(
       sub => sub.value === subcategory
     );
     return subcategoryConfig?.label || subcategory;
+  };
+
+  const handleCategoryChange = async (newCategory: string, newSubcategory: string) => {
+    if (!handleUpdateTicket) return;
+
+    const oldCategory = selectedTicket.category || '';
+    const oldSubcategory = selectedTicket.subcategory || '';
+    const oldLabel = `${getCategoryLabel(oldCategory)}${oldSubcategory ? ` / ${getSubcategoryLabel(oldCategory, oldSubcategory)}` : ''}`;
+    const newLabel = `${getCategoryLabel(newCategory)} / ${getSubcategoryLabel(newCategory, newSubcategory)}`;
+
+    await handleUpdateTicket(selectedTicket.id, {
+      category: newCategory,
+      subcategory: newSubcategory,
+    });
+
+    try {
+      await TicketService.sendChatMessage(
+        selectedTicket.id,
+        'system',
+        'Sistema',
+        `Categoria alterada de "${oldLabel}" para "${newLabel}"${user?.name ? ` por ${user.name}` : ''}.`
+      );
+    } catch (error) {
+      console.error('Erro ao registrar alteração de categoria no chat:', error);
+    }
   };
 
   const renderAttachments = (attachments: any[]) => {
@@ -542,6 +575,27 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
           {/* Lado direito: ações */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {canEditTicketCategory && handleUpdateTicket && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs border-slate-200 hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5 rounded-lg"
+                  onClick={() => setCategoryModalOpen(true)}
+                >
+                  <Tag className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Categoria</span>
+                </Button>
+                <ChangeTicketCategoryModal
+                  open={categoryModalOpen}
+                  onOpenChange={setCategoryModalOpen}
+                  currentCategory={selectedTicket.category || ''}
+                  currentSubcategory={selectedTicket.subcategory}
+                  onSave={handleCategoryChange}
+                />
+              </>
+            )}
+
             {canAssignTicket && !isTicketFinalized(selectedTicket) && handleAssignTicket && assignableUsers.length > 0 && (
               <>
                 <Button
@@ -695,13 +749,24 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 <div className="p-1.5 rounded-lg bg-white border border-slate-200 shrink-0">
                   <Tag className="h-4 w-4 text-slate-500" />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Categoria</p>
                   <p className="text-sm font-medium text-[#2C2D2F] truncate">
                     {getCategoryLabel(selectedTicket.category || 'outros')}
                     {selectedTicket.subcategory && ` / ${getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}`}
                   </p>
                 </div>
+                {canEditTicketCategory && handleUpdateTicket && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-slate-400 hover:text-[#F69F19] hover:bg-[#F69F19]/10"
+                    onClick={() => setCategoryModalOpen(true)}
+                    title="Alterar categoria"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
               <div className="flex items-center gap-3 p-3 rounded-lg bg-[#F69F19]/5 border border-[#F69F19]/20 sm:col-span-2">
                 <div className="p-1.5 rounded-lg bg-[#F69F19]/10 shrink-0">
