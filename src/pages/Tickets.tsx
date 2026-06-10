@@ -26,8 +26,10 @@ import { CategoryService } from '@/services/categoryService';
 import {
   type CategoriesConfigMap,
   getCategoryKeysForFrente,
+  getCategoryKeysForFrenteIds,
   ticketMatchesFrente,
 } from '@/utils/ticketFilterUtils';
+import { FrenteAccessService } from '@/services/frenteAccessService';
 
 interface SupportUser {
   id: string;
@@ -148,6 +150,8 @@ const Tickets = () => {
   );
   const [categoriesConfig, setCategoriesConfig] = useState<CategoriesConfigMap>({});
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
+  const [userFrenteIds, setUserFrenteIds] = useState<string[]>([]);
+  const [userCategoryKeys, setUserCategoryKeys] = useState<string[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>({});
@@ -198,8 +202,12 @@ const Tickets = () => {
   const lastMessageReconcileAtRef = useRef<Record<string, number>>({});
   
   const canCreateTicketForUser = has('create_ticket_for_user');
-  const isStaffUser = Boolean(user && (isStaffRole(user.role) || has('assign_ticket') || has('view_all_tickets')));
+  const isFrenteRestricted = has('view_frente_tickets') && !has('view_all_tickets');
+  const isStaffUser = Boolean(user && (isStaffRole(user.role) || has('assign_ticket') || has('view_all_tickets') || has('view_frente_tickets')));
   const canUsePresenceChannel = Boolean(isStaffUser);
+  const visibleFrentes = isFrenteRestricted
+    ? frentes.filter((f) => userFrenteIds.includes(f.id))
+    : frentes;
   const mapRealtimeTicketRow = (ticketData: RealtimeTicketRow): Ticket => ({
     id: ticketData.id,
     title: ticketData.title,
@@ -218,6 +226,9 @@ const Tickets = () => {
   });
   const canUserSeeTicket = (ticket: Ticket) => {
     if (has('view_all_tickets')) return true;
+    if (isFrenteRestricted && userCategoryKeys.length > 0) {
+      return userCategoryKeys.includes(ticket.category);
+    }
     if (!user?.id) return false;
     return ticket.createdBy === user.id || ticket.assignedTo === user.id;
   };
@@ -243,7 +254,40 @@ const Tickets = () => {
     loadFilterData();
   }, []);
 
+  useEffect(() => {
+    const loadUserFrenteAccess = async () => {
+      if (!user?.id || !isFrenteRestricted) {
+        setUserFrenteIds([]);
+        setUserCategoryKeys([]);
+        return;
+      }
+
+      try {
+        const frenteIds = await FrenteAccessService.getUserFrenteIds(user.id, user.tagId);
+        setUserFrenteIds(frenteIds);
+        setUserCategoryKeys(getCategoryKeysForFrenteIds(categoriesConfig, frenteIds));
+        if (frenteIds.length === 1) {
+          setFrenteFilter(frenteIds[0]);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar frente de atuação do usuário:', error);
+        setUserFrenteIds([]);
+        setUserCategoryKeys([]);
+      }
+    };
+
+    loadUserFrenteAccess();
+  }, [user?.id, user?.tagId, isFrenteRestricted, categoriesConfig]);
+
+  useEffect(() => {
+    if (!isFrenteRestricted || userCategoryKeys.length === 0) return;
+    loadTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFrenteRestricted, userCategoryKeys.join(',')]);
+
   const handleFrenteFilterChange = (value: string) => {
+    if (isFrenteRestricted && value === 'all') return;
+    if (isFrenteRestricted && value !== 'all' && !userFrenteIds.includes(value)) return;
     setFrenteFilter(value);
     if (categoryFilter !== 'all' && value !== 'all') {
       const keys = getCategoryKeysForFrente(categoriesConfig, value);
@@ -949,8 +993,9 @@ useEffect(() => {
       
       if (has('view_all_tickets')) {
         tickets = await TicketService.getAllTickets();
+      } else if (isFrenteRestricted && userCategoryKeys.length > 0) {
+        tickets = await TicketService.getTicketsByCategories(userCategoryKeys);
       } else if (user?.id) {
-        // Quem não tem view_all_tickets vê só criados por ou atribuídos a si
         tickets = await TicketService.getTicketsForCurrentUser(user.id);
       } else {
         tickets = [];
@@ -1604,9 +1649,10 @@ return (
               : undefined
           }
           isSupport={isStaffUser}
-          frentes={frentes}
+          frentes={visibleFrentes}
           categoriesConfig={categoriesConfig}
           loadingCategories={loadingCategories}
+          lockFrenteFilter={isFrenteRestricted}
         />
       </div>
       )}

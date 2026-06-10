@@ -26,3 +26,14 @@ export function ticketMatchesFrente(
   const keys = getCategoryKeysForFrente(categoriesConfig, frenteFilter);
   return keys.includes(ticketCategory);
 }
+
+export function getCategoryKeysForFrenteIds(
+  categoriesConfig: CategoriesConfigMap,
+  frenteIds: string[]
+): string[] {
+  const keys = new Set<string>();
+  frenteIds.forEach((frenteId) => {
+    getCategoryKeysForFrente(categoriesConfig, frenteId).forEach((key) => keys.add(key));
+  });
+  return [...keys];
+}

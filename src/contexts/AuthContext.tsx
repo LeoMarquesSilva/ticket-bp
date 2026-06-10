@@ -235,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Selecionar campos específicos incluindo ticket_view_preference e is_active
         const { data: userProfile, error } = await supabase
           .from(TABLES.USERS)
-          .select('id, name, email, role, department, avatar_url, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
+          .select('id, name, email, role, department, tag_id, avatar_url, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
           .eq('auth_user_id', authUserId)
           .abortSignal(controller.signal)
           .single();
@@ -276,6 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             passwordChangedAt: userProfile.password_changed_at,
             ticketViewPreference: ticketViewPref,
             isActive: isActive,
+            tagId: userProfile.tag_id || undefined,
             createdAt: userProfile.created_at 
           };
 
@@ -295,7 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Selecionar campos específicos incluindo ticket_view_preference e is_active
           const { data: emailProfile, error: emailError } = await supabase
             .from(TABLES.USERS)
-            .select('id, name, email, role, department, avatar_url, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
+            .select('id, name, email, role, department, tag_id, avatar_url, is_online, last_active_at, first_login, must_change_password, password_changed_at, ticket_view_preference, is_active, created_at, auth_user_id')
             .eq('email', authUser.email)
             .single();
           
@@ -333,6 +334,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               passwordChangedAt: emailProfile.password_changed_at,
               ticketViewPreference: ticketViewPref,
               isActive: isActive,
+              tagId: emailProfile.tag_id || undefined,
               createdAt: emailProfile.created_at
             };
 

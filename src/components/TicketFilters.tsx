@@ -35,6 +35,7 @@ interface TicketFiltersProps {
   frentes: Array<{ id: string; label: string; color: string }>;
   categoriesConfig: CategoriesConfigMap;
   loadingCategories: boolean;
+  lockFrenteFilter?: boolean;
 }
 
 const TicketFilters: React.FC<TicketFiltersProps> = ({
@@ -56,6 +57,7 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
   frentes,
   categoriesConfig,
   loadingCategories,
+  lockFrenteFilter = false,
 }) => {
   const categoriesForSelect = useMemo(() => {
     const entries = Object.entries(categoriesConfig);
@@ -82,7 +84,9 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
 
   const clearFilters = () => {
     onSearchChange('');
-    onFrenteFilterChange('all');
+    if (!lockFrenteFilter) {
+      onFrenteFilterChange('all');
+    }
     onStatusFilterChange('all');
     onCategoryFilterChange('all');
     onAssignedFilterChange('all');
@@ -106,13 +110,17 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
           />
         </div>
 
-        <Select value={frenteFilter} onValueChange={onFrenteFilterChange}>
+        <Select
+          value={frenteFilter}
+          onValueChange={onFrenteFilterChange}
+          disabled={lockFrenteFilter && frentes.length <= 1}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Frente de atuação" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas as frentes</SelectItem>
-            <SelectItem value="sem-frente">Sem frente de atuação</SelectItem>
+            {!lockFrenteFilter && <SelectItem value="all">Todas as frentes</SelectItem>}
+            {!lockFrenteFilter && <SelectItem value="sem-frente">Sem frente de atuação</SelectItem>}
             {frentes.map((f) => (
               <SelectItem key={f.id} value={f.id}>
                 <span className="flex items-center gap-2">

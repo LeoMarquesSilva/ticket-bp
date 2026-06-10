@@ -328,6 +328,31 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
     }
   }
 
+  /** Tickets das categorias da frente de atuação do usuário. */
+  static async getTicketsByCategories(categoryKeys: string[]): Promise<Ticket[]> {
+    if (categoryKeys.length === 0) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.TICKETS)
+        .select('*')
+        .in('category', categoryKeys)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching tickets by categories:', error);
+        throw error;
+      }
+
+      let tickets = (data || []).map(mapFromDatabase);
+      tickets = await enrichTicketsWithAvatars(tickets);
+      return tickets;
+    } catch (error) {
+      console.error('Error in getTicketsByCategories:', error);
+      throw error;
+    }
+  }
+
   /** Tickets criados por ou atribuídos ao usuário (para quem não tem view_all_tickets). */
   static async getTicketsForCurrentUser(userId: string): Promise<Ticket[]> {
     try {

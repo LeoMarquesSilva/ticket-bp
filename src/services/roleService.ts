@@ -4,6 +4,7 @@ export const PERMISSION_KEYS = [
   { key: 'dashboard', label: 'Ver Dashboard' },
   { key: 'tickets', label: 'Ver Tickets' },
   { key: 'view_all_tickets', label: 'Ver todos os tickets (não só os próprios)' },
+  { key: 'view_frente_tickets', label: 'Ver tickets da frente de atuação' },
   { key: 'create_ticket', label: 'Criar ticket (próprio)' },
   { key: 'create_ticket_for_user', label: 'Criar ticket em nome de usuário' },
   { key: 'assign_ticket', label: 'Atribuir / transferir ticket' },
@@ -18,8 +19,8 @@ export type PermissionKey = (typeof PERMISSION_KEYS)[number]['key'];
 
 const DEFAULT_PERMISSIONS: Record<string, PermissionKey[]> = {
   admin: ['dashboard', 'tickets', 'view_all_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket', 'delete_ticket', 'manage_users', 'manage_categories', 'manage_roles'],
-  lawyer: ['dashboard', 'tickets', 'view_all_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
-  support: ['dashboard', 'tickets', 'view_all_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
+  lawyer: ['dashboard', 'tickets', 'view_frente_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
+  support: ['dashboard', 'tickets', 'view_frente_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
   user: ['tickets', 'create_ticket', 'finish_ticket'],
 };
 

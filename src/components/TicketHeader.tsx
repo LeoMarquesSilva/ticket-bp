@@ -27,6 +27,10 @@ import { supabase, TABLES } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import ticketEventService from '@/services/ticketEventService';
 import UserAvatar from '@/components/UserAvatar';
+import { usePermissions } from '@/hooks/usePermissions';
+import { CategoryService } from '@/services/categoryService';
+import { FrenteAccessService } from '@/services/frenteAccessService';
+import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
 
 interface User {
   id: string;
@@ -40,7 +44,7 @@ interface TicketHeaderProps {
   view: 'list' | 'board' | 'users';
   setView: (view: 'list' | 'board' | 'users') => void;
   supportUsers: User[];
-  user: { role: string; id?: string } | null;
+  user: { role: string; id?: string; tagId?: string } | null;
   setShowCreateForm: (show: boolean) => void;
   setShowCreateForUserModal?: (show: boolean) => void;
   /** Criar ticket próprio (permissão create_ticket) */
@@ -65,11 +69,14 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   filtersOpen = true,
   onToggleFilters
 }) => {
+  const { has } = usePermissions();
   const isAdmin = user?.role === 'admin';
   const isSupport = user?.role === 'support';
   const isLawyer = user?.role === 'lawyer';
   const isUser = user?.role === 'user';
   const isStaff = isAdmin || isSupport || isLawyer;
+  const isFrenteRestricted = has('view_frente_tickets') && !has('view_all_tickets');
+  const [userCategoryKeys, setUserCategoryKeys] = useState<string[]>([]);
 
   const normalizeRole = (role?: string) => String(role || '').trim().toLowerCase();
   const isUserRole = (role?: string) => {
@@ -151,6 +158,28 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
     }
   };
 
+  useEffect(() => {
+    const loadFrenteAccess = async () => {
+      if (!user?.id || !isFrenteRestricted) {
+        setUserCategoryKeys([]);
+        return;
+      }
+
+      try {
+        const [frenteIds, categoriesConfig] = await Promise.all([
+          FrenteAccessService.getUserFrenteIds(user.id, user.tagId),
+          CategoryService.getCategoriesConfig(),
+        ]);
+        setUserCategoryKeys(getCategoryKeysForFrenteIds(categoriesConfig, frenteIds));
+      } catch (error) {
+        console.error('Erro ao carregar frente para estatísticas:', error);
+        setUserCategoryKeys([]);
+      }
+    };
+
+    void loadFrenteAccess();
+  }, [user?.id, user?.tagId, isFrenteRestricted]);
+
   // Função para buscar estatísticas dos tickets
   const fetchTicketStats = async () => {
     try {
@@ -177,17 +206,18 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
       
       // Filtrar consultas com base no tipo de usuário
       if (isUser) {
-        // Usuários comuns veem apenas seus próprios tickets
         openQuery.eq('created_by', user.id);
         inProgressQuery.eq('created_by', user.id);
         resolvedQuery.eq('created_by', user.id);
+      } else if (isFrenteRestricted && userCategoryKeys.length > 0) {
+        openQuery.in('category', userCategoryKeys);
+        inProgressQuery.in('category', userCategoryKeys);
+        resolvedQuery.in('category', userCategoryKeys);
       } else if (isSupport || isLawyer) {
-        // Suporte e advogados veem apenas tickets atribuídos a eles
         openQuery.eq('assigned_to', user.id);
         inProgressQuery.eq('assigned_to', user.id);
         resolvedQuery.eq('assigned_to', user.id);
       }
-      // Admin vê todos os tickets (nenhum filtro adicional)
       
       // Executar as consultas
       const [openResult, inProgressResult, resolvedResult] = await Promise.all([
@@ -291,11 +321,12 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [isUser, isSupport, isLawyer, isAdmin, user?.id]);
+  }, [isUser, isSupport, isLawyer, isAdmin, isFrenteRestricted, userCategoryKeys.join(','), user?.id]);
 
   // Função para obter o título das estatísticas com base no tipo de usuário
   const getStatsTitle = () => {
     if (isUser) return "Seus tickets";
+    if (isFrenteRestricted) return "Tickets da sua frente";
     if (isSupport || isLawyer) return "Seus tickets atribuídos";
     if (isAdmin) return "Todos os tickets";
     return "Tickets";

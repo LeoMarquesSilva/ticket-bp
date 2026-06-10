@@ -26,6 +26,7 @@ export interface User {
   passwordChangedAt?: string; // ✅ Novo campo - data da última alteração de senha
   ticketViewPreference?: 'list' | 'board' | 'users'; // ✅ Preferência de visualização de tickets
   isActive?: boolean; // ✅ Novo campo - indica se o usuário está ativo
+  tagId?: string; // Frente de atuação do usuário (suporte/advogado)
   createdAt?: string;
 }
 

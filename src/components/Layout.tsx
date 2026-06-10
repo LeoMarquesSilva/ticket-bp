@@ -6,6 +6,9 @@ import { supabase, TABLES } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useNotificationOrchestrator } from '@/hooks/useNotificationOrchestrator';
+import { CategoryService } from '@/services/categoryService';
+import { FrenteAccessService } from '@/services/frenteAccessService';
+import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -37,8 +40,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const normalizedUserId = normalizeId(user?.id);
   const isStaffByRole = isStaffRole(user?.role);
-  const isStaffByPermissions = Boolean(user && (has('assign_ticket') || has('view_all_tickets')));
+  const isStaffByPermissions = Boolean(user && (has('assign_ticket') || has('view_all_tickets') || has('view_frente_tickets')));
+  const isFrenteRestricted = has('view_frente_tickets') && !has('view_all_tickets');
   const isStaff = isStaffByRole || isStaffByPermissions;
+  const userCategoryKeysRef = useRef<string[]>([]);
   const notifyRef = useRef(notifyRealtimeEvent);
   const navigateRef = useRef(navigate);
 
@@ -49,6 +54,30 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   useEffect(() => {
     navigateRef.current = navigate;
   }, [navigate]);
+
+  useEffect(() => {
+    const loadFrenteAccess = async () => {
+      if (!normalizedUserId || !isFrenteRestricted) {
+        userCategoryKeysRef.current = [];
+        return;
+      }
+
+      try {
+        const [frenteIds, categoriesConfig] = await Promise.all([
+          FrenteAccessService.getUserFrenteIds(normalizedUserId, user?.tagId),
+          CategoryService.getCategoriesConfig(),
+        ]);
+        userCategoryKeysRef.current = getCategoryKeysForFrenteIds(categoriesConfig, frenteIds);
+      } catch (error) {
+        console.warn('[notify] falha ao carregar frente do usuário', error);
+        userCategoryKeysRef.current = [];
+      }
+    };
+
+    if (!permissionsLoading) {
+      void loadFrenteAccess();
+    }
+  }, [normalizedUserId, user?.tagId, isFrenteRestricted, permissionsLoading]);
 
   // Efeito para configurar as notificações em tempo real
   useEffect(() => {
@@ -123,8 +152,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         if (!payload.new) return;
         const newTicketId = payload.new?.id as string | undefined;
         const assignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
+        const ticketCategory = String(payload.new.category ?? '').trim();
 
-        // Novo ticket sem responsável: todos da equipe recebem.
+        if (
+          isFrenteRestricted &&
+          userCategoryKeysRef.current.length > 0 &&
+          !userCategoryKeysRef.current.includes(ticketCategory)
+        ) {
+          console.info('[notify] skip_other_frente', {
+            type: 'ticket_created',
+            ticketId: newTicketId,
+            category: ticketCategory,
+          });
+          return;
+        }
+
+        // Novo ticket sem responsável: equipe da frente recebe.
         // Novo ticket com responsável: só o responsável recebe.
         if (!assignedTo && !isStaff) {
           console.info('[notify] skip_not_staff', {

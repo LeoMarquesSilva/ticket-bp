@@ -29,6 +29,7 @@ import { Switch } from '@/components/ui/switch';
 import UserAvatar from '@/components/UserAvatar';
 import AvatarCropModal from '@/components/AvatarCropModal';
 import { AvatarService } from '@/services/avatarService';
+import { CategoryService } from '@/services/categoryService';
 
 
 export default function UserManagement() {
@@ -98,6 +99,7 @@ export default function UserManagement() {
   const [pendingDeleteRole, setPendingDeleteRole] = useState<Role | null>(null);
 
   const [departments, setDepartments] = useState<Dept[]>([]);
+  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [createDepartmentOpen, setCreateDepartmentOpen] = useState(false);
   const [editDepartmentOpen, setEditDepartmentOpen] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Dept | null>(null);
@@ -124,6 +126,9 @@ export default function UserManagement() {
     if (has('manage_users') || has('manage_roles') || isAdmin) {
       RoleService.getRoles(true).then(setRoles);
       DepartmentService.getDepartments().then(setDepartments);
+      CategoryService.getAllTags(false).then((tags) =>
+        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color })))
+      );
     }
   }, [has, isAdmin]);
 
@@ -298,6 +303,7 @@ const handleCreateUser = async () => {
         name: editingUser.name,
         role: editingUser.role,
         department: editingUser.department,
+        tagId: editingUser.tagId,
         avatarUrl: editingUser.avatarUrl ?? undefined,
       });
 
@@ -708,6 +714,36 @@ const handleConfirmDelete = async () => {
                         ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-frente">Frente de Atuação</Label>
+                <Select
+                  value={editingUser.tagId || 'none'}
+                  onValueChange={(value) =>
+                    setEditingUser({ ...editingUser, tagId: value === 'none' ? undefined : value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a frente de atuação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Automático (por role/categorias)</SelectItem>
+                    {frentes.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: f.color }}
+                          />
+                          {f.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Define quais tickets o usuário de suporte/advogado pode visualizar.
+                </p>
               </div>
               {/* Foto do usuário */}
               <div className="grid gap-2">

@@ -294,6 +294,7 @@ export class UserService {
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.role !== undefined) dbUpdates.role = updates.role;
       if (updates.department !== undefined) dbUpdates.department = updates.department || Department.GERAL;
+      if (updates.tagId !== undefined) dbUpdates.tag_id = updates.tagId || null;
       if (updates.avatarUrl !== undefined) dbUpdates.avatar_url = updates.avatarUrl === '' ? null : updates.avatarUrl;
 
       const { data, error } = await supabase
@@ -670,7 +671,8 @@ static async deleteUser(userId: string): Promise<boolean> {
       mustChangePassword: data.must_change_password, // ✅ Novo campo
       passwordChangedAt: data.password_changed_at, // ✅ Novo campo
       ticketViewPreference: data.ticket_view_preference || 'list', // ✅ Preferência de visualização
-      isActive: data.is_active !== undefined ? data.is_active : true // ✅ Novo campo - padrão é true
+      isActive: data.is_active !== undefined ? data.is_active : true, // ✅ Novo campo - padrão é true
+      tagId: data.tag_id || undefined,
     };
   }
 
