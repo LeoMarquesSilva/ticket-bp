@@ -1501,7 +1501,11 @@ const getFilteredTickets = () => {
 
     const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
 
-    const matchesFrente = ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig);
+    const matchesFrente =
+      ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig) ||
+      (isFrenteRestricted &&
+        Boolean(user?.id) &&
+        (ticket.createdBy === user.id || ticket.assignedTo === user.id));
 
     const matchesAssigned =
       assignedFilter === 'all' ||
