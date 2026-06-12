@@ -153,11 +153,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         const newTicketId = payload.new?.id as string | undefined;
         const assignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
         const ticketCategory = String(payload.new.category ?? '').trim();
+        const createdBy = normalizeId((payload.new.created_by as string | null | undefined) ?? null);
 
         if (
           isFrenteRestricted &&
           userCategoryKeysRef.current.length > 0 &&
-          !userCategoryKeysRef.current.includes(ticketCategory)
+          !userCategoryKeysRef.current.includes(ticketCategory) &&
+          createdBy !== normalizedUserId &&
+          assignedTo !== normalizedUserId
         ) {
           console.info('[notify] skip_other_frente', {
             type: 'ticket_created',

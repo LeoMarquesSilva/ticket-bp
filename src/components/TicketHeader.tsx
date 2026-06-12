@@ -209,10 +209,11 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         openQuery.eq('created_by', user.id);
         inProgressQuery.eq('created_by', user.id);
         resolvedQuery.eq('created_by', user.id);
-      } else if (isFrenteRestricted && userCategoryKeys.length > 0) {
-        openQuery.in('category', userCategoryKeys);
-        inProgressQuery.in('category', userCategoryKeys);
-        resolvedQuery.in('category', userCategoryKeys);
+      } else if (isFrenteRestricted) {
+        const orFilter = FrenteAccessService.buildFrenteAccessOrFilter(user.id, userCategoryKeys);
+        openQuery.or(orFilter);
+        inProgressQuery.or(orFilter);
+        resolvedQuery.or(orFilter);
       } else if (isSupport || isLawyer) {
         openQuery.eq('assigned_to', user.id);
         inProgressQuery.eq('assigned_to', user.id);

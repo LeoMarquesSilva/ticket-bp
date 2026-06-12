@@ -6,6 +6,7 @@ import ticketEventService from './ticketEventService';
 import { notifyDetractorFeedback, notifyUnfulfilledRequest } from './webhookService';
 import { CategoryService } from './categoryService';
 import { notifyTicketWhatsApp } from './evolutionEdgeService';
+import { FrenteAccessService } from './frenteAccessService';
 
 export interface Ticket {
   id: string;
@@ -328,19 +329,17 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
     }
   }
 
-  /** Tickets das categorias da frente de atuação do usuário. */
-  static async getTicketsByCategories(categoryKeys: string[]): Promise<Ticket[]> {
-    if (categoryKeys.length === 0) return [];
-
+  /** Tickets da frente + tickets criados por ou atribuídos ao usuário. */
+  static async getTicketsForFrenteAccess(userId: string, categoryKeys: string[]): Promise<Ticket[]> {
     try {
       const { data, error } = await supabase
         .from(TABLES.TICKETS)
         .select('*')
-        .in('category', categoryKeys)
+        .or(FrenteAccessService.buildFrenteAccessOrFilter(userId, categoryKeys))
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching tickets by categories:', error);
+        console.error('Error fetching tickets for frente access:', error);
         throw error;
       }
 
@@ -348,7 +347,7 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
       tickets = await enrichTicketsWithAvatars(tickets);
       return tickets;
     } catch (error) {
-      console.error('Error in getTicketsByCategories:', error);
+      console.error('Error in getTicketsForFrenteAccess:', error);
       throw error;
     }
   }

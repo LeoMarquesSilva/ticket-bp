@@ -226,8 +226,8 @@ const Tickets = () => {
   });
   const canUserSeeTicket = (ticket: Ticket) => {
     if (has('view_all_tickets')) return true;
-    if (isFrenteRestricted && userCategoryKeys.length > 0) {
-      return userCategoryKeys.includes(ticket.category);
+    if (isFrenteRestricted && user?.id) {
+      return FrenteAccessService.canUserAccessTicket(ticket, user.id, userCategoryKeys);
     }
     if (!user?.id) return false;
     return ticket.createdBy === user.id || ticket.assignedTo === user.id;
@@ -280,7 +280,7 @@ const Tickets = () => {
   }, [user?.id, user?.tagId, isFrenteRestricted, categoriesConfig]);
 
   useEffect(() => {
-    if (!isFrenteRestricted || userCategoryKeys.length === 0) return;
+    if (!isFrenteRestricted) return;
     loadTickets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFrenteRestricted, userCategoryKeys.join(',')]);
@@ -993,8 +993,8 @@ useEffect(() => {
       
       if (has('view_all_tickets')) {
         tickets = await TicketService.getAllTickets();
-      } else if (isFrenteRestricted && userCategoryKeys.length > 0) {
-        tickets = await TicketService.getTicketsByCategories(userCategoryKeys);
+      } else if (isFrenteRestricted && user?.id) {
+        tickets = await TicketService.getTicketsForFrenteAccess(user.id, userCategoryKeys);
       } else if (user?.id) {
         tickets = await TicketService.getTicketsForCurrentUser(user.id);
       } else {

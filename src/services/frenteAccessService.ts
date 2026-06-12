@@ -85,4 +85,23 @@ export class FrenteAccessService {
       ticketMatchesFrente(ticketCategory, frenteId, categoriesConfig)
     );
   }
+
+  /** Filtro Supabase: frente do usuário + tickets que ele criou ou está atendendo. */
+  static buildFrenteAccessOrFilter(userId: string, categoryKeys: string[]): string {
+    const parts = [`created_by.eq.${userId}`, `assigned_to.eq.${userId}`];
+    if (categoryKeys.length > 0) {
+      parts.unshift(`category.in.(${categoryKeys.join(',')})`);
+    }
+    return parts.join(',');
+  }
+
+  static canUserAccessTicket(
+    ticket: { category: string; createdBy?: string; assignedTo?: string },
+    userId: string,
+    categoryKeys: string[]
+  ): boolean {
+    if (ticket.createdBy === userId || ticket.assignedTo === userId) return true;
+    if (categoryKeys.length === 0) return false;
+    return categoryKeys.includes(ticket.category);
+  }
 }
