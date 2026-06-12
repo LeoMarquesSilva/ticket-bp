@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useLocation } from 'react-router-dom';
 import { useNotificationSound } from './useNotificationSound';
@@ -19,7 +19,24 @@ const DEDUPE_WINDOW_MS = 2500;
 export const useNotificationOrchestrator = () => {
   const location = useLocation();
   const recentEventsRef = useRef<Map<string, number>>(new Map());
+  const baseTitleRef = useRef(typeof document !== 'undefined' ? document.title : '');
   const { playNotificationSound, isTabVisible, activeChatId } = useNotificationSound();
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!baseTitleRef.current || baseTitleRef.current.match(/^\(\d+\+?\)\s/)) {
+      baseTitleRef.current = document.title.replace(/^\(\d+\+?\)\s*/, '');
+    }
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        document.title = baseTitleRef.current;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   const notifyRealtimeEvent = useCallback(async (input: RealtimeNotifyInput) => {
     const now = Date.now();
@@ -46,6 +63,13 @@ export const useNotificationOrchestrator = () => {
       forceWhenHidden: true,
       soundType: input.type === 'message_received' ? 'message' : 'new_ticket',
     });
+
+    if (!isTabVisible && typeof document !== 'undefined') {
+      const baseTitle = baseTitleRef.current || document.title.replace(/^\(\d+\+?\)\s*/, '');
+      baseTitleRef.current = baseTitle;
+      const currentCount = Number((document.title.match(/^\((\d+)\+?\)/) || [])[1] || 0);
+      document.title = `(${currentCount + 1}+) ${baseTitle}`;
+    }
 
     if (shouldShowToast) {
       toast.info(input.title, {

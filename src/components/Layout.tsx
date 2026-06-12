@@ -9,6 +9,11 @@ import { useNotificationOrchestrator } from '@/hooks/useNotificationOrchestrator
 import { CategoryService } from '@/services/categoryService';
 import { FrenteAccessService } from '@/services/frenteAccessService';
 import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
+import {
+  shouldNotifyMessage,
+  shouldNotifyNewTicket,
+  type TicketNotifyContext,
+} from '@/utils/notificationAccessUtils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -42,10 +47,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const isStaffByRole = isStaffRole(user?.role);
   const isStaffByPermissions = Boolean(user && (has('assign_ticket') || has('view_all_tickets') || has('view_frente_tickets')));
   const isFrenteRestricted = has('view_frente_tickets') && !has('view_all_tickets');
+  const canViewAllTickets = has('view_all_tickets');
   const isStaff = isStaffByRole || isStaffByPermissions;
   const userCategoryKeysRef = useRef<string[]>([]);
   const notifyRef = useRef(notifyRealtimeEvent);
   const navigateRef = useRef(navigate);
+  const channelRetryCountRef = useRef<Record<string, number>>({});
+  const channelRetryTimerRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
 
   useEffect(() => {
     notifyRef.current = notifyRealtimeEvent;
@@ -79,6 +87,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   }, [normalizedUserId, user?.tagId, isFrenteRestricted, permissionsLoading]);
 
+  useEffect(() => {
+    if (!isStaff || permissionsLoading) return;
+
+    const requestBrowserPermission = () => {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
+      void Notification.requestPermission();
+    };
+
+    window.addEventListener('pointerdown', requestBrowserPermission, { once: true });
+    return () => window.removeEventListener('pointerdown', requestBrowserPermission);
+  }, [isStaff, permissionsLoading]);
+
   // Efeito para configurar as notificações em tempo real
   useEffect(() => {
     if (permissionsLoading) {
@@ -92,32 +112,108 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     const ticketParticipantsCache = new Map<string, {
       assignee: string | null;
       requester: string | null;
+      category: string;
       cachedAt: number;
     }>();
     const CACHE_TTL_MS = 30000;
 
-    const getTicketParticipants = async (ticketId: string): Promise<{ assignee: string | null; requester: string | null }> => {
+    const resolveUserCategoryKeys = async (): Promise<string[]> => {
+      if (!isFrenteRestricted) return [];
+      if (userCategoryKeysRef.current.length > 0) return userCategoryKeysRef.current;
+
+      try {
+        const [frenteIds, categoriesConfig] = await Promise.all([
+          FrenteAccessService.getUserFrenteIds(normalizedUserId!, user?.tagId),
+          CategoryService.getCategoriesConfig(),
+        ]);
+        const keys = getCategoryKeysForFrenteIds(categoriesConfig, frenteIds);
+        userCategoryKeysRef.current = keys;
+        return keys;
+      } catch (error) {
+        console.warn('[notify] falha ao resolver frente sob demanda', error);
+        return [];
+      }
+    };
+
+    const getNotifyAccessOptions = async () => ({
+      isFrenteRestricted,
+      userCategoryKeys: await resolveUserCategoryKeys(),
+      canViewAllTickets,
+      isStaff,
+    });
+
+    const getTicketContext = async (ticketId: string): Promise<TicketNotifyContext | null> => {
       const cached = ticketParticipantsCache.get(ticketId);
       const now = Date.now();
       if (cached && now - cached.cachedAt < CACHE_TTL_MS) {
-        return { assignee: cached.assignee, requester: cached.requester };
+        return {
+          assignee: cached.assignee,
+          requester: cached.requester,
+          category: cached.category,
+        };
       }
 
       const { data, error } = await supabase
         .from(TABLES.TICKETS)
-        .select('assigned_to, created_by')
+        .select('assigned_to, created_by, category')
         .eq('id', ticketId)
         .maybeSingle();
 
-      if (error) {
-        console.warn('[notify] falha ao buscar participantes do ticket', { ticketId, error: error.message });
-        return { assignee: null, requester: null };
+      if (error || !data) {
+        console.warn('[notify] falha ao buscar contexto do ticket', { ticketId, error: error?.message });
+        return null;
       }
 
-      const assignee = normalizeId((data?.assigned_to as string | null | undefined) ?? null);
-      const requester = normalizeId((data?.created_by as string | null | undefined) ?? null);
-      ticketParticipantsCache.set(ticketId, { assignee, requester, cachedAt: now });
-      return { assignee, requester };
+      const context: TicketNotifyContext = {
+        assignee: normalizeId((data.assigned_to as string | null | undefined) ?? null),
+        requester: normalizeId((data.created_by as string | null | undefined) ?? null),
+        category: String(data.category ?? '').trim(),
+      };
+
+      ticketParticipantsCache.set(ticketId, { ...context, cachedAt: now });
+      return context;
+    };
+
+    const clearRetryTimer = (key: string) => {
+      const timer = channelRetryTimerRef.current[key];
+      if (timer) {
+        clearTimeout(timer);
+        channelRetryTimerRef.current[key] = null;
+      }
+    };
+
+    const subscribeWithRetry = (
+      key: string,
+      channel: ReturnType<typeof supabase.channel>,
+      onStatus?: (status: string) => void
+    ) => {
+      channel.subscribe((status) => {
+        onStatus?.(status);
+        if (status === 'SUBSCRIBED') {
+          channelRetryCountRef.current[key] = 0;
+          clearRetryTimer(key);
+          return;
+        }
+
+        const retryable = status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED';
+        if (!retryable) return;
+
+        const nextAttempt = (channelRetryCountRef.current[key] ?? 0) + 1;
+        channelRetryCountRef.current[key] = nextAttempt;
+        const delay = Math.min(1000 * 2 ** Math.min(nextAttempt, 5), 30000);
+        clearRetryTimer(key);
+
+        channelRetryTimerRef.current[key] = setTimeout(() => {
+          console.warn(`[notify] retry ${key} status=${status} attempt=${nextAttempt}`);
+          channel.subscribe((nextStatus) => {
+            onStatus?.(nextStatus);
+            if (nextStatus === 'SUBSCRIBED') {
+              channelRetryCountRef.current[key] = 0;
+              clearRetryTimer(key);
+            }
+          });
+        }, delay);
+      });
     };
 
     const createStatusMonitor = (channelName: string) => {
@@ -130,7 +226,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           hadConnectionIssue = false;
           return;
         }
-        if (status === 'CHANNEL_ERROR') {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           if (!hadConnectionIssue) {
             console.warn(`[realtime] ${channelName} ${status}`);
             hadConnectionIssue = true;
@@ -139,7 +235,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       };
     };
 
-    // Inscrever para notificações de novos tickets (para suporte e advogados)
     let ticketSubscription: ReturnType<typeof supabase.channel> | null = null;
     const monitorTicketChannelStatus = createStatusMonitor('layout-ticket-events');
     ticketSubscription = supabase
@@ -152,50 +247,48 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         if (!payload.new) return;
         const newTicketId = payload.new?.id as string | undefined;
         const assignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
-        const ticketCategory = String(payload.new.category ?? '').trim();
         const createdBy = normalizeId((payload.new.created_by as string | null | undefined) ?? null);
+        const ticketCategory = String(payload.new.category ?? '').trim();
 
-        if (
-          isFrenteRestricted &&
-          userCategoryKeysRef.current.length > 0 &&
-          !userCategoryKeysRef.current.includes(ticketCategory) &&
-          createdBy !== normalizedUserId &&
-          assignedTo !== normalizedUserId
-        ) {
-          console.info('[notify] skip_other_frente', {
-            type: 'ticket_created',
+        void (async () => {
+          const access = await getNotifyAccessOptions();
+          const shouldNotify = shouldNotifyNewTicket(
+            {
+              assignee: assignedTo,
+              requester: createdBy,
+              category: ticketCategory,
+              isUnassigned: !assignedTo,
+            },
+            normalizedUserId!,
+            access
+          );
+
+          if (!shouldNotify) {
+            console.info('[notify] skip_ticket_created', {
+              ticketId: newTicketId,
+              category: ticketCategory,
+              assignedTo,
+              createdBy,
+              userId: normalizedUserId,
+            });
+            return;
+          }
+
+          console.info('[notify] notify_ticket_created', {
             ticketId: newTicketId,
-            category: ticketCategory,
+            assignedTo,
+            createdBy,
+            userId: normalizedUserId,
           });
-          return;
-        }
-
-        // Novo ticket sem responsável: equipe da frente recebe.
-        // Novo ticket com responsável: só o responsável recebe.
-        if (!assignedTo && !isStaff) {
-          console.info('[notify] skip_not_staff', {
-            type: 'ticket_created_unassigned',
-            role: normalizeRole(user.role),
-            isStaffByRole,
-            isStaffByPermissions,
+          await notifyRef.current({
+            type: 'ticket_created',
+            dedupeKey: `ticket_created:${newTicketId}:${payload.commit_timestamp ?? payload.new.created_at ?? 'na'}`,
+            ticketId: newTicketId,
+            title: 'Novo ticket criado!',
+            description: `${payload.new.title ?? 'Sem título'} - por ${payload.new.created_by_name ?? 'usuário'}`,
+            onOpen: () => navigateRef.current(newTicketId ? `/tickets/${newTicketId}` : '/tickets'),
           });
-          return;
-        }
-
-        if (assignedTo && assignedTo !== normalizedUserId) {
-          console.info('[notify] skip_not_assignee', { type: 'ticket_created', ticketId: newTicketId, assignedTo, userId: normalizedUserId });
-          return;
-        }
-
-        console.info('[notify] notify_ticket_created', { ticketId: newTicketId, assignedTo, userId: normalizedUserId });
-        void notifyRef.current({
-          type: 'ticket_created',
-          dedupeKey: `ticket_created:${newTicketId}:${payload.commit_timestamp ?? payload.new.created_at ?? 'na'}`,
-          ticketId: newTicketId,
-          title: 'Novo ticket criado!',
-          description: `${payload.new.title ?? 'Sem título'} - por ${payload.new.created_by_name ?? 'usuário'}`,
-          onOpen: () => navigateRef.current(newTicketId ? `/tickets/${newTicketId}` : '/tickets'),
-        });
+        })();
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -208,7 +301,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         const newAssignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
         const oldAssignedTo = normalizeId((payload.old?.assigned_to as string | null | undefined) ?? null);
-        // Ticket transferido para o usuário atual: dispara notificação com som de novo ticket.
         if (newAssignedTo === normalizedUserId && oldAssignedTo !== normalizedUserId) {
           console.info('[notify] notify_ticket_assigned', { ticketId, oldAssignedTo, newAssignedTo, userId: normalizedUserId });
           void notifyRef.current({
@@ -220,12 +312,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             onOpen: () => navigateRef.current(`/tickets/${ticketId}`),
           });
         }
-      })
-      .subscribe((status) => {
-        monitorTicketChannelStatus(status);
       });
 
-    // Inscrever para notificações de novas mensagens
+    subscribeWithRetry('layout-ticket-events', ticketSubscription, monitorTicketChannelStatus);
+
     const monitorMessageChannelStatus = createStatusMonitor('layout-message-events');
     const messageSubscription = supabase
       .channel('public:app_c009c0e4f1_chat_messages')
@@ -235,7 +325,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         table: 'app_c009c0e4f1_chat_messages'
       }, (payload) => {
         if (!payload.new) return;
-        // Ignorar mensagens do próprio usuário.
         if (normalizeId(payload.new.user_id as string | null | undefined) === normalizedUserId) {
           console.info('[notify] skip_self_message', { messageId: payload.new.id });
           return;
@@ -244,29 +333,30 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         const ticketId = payload.new.ticket_id as string | undefined;
         if (!ticketId) return;
 
-        // Nova mensagem: responsável OU solicitante do ticket recebe notificação.
         void (async () => {
-          const { assignee, requester } = await getTicketParticipants(ticketId);
-          const isAssignee = Boolean(assignee && assignee === normalizedUserId);
-          const isRequester = Boolean(requester && requester === normalizedUserId);
+          const [ticketContext, access] = await Promise.all([
+            getTicketContext(ticketId),
+            getNotifyAccessOptions(),
+          ]);
 
-          if (!isAssignee && !isRequester) {
-            console.info('[notify] skip_not_recipient', {
-              type: 'message_received',
+          if (!ticketContext) return;
+
+          const shouldNotify = shouldNotifyMessage(ticketContext, normalizedUserId!, access);
+          if (!shouldNotify) {
+            console.info('[notify] skip_message_received', {
               ticketId,
-              assignee,
-              requester,
-              userId: normalizedUserId
+              category: ticketContext.category,
+              assignee: ticketContext.assignee,
+              requester: ticketContext.requester,
+              userId: normalizedUserId,
             });
             return;
           }
 
           console.info('[notify] notify_message_received', {
             ticketId,
-            assignee,
-            requester,
+            category: ticketContext.category,
             userId: normalizedUserId,
-            recipientType: isAssignee && isRequester ? 'assignee_and_requester' : isAssignee ? 'assignee' : 'requester',
           });
           await notifyRef.current({
             type: 'message_received',
@@ -279,33 +369,38 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             },
           });
         })();
-      })
-      .subscribe((status) => {
-        monitorMessageChannelStatus(status);
       });
 
-    // Limpeza ao desmontar o componente
+    subscribeWithRetry('layout-message-events', messageSubscription, monitorMessageChannelStatus);
+
     return () => {
+      Object.keys(channelRetryTimerRef.current).forEach(clearRetryTimer);
       if (ticketSubscription) {
         supabase.removeChannel(ticketSubscription);
       }
       supabase.removeChannel(messageSubscription);
     };
-  }, [permissionsLoading, user?.id, user?.role, normalizedUserId, isStaff, isStaffByRole, isStaffByPermissions]);
+  }, [
+    permissionsLoading,
+    user?.id,
+    user?.role,
+    user?.tagId,
+    normalizedUserId,
+    isStaff,
+    isFrenteRestricted,
+    canViewAllTickets,
+    isStaffByRole,
+    isStaffByPermissions,
+  ]);
 
   return (
     <div className="flex flex-col min-h-screen w-full bg-gradient-to-br from-[#F6F6F6] via-[#F69F19]/5 to-[#DE5532]/15">
-      {/* Header */}
       <Header />
-      
-      {/* Main Content */}
       <main className="flex-1 w-full pt-4">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
           {children}
         </div>
       </main>
-      
-      {/* Adicionar o indicador de status de conexão */}
       <ConnectionStatus />
     </div>
   );
