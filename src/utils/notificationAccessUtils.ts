@@ -8,6 +8,8 @@ type NotifyAccessOptions = {
   isFrenteRestricted: boolean;
   userCategoryKeys: string[];
   canViewAllTickets: boolean;
+  strictFrenteOnly?: boolean;
+  assignedOnly?: boolean;
 };
 
 export function shouldNotifyNewTicket(
@@ -16,6 +18,15 @@ export function shouldNotifyNewTicket(
   options: NotifyAccessOptions & { isStaff: boolean }
 ): boolean {
   if (options.canViewAllTickets) return true;
+
+  if (options.assignedOnly) {
+    return ctx.assignee === userId;
+  }
+
+  if (options.strictFrenteOnly) {
+    return options.userCategoryKeys.includes(ctx.category);
+  }
+
   if (ctx.requester === userId || ctx.assignee === userId) return true;
 
   if (!ctx.isUnassigned || !options.isStaff) return false;
@@ -33,6 +44,15 @@ export function shouldNotifyMessage(
   options: NotifyAccessOptions
 ): boolean {
   if (options.canViewAllTickets) return true;
+
+  if (options.assignedOnly) {
+    return ctx.assignee === userId;
+  }
+
+  if (options.strictFrenteOnly) {
+    return options.userCategoryKeys.includes(ctx.category);
+  }
+
   if (ctx.requester === userId || ctx.assignee === userId) return true;
 
   if (options.isFrenteRestricted && options.userCategoryKeys.includes(ctx.category)) {

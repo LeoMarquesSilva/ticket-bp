@@ -22,6 +22,8 @@ interface CreateTicketModalProps {
     description: string;
     category: string;
     subcategory: string;
+    initialChatMessage?: string;
+    sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
   }) => void;
   onOpenTicket?: (ticket: any) => void;
 }

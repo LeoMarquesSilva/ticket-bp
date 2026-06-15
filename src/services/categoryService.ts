@@ -1042,6 +1042,22 @@ export class CategoryService {
     }
   }
 
+  static async getCategoryTagId(categoryKey: string): Promise<string | null> {
+    try {
+      const { data } = await supabase
+        .from('app_c009c0e4f1_categories')
+        .select('tag_id')
+        .eq('key', categoryKey)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      return data?.tag_id ?? null;
+    } catch (error) {
+      console.error('Error getting category tag:', error);
+      return null;
+    }
+  }
+
   // ========== MÉTODOS PARA TAGS ==========
   
   // Obter todas as tags

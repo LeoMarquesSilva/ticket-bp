@@ -563,6 +563,42 @@ static async deleteUser(userId: string): Promise<boolean> {
     }
   }
 
+  // Próximo membro da equipe da frente (tag) para atribuição automática
+  static async getNextAvailableByTag(tagId: string): Promise<User | null> {
+    const staffRoles = ['suporte_administrativo', 'support', 'admin', 'lawyer'];
+
+    try {
+      for (const onlineOnly of [true, false]) {
+        let query = supabase
+          .from(TABLES.USERS)
+          .select('*')
+          .eq('tag_id', tagId)
+          .eq('is_active', true)
+          .in('role', staffRoles)
+          .order('last_active_at', { ascending: true })
+          .limit(1);
+
+        if (onlineOnly) {
+          query = query.eq('is_online', true);
+        }
+
+        const { data, error } = await query.maybeSingle();
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error finding user by tag:', error);
+          throw error;
+        }
+        if (data) {
+          return this.mapFromDatabase(data);
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error in getNextAvailableByTag:', error);
+      throw error;
+    }
+  }
+
   // Obter o próximo advogado disponível para atribuição de ticket
   static async getNextAvailableLawyer(): Promise<User | null> {
     try {

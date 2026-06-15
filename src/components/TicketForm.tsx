@@ -6,6 +6,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, Clock, Send } from 'lucide-react';
 import { CategoryService } from '@/services/categoryService';
+import DesenvolvimentoContinuoFields from '@/components/DesenvolvimentoContinuoFields';
+import {
+  buildDesenvolvimentoContinuoChatMessage,
+  buildDesenvolvimentoContinuoDescription,
+  buildDesenvolvimentoContinuoTitle,
+  buildSharepointTreinamentoPayload,
+  emptyDesenvolvimentoContinuoForm,
+  isDesenvolvimentoContinuoCategory,
+  validateDesenvolvimentoContinuoForm,
+  type DesenvolvimentoContinuoFormData,
+  type SharepointTreinamentoPayload,
+} from '@/utils/desenvolvimentoContinuoForm';
+import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
 
 // Configuração hardcoded como fallback (caso haja erro ao buscar do banco)
 const FALLBACK_CATEGORIES_CONFIG: Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }> = {
@@ -66,6 +79,8 @@ interface TicketFormProps {
     description: string;
     category: string;
     subcategory: string;
+    initialChatMessage?: string;
+    sharepointTreinamento?: SharepointTreinamentoPayload;
   }) => void;
   onCancel: () => void;
   initialData?: {
@@ -88,6 +103,11 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
   const [categoriesConfig, setCategoriesConfig] = useState<Record<string, CategoryConfigItem>>(FALLBACK_CATEGORIES_CONFIG as Record<string, CategoryConfigItem>);
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
+
+  const isDcCategory = isDesenvolvimentoContinuoCategory(category);
+  const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
+    useDesenvolvimentoContinuoOptions(isDcCategory);
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
@@ -120,12 +140,14 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
     setCategory('');
     setSubcategory('');
     setSlaHours(null);
+    setDcForm(emptyDesenvolvimentoContinuoForm());
   }, [frenteId]);
 
   // Resetar subcategoria quando a categoria muda
   useEffect(() => {
     setSubcategory('');
     setSlaHours(null);
+    setDcForm(emptyDesenvolvimentoContinuoForm());
   }, [category]);
 
   // Categorias filtradas pela frente selecionada
@@ -154,19 +176,26 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
 
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
-    
-    if (!title.trim()) {
-      newErrors.title = 'O título é obrigatório';
-    } else if (title.length < 5) {
-      newErrors.title = 'O título deve ter pelo menos 5 caracteres';
+
+    if (isDcCategory) {
+      if (!subcategory) {
+        newErrors.subcategory = 'A subcategoria é obrigatória';
+      }
+      Object.assign(newErrors, validateDesenvolvimentoContinuoForm(dcForm));
+    } else {
+      if (!title.trim()) {
+        newErrors.title = 'O título é obrigatório';
+      } else if (title.length < 5) {
+        newErrors.title = 'O título deve ter pelo menos 5 caracteres';
+      }
+
+      if (!description.trim()) {
+        newErrors.description = 'A descrição é obrigatória';
+      } else if (description.length < 10) {
+        newErrors.description = 'A descrição deve ter pelo menos 10 caracteres';
+      }
     }
-    
-    if (!description.trim()) {
-      newErrors.description = 'A descrição é obrigatória';
-    } else if (description.length < 10) {
-      newErrors.description = 'A descrição deve ter pelo menos 10 caracteres';
-    }
-    
+
     if (!frenteId) {
       newErrors.frente = 'Selecione a frente de atuação';
     }
@@ -174,11 +203,11 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
     if (!category) {
       newErrors.category = 'A categoria é obrigatória';
     }
-    
-    if (!subcategory && category) {
+
+    if (!subcategory && category && !isDcCategory) {
       newErrors.subcategory = 'A subcategoria é obrigatória';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -193,12 +222,37 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
     setIsSubmitting(true);
     
     try {
-      await onSubmit({
-        title,
-        description,
-        category,
-        subcategory,
-      });
+      if (isDcCategory) {
+        const subcategoryLabel =
+          categoriesConfig[category]?.subcategories.find((s) => s.value === subcategory)?.label ??
+          subcategory;
+        const categoryLabel = categoriesConfig[category]?.label ?? category;
+
+        await onSubmit({
+          title: buildDesenvolvimentoContinuoTitle(subcategoryLabel, dcForm.tema),
+          description: buildDesenvolvimentoContinuoDescription(dcForm, subcategoryLabel, dcUsers),
+          category,
+          subcategory,
+          initialChatMessage: buildDesenvolvimentoContinuoChatMessage(
+            dcForm,
+            subcategoryLabel,
+            categoryLabel,
+            dcUsers,
+          ),
+          sharepointTreinamento: buildSharepointTreinamentoPayload(
+            dcForm,
+            subcategoryLabel,
+            dcUsers,
+          ),
+        });
+      } else {
+        await onSubmit({
+          title,
+          description,
+          category,
+          subcategory,
+        });
+      }
     } catch (error) {
       console.error('Error submitting ticket:', error);
     } finally {
@@ -208,41 +262,45 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="space-y-2">
-        <Label htmlFor="title" className="text-[#2C2D2F] font-medium">Título</Label>
-        <Input
-          id="title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Digite um título breve para o ticket"
-          className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.title ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
-        />
-        {errors.title && (
-          <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            {errors.title}
-          </p>
-        )}
-      </div>
-      
-      <div className="space-y-2">
-        <Label htmlFor="description" className="text-[#2C2D2F] font-medium">Descrição</Label>
-        <Textarea
-          id="description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Descreva seu problema ou solicitação em detalhes"
-          rows={5}
-          className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.description ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
-        />
-        {errors.description && (
-          <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            {errors.description}
-          </p>
-        )}
-      </div>
-      
+      {!isDcCategory && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="title" className="text-[#2C2D2F] font-medium">Título</Label>
+            <Input
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Digite um título breve para o ticket"
+              className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.title ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
+            />
+            {errors.title && (
+              <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                {errors.title}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description" className="text-[#2C2D2F] font-medium">Descrição</Label>
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Descreva seu problema ou solicitação em detalhes"
+              rows={5}
+              className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.description ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
+            />
+            {errors.description && (
+              <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                {errors.description}
+              </p>
+            )}
+          </div>
+        </>
+      )}
+
       <div className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="frente" className="text-[#2C2D2F] font-medium">Frente de Atuação <span className="text-red-500">*</span></Label>
@@ -336,6 +394,17 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
             )}
           </div>
         </div>
+
+        {isDcCategory && subcategory && (
+          <DesenvolvimentoContinuoFields
+            data={dcForm}
+            onChange={setDcForm}
+            errors={errors}
+            users={dcUsers}
+            departments={dcDepartments}
+            loading={dcOptionsLoading}
+          />
+        )}
       </div>
       
       {slaHours !== null && (

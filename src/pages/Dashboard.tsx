@@ -31,6 +31,8 @@ import { format, subDays, endOfDay, startOfDay, startOfMonth, endOfMonth, startO
 import { ptBR } from 'date-fns/locale';
 import RecentFeedbackList from '@/components/RecentFeedbackList';
 import { CategoryService } from '@/services/categoryService';
+import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
+import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
 
 // Cores da Marca
 const BRAND = {
@@ -53,7 +55,14 @@ const STATUS_COLORS_MAP = {
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const { has } = usePermissions();
+  const { has, loading: permissionsLoading } = usePermissions();
+  const isAssignedOnly = isAssignedOnlyRole(user?.role);
+  const isFrenteRestricted =
+    !isAssignedOnly && has('view_frente_tickets') && !has('view_all_tickets');
+  const strictFrenteOnly = isStrictFrenteRole(user?.role);
+  const [userCategoryKeys, setUserCategoryKeys] = useState<string[]>([]);
+  const [userFrenteIds, setUserFrenteIds] = useState<string[]>([]);
+  const [frenteAccessReady, setFrenteAccessReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<any>({
@@ -81,6 +90,9 @@ const Dashboard = () => {
   const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [frenteFilter, setFrenteFilter] = useState<string>('all');
+  const visibleFrentes = isFrenteRestricted
+    ? frentes.filter((f) => userFrenteIds.includes(f.id))
+    : frentes;
   
   // Estados para o Chat Modal
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -197,7 +209,41 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
+    const loadFrenteAccess = async () => {
+      if (permissionsLoading) return;
+
+      if (!user?.id || !isFrenteRestricted) {
+        setUserCategoryKeys([]);
+        setUserFrenteIds([]);
+        setFrenteAccessReady(true);
+        return;
+      }
+
+      setFrenteAccessReady(false);
+      try {
+        const frenteIds = await FrenteAccessService.getUserFrenteIds(user.id, user.tagId, user.role);
+        setUserFrenteIds(frenteIds);
+        setUserCategoryKeys(getCategoryKeysForFrenteIds(categoriesConfig, frenteIds));
+        if (frenteIds.length === 1) {
+          setFrenteFilter(frenteIds[0]);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar frente do usuário no dashboard:', error);
+        setUserCategoryKeys([]);
+        setUserFrenteIds([]);
+      } finally {
+        setFrenteAccessReady(true);
+      }
+    };
+
+    void loadFrenteAccess();
+  }, [user?.id, user?.tagId, isFrenteRestricted, categoriesConfig, permissionsLoading]);
+
+  useEffect(() => {
     const fetchDashboardData = async () => {
+      if (permissionsLoading) return;
+      if (isFrenteRestricted && !frenteAccessReady) return;
+
       try {
         setLoading(true);
         setError(null);
@@ -225,7 +271,12 @@ const Dashboard = () => {
           user?.role === 'user' ? user.id : undefined,
           startDateStr,
           endDateStr,
-          frenteFilter && frenteFilter !== 'all' ? frenteFilter : undefined
+          frenteFilter && frenteFilter !== 'all' ? frenteFilter : undefined,
+          isAssignedOnly && user?.id
+            ? { userId: user.id, categoryKeys: [], assignedOnly: true }
+            : isFrenteRestricted && user?.id
+            ? { userId: user.id, categoryKeys: userCategoryKeys, strictFrenteOnly }
+            : undefined
         );
         
         setStats(data);
@@ -238,7 +289,7 @@ const Dashboard = () => {
     };
 
     fetchDashboardData();
-  }, [refreshKey, user, dateRange, frenteFilter]);
+  }, [refreshKey, user, dateRange, frenteFilter, permissionsLoading, isFrenteRestricted, isAssignedOnly, frenteAccessReady, userCategoryKeys.join(',')]);
 
   useEffect(() => {
     if (dateRange?.from && dateRange?.to) {
@@ -635,9 +686,9 @@ const Dashboard = () => {
                   <SelectValue placeholder="Frente de atuação" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas as frentes</SelectItem>
-                  <SelectItem value="sem-frente">Sem frente de atuação</SelectItem>
-                  {frentes.map((f) => (
+                  {!isFrenteRestricted && <SelectItem value="all">Todas as frentes</SelectItem>}
+                  {!isFrenteRestricted && <SelectItem value="sem-frente">Sem frente de atuação</SelectItem>}
+                  {visibleFrentes.map((f) => (
                     <SelectItem key={f.id} value={f.id}>
                       <span className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />

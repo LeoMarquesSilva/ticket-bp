@@ -19,8 +19,10 @@ export type PermissionKey = (typeof PERMISSION_KEYS)[number]['key'];
 
 const DEFAULT_PERMISSIONS: Record<string, PermissionKey[]> = {
   admin: ['dashboard', 'tickets', 'view_all_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket', 'delete_ticket', 'manage_users', 'manage_categories', 'manage_roles'],
-  lawyer: ['dashboard', 'tickets', 'view_frente_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
-  support: ['dashboard', 'tickets', 'view_frente_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
+  lawyer: ['tickets', 'view_frente_tickets', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
+  support: ['dashboard', 'tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
+  suporte_administrativo: ['tickets', 'view_frente_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
+  ti: ['tickets', 'view_frente_tickets', 'create_ticket', 'create_ticket_for_user', 'assign_ticket', 'finish_ticket'],
   user: ['tickets', 'create_ticket', 'finish_ticket'],
 };
 

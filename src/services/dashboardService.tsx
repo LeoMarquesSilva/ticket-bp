@@ -1,5 +1,6 @@
 import { supabase, TABLES } from '@/lib/supabase';
 import { CategoryService } from './categoryService';
+import { FrenteAccessService } from './frenteAccessService';
 
 // Interface para os dados de estatísticas
 export interface DashboardStats {
@@ -215,7 +216,8 @@ export async function getDashboardStats(
   userId?: string, 
   startDateStr?: string, 
   endDateStr?: string,
-  frenteId?: string
+  frenteId?: string,
+  frenteAccess?: { userId: string; categoryKeys: string[]; strictFrenteOnly?: boolean; assignedOnly?: boolean }
 ): Promise<DashboardStats> {
   try {
     // Usar as datas fornecidas ou calcular com base nos dias
@@ -244,6 +246,16 @@ export async function getDashboardStats(
     // Se userId for fornecido, filtrar por usuário (para dashboard do usuário)
     if (userId) {
       query = query.eq('created_by', userId);
+    } else if (frenteAccess?.assignedOnly && frenteAccess.userId) {
+      query = query.eq('assigned_to', frenteAccess.userId);
+    } else if (frenteAccess?.userId) {
+      query = query.or(
+        FrenteAccessService.buildFrenteAccessOrFilter(
+          frenteAccess.userId,
+          frenteAccess.categoryKeys,
+          frenteAccess.strictFrenteOnly ?? false
+        )
+      );
     }
 
     // Buscar tickets

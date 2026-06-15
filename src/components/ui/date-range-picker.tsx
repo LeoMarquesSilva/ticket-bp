@@ -3,7 +3,8 @@
 import * as React from "react"
 import { addDays, format } from "date-fns"
 import { Calendar as CalendarIcon } from "lucide-react"
-import { DateRange } from "react-day-picker"
+import { DateRange } from 'react-day-picker'
+import { ptBR as dayPickerPtBR } from 'react-day-picker/locale'
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -63,7 +64,7 @@ export function DatePickerWithRange({
             selected={date}
             onSelect={setDate}
             numberOfMonths={2}
-            locale={locale}
+            locale={locale ?? dayPickerPtBR}
           />
         </PopoverContent>
       </Popover>

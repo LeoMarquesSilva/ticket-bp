@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.notify-ticket-whatsapp]
 verify_jwt = true
+
+[functions.sharepoint-treinamentos]
+verify_jwt = true

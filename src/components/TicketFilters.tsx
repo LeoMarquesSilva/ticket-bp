@@ -36,6 +36,8 @@ interface TicketFiltersProps {
   categoriesConfig: CategoriesConfigMap;
   loadingCategories: boolean;
   lockFrenteFilter?: boolean;
+  /** Quando definido, limita categorias visíveis (ex.: suporte restrito à frente) */
+  allowedCategoryKeys?: string[];
 }
 
 const TicketFilters: React.FC<TicketFiltersProps> = ({
@@ -58,13 +60,18 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
   categoriesConfig,
   loadingCategories,
   lockFrenteFilter = false,
+  allowedCategoryKeys,
 }) => {
   const categoriesForSelect = useMemo(() => {
     const entries = Object.entries(categoriesConfig);
+    if (allowedCategoryKeys?.length) {
+      const allowed = new Set(allowedCategoryKeys);
+      return entries.filter(([key]) => allowed.has(key));
+    }
     if (frenteFilter === 'all') return entries;
     const keys = new Set(getCategoryKeysForFrente(categoriesConfig, frenteFilter));
     return entries.filter(([key]) => keys.has(key));
-  }, [categoriesConfig, frenteFilter]);
+  }, [categoriesConfig, frenteFilter, allowedCategoryKeys]);
 
   const onlyMyTickets = userFilter === 'mine';
 

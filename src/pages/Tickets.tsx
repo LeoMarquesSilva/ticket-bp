@@ -29,7 +29,7 @@ import {
   getCategoryKeysForFrenteIds,
   ticketMatchesFrente,
 } from '@/utils/ticketFilterUtils';
-import { FrenteAccessService } from '@/services/frenteAccessService';
+import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
 
 interface SupportUser {
   id: string;
@@ -63,6 +63,8 @@ interface CreateTicketData {
   description: string;
   category: string;
   subcategory: string;
+  initialChatMessage?: string;
+  sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
 }
 
 interface CreateTicketForUserData {
@@ -73,6 +75,8 @@ interface CreateTicketForUserData {
   userId: string;
   userName: string;
   userDepartment?: string;
+  initialChatMessage?: string;
+  sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
 }
 
 type RealtimeTicketRow = {
@@ -94,7 +98,7 @@ type RealtimeTicketRow = {
 
 const Tickets = () => {
   const { user } = useAuth();
-  const { has } = usePermissions();
+  const { has, loading: permissionsLoading } = usePermissions();
   const { ticketId: ticketIdParam } = useParams<{ ticketId: string }>();
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -152,6 +156,7 @@ const Tickets = () => {
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [userFrenteIds, setUserFrenteIds] = useState<string[]>([]);
   const [userCategoryKeys, setUserCategoryKeys] = useState<string[]>([]);
+  const [frenteAccessReady, setFrenteAccessReady] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>({});
@@ -202,7 +207,10 @@ const Tickets = () => {
   const lastMessageReconcileAtRef = useRef<Record<string, number>>({});
   
   const canCreateTicketForUser = has('create_ticket_for_user');
-  const isFrenteRestricted = has('view_frente_tickets') && !has('view_all_tickets');
+  const isAssignedOnly = isAssignedOnlyRole(user?.role);
+  const isFrenteRestricted =
+    !isAssignedOnly && has('view_frente_tickets') && !has('view_all_tickets');
+  const strictFrenteOnly = isStrictFrenteRole(user?.role);
   const isStaffUser = Boolean(user && (isStaffRole(user.role) || has('assign_ticket') || has('view_all_tickets') || has('view_frente_tickets')));
   const canUsePresenceChannel = Boolean(isStaffUser);
   const visibleFrentes = isFrenteRestricted
@@ -226,8 +234,16 @@ const Tickets = () => {
   });
   const canUserSeeTicket = (ticket: Ticket) => {
     if (has('view_all_tickets')) return true;
+    if (isAssignedOnly && user?.id) {
+      return ticket.assignedTo === user.id;
+    }
     if (isFrenteRestricted && user?.id) {
-      return FrenteAccessService.canUserAccessTicket(ticket, user.id, userCategoryKeys);
+      return FrenteAccessService.canUserAccessTicket(
+        ticket,
+        user.id,
+        userCategoryKeys,
+        strictFrenteOnly
+      );
     }
     if (!user?.id) return false;
     return ticket.createdBy === user.id || ticket.assignedTo === user.id;
@@ -256,14 +272,18 @@ const Tickets = () => {
 
   useEffect(() => {
     const loadUserFrenteAccess = async () => {
+      if (permissionsLoading) return;
+
       if (!user?.id || !isFrenteRestricted) {
         setUserFrenteIds([]);
         setUserCategoryKeys([]);
+        setFrenteAccessReady(true);
         return;
       }
 
+      setFrenteAccessReady(false);
       try {
-        const frenteIds = await FrenteAccessService.getUserFrenteIds(user.id, user.tagId);
+        const frenteIds = await FrenteAccessService.getUserFrenteIds(user.id, user.tagId, user.role);
         setUserFrenteIds(frenteIds);
         setUserCategoryKeys(getCategoryKeysForFrenteIds(categoriesConfig, frenteIds));
         if (frenteIds.length === 1) {
@@ -273,17 +293,24 @@ const Tickets = () => {
         console.error('Erro ao carregar frente de atuação do usuário:', error);
         setUserFrenteIds([]);
         setUserCategoryKeys([]);
+      } finally {
+        setFrenteAccessReady(true);
       }
     };
 
     loadUserFrenteAccess();
-  }, [user?.id, user?.tagId, isFrenteRestricted, categoriesConfig]);
+  }, [user?.id, user?.tagId, isFrenteRestricted, categoriesConfig, permissionsLoading]);
+
+  const canLoadTickets =
+    Boolean(user?.id) &&
+    !permissionsLoading &&
+    (!isFrenteRestricted || frenteAccessReady);
 
   useEffect(() => {
-    if (!isFrenteRestricted) return;
+    if (!canLoadTickets) return;
     loadTickets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFrenteRestricted, userCategoryKeys.join(',')]);
+  }, [canLoadTickets, isFrenteRestricted, userCategoryKeys.join(',')]);
 
   const handleFrenteFilterChange = (value: string) => {
     if (isFrenteRestricted && value === 'all') return;
@@ -880,9 +907,7 @@ const loadUnreadMessageCountsForTicket = async (ticketId: string) => {
 // Garantir que o canal global de mensagens seja configurado na inicialização
 useEffect(() => {
   isMountedRef.current = true;
-  
-  // Carregar dados iniciais
-  loadTickets();
+
   loadSupportUsers();
   
   // Configurar canais
@@ -905,7 +930,7 @@ useEffect(() => {
     removeChannelSafely('presence', 'presence');
     removeChannelSafely('supportUsersStatus', 'supportUsersStatus');
   };
-}, [canUsePresenceChannel, user?.id, has]);
+}, [canUsePresenceChannel, user?.id, permissionsLoading, has]);
 
 // Cleanup final no unmount: remover todos os canais restantes.
 useEffect(() => {
@@ -985,6 +1010,9 @@ useEffect(() => {
   }, [ticketIdParam, loading, tickets]);
 
   const loadTickets = async () => {
+    if (!user?.id || permissionsLoading) return;
+    if (isFrenteRestricted && !frenteAccessReady) return;
+
     try {
       setLoading(true);
       setError(null);
@@ -993,12 +1021,24 @@ useEffect(() => {
       
       if (has('view_all_tickets')) {
         tickets = await TicketService.getAllTickets();
-      } else if (isFrenteRestricted && user?.id) {
-        tickets = await TicketService.getTicketsForFrenteAccess(user.id, userCategoryKeys);
-      } else if (user?.id) {
-        tickets = await TicketService.getTicketsForCurrentUser(user.id);
+      } else if (isAssignedOnly) {
+        tickets = await TicketService.getTicketsAssignedToUser(user.id);
+      } else if (isFrenteRestricted) {
+        tickets = await TicketService.getTicketsForFrenteAccess(
+          user.id,
+          userCategoryKeys,
+          strictFrenteOnly
+        );
+        tickets = tickets.filter((ticket) =>
+          FrenteAccessService.canUserAccessTicket(
+            ticket,
+            user.id,
+            userCategoryKeys,
+            strictFrenteOnly
+          )
+        );
       } else {
-        tickets = [];
+        tickets = await TicketService.getTicketsForCurrentUser(user.id);
       }
       
       if (isMountedRef.current) {
@@ -1198,6 +1238,8 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
       createdBy: user.id,
       createdByName: user.name,
       createdByDepartment: user.department,
+      initialChatMessage: ticketData.initialChatMessage,
+      sharepointTreinamento: ticketData.sharepointTreinamento,
     });
       
     
@@ -1231,6 +1273,8 @@ const handleCreateTicketForUser = async (ticketData: CreateTicketForUserData) =>
       createdByName: ticketData.userName,
       createdByDepartment: ticketData.userDepartment,
       skipFeedbackCheck: true,
+      initialChatMessage: ticketData.initialChatMessage,
+      sharepointTreinamento: ticketData.sharepointTreinamento,
     });
     
     // Depois, atribuir ao criador (membro da equipe)
@@ -1501,11 +1545,24 @@ const getFilteredTickets = () => {
 
     const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
 
-    const matchesFrente =
-      ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig) ||
-      (isFrenteRestricted &&
-        Boolean(user?.id) &&
-        (ticket.createdBy === user.id || ticket.assignedTo === user.id));
+    const matchesFrente = (() => {
+      if (isFrenteRestricted && user?.id) {
+        const inScope = FrenteAccessService.canUserAccessTicket(
+          ticket,
+          user.id,
+          userCategoryKeys,
+          strictFrenteOnly
+        );
+        if (!inScope) return false;
+        if (frenteFilter === 'all') return true;
+        return (
+          ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig) ||
+          ticket.createdBy === user.id ||
+          ticket.assignedTo === user.id
+        );
+      }
+      return ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig);
+    })();
 
     const matchesAssigned =
       assignedFilter === 'all' ||
@@ -1657,6 +1714,7 @@ return (
           categoriesConfig={categoriesConfig}
           loadingCategories={loadingCategories}
           lockFrenteFilter={isFrenteRestricted}
+          allowedCategoryKeys={isFrenteRestricted ? userCategoryKeys : undefined}
         />
       </div>
       )}

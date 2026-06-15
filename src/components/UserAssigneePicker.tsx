@@ -23,6 +23,8 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** Quando false, oculta a opção de limpar seleção (campos obrigatórios). */
+  allowNone?: boolean;
 }
 
 export default function UserAssigneePicker({
@@ -34,6 +36,7 @@ export default function UserAssigneePicker({
   placeholder = 'Selecione um usuário',
   disabled = false,
   className,
+  allowNone = true,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -93,13 +96,15 @@ export default function UserAssigneePicker({
           <CommandList>
             <CommandEmpty>Nenhum usuário encontrado.</CommandEmpty>
             <CommandGroup>
-              <CommandItem
-                value={`${noneLabel} manual atribuicao nenhum`}
-                onSelect={() => handleSelect(undefined)}
-              >
-                <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
-                <span className="text-sm">{noneLabel}</span>
-              </CommandItem>
+              {allowNone && (
+                <CommandItem
+                  value={`${noneLabel} manual atribuicao nenhum`}
+                  onSelect={() => handleSelect(undefined)}
+                >
+                  <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
+                  <span className="text-sm">{noneLabel}</span>
+                </CommandItem>
+              )}
               {users.map((user) => {
                 const roleLabel = getRoleLabel(user.role);
                 const searchValue = `${user.name} ${user.email} ${roleLabel} ${user.role}`;

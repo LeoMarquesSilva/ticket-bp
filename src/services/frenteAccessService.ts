@@ -4,30 +4,66 @@ import {
   ticketMatchesFrente,
 } from '@/utils/ticketFilterUtils';
 
-const ROLE_FRENTE_KEY_FALLBACK: Record<string, string> = {
+/** Roles com frente fixa — ignoram tag_id e categorias de outras frentes. */
+export const LOCKED_FRENTE_BY_ROLE: Record<string, string> = {
   lawyer: 'juridico',
   advogado: 'juridico',
+};
+
+const ROLE_FRENTE_KEY_FALLBACK: Record<string, string> = {
   support: 'juridico',
   suporte: 'juridico',
   ti: 'tecnologia_informacao',
 };
 
+export function isStrictFrenteRole(role?: string | null): boolean {
+  return Boolean(LOCKED_FRENTE_BY_ROLE[String(role ?? '').trim().toLowerCase()]);
+}
+
+/** Suporte operacional: vê somente tickets atribuídos a si (não a frente inteira). */
+const ASSIGNED_ONLY_ROLES = new Set(['support', 'suporte']);
+
+export function isAssignedOnlyRole(role?: string | null): boolean {
+  return ASSIGNED_ONLY_ROLES.has(String(role ?? '').trim().toLowerCase());
+}
+
 export class FrenteAccessService {
+  static async resolveFrenteIdByKey(tagKey: string): Promise<string | null> {
+    const { data: tagRow } = await supabase
+      .from(TABLES.TAGS)
+      .select('id')
+      .eq('key', tagKey)
+      .maybeSingle();
+
+    return tagRow?.id ? (tagRow.id as string) : null;
+  }
+
   /** Resolve as frentes de atuação do usuário (tag_id explícito ou derivação por categorias/role). */
-  static async getUserFrenteIds(userId: string, explicitTagId?: string | null): Promise<string[]> {
-    if (explicitTagId) return [explicitTagId];
-
-    const frenteIds = new Set<string>();
-
+  static async getUserFrenteIds(
+    userId: string,
+    explicitTagId?: string | null,
+    roleHint?: string | null
+  ): Promise<string[]> {
     const { data: userRow } = await supabase
       .from(TABLES.USERS)
       .select('tag_id, role')
       .eq('id', userId)
       .maybeSingle();
 
+    const roleKey = String(roleHint ?? userRow?.role ?? '').trim().toLowerCase();
+    const lockedTagKey = LOCKED_FRENTE_BY_ROLE[roleKey];
+    if (lockedTagKey) {
+      const lockedId = await this.resolveFrenteIdByKey(lockedTagKey);
+      return lockedId ? [lockedId] : [];
+    }
+
+    if (explicitTagId) return [explicitTagId];
+
     if (userRow?.tag_id) {
       return [userRow.tag_id as string];
     }
+
+    const frenteIds = new Set<string>();
 
     const [{ data: categoryRows }, { data: subcategoryRows }] = await Promise.all([
       supabase
@@ -62,17 +98,11 @@ export class FrenteAccessService {
       return [...frenteIds];
     }
 
-    const roleKey = String(userRow?.role ?? '').trim().toLowerCase();
     const fallbackTagKey = ROLE_FRENTE_KEY_FALLBACK[roleKey];
     if (!fallbackTagKey) return [];
 
-    const { data: tagRow } = await supabase
-      .from(TABLES.TAGS)
-      .select('id')
-      .eq('key', fallbackTagKey)
-      .maybeSingle();
-
-    return tagRow?.id ? [tagRow.id as string] : [];
+    const fallbackId = await this.resolveFrenteIdByKey(fallbackTagKey);
+    return fallbackId ? [fallbackId] : [];
   }
 
   static ticketMatchesUserFrentes(
@@ -87,7 +117,18 @@ export class FrenteAccessService {
   }
 
   /** Filtro Supabase: frente do usuário + tickets que ele criou ou está atendendo. */
-  static buildFrenteAccessOrFilter(userId: string, categoryKeys: string[]): string {
+  static buildFrenteAccessOrFilter(
+    userId: string,
+    categoryKeys: string[],
+    strictFrenteOnly = false
+  ): string {
+    if (strictFrenteOnly) {
+      if (categoryKeys.length === 0) {
+        return `id.eq.00000000-0000-0000-0000-000000000000`;
+      }
+      return `category.in.(${categoryKeys.join(',')})`;
+    }
+
     const parts = [`created_by.eq.${userId}`, `assigned_to.eq.${userId}`];
     if (categoryKeys.length > 0) {
       parts.unshift(`category.in.(${categoryKeys.join(',')})`);
@@ -98,8 +139,13 @@ export class FrenteAccessService {
   static canUserAccessTicket(
     ticket: { category: string; createdBy?: string; assignedTo?: string },
     userId: string,
-    categoryKeys: string[]
+    categoryKeys: string[],
+    strictFrenteOnly = false
   ): boolean {
+    if (strictFrenteOnly) {
+      if (categoryKeys.length === 0) return false;
+      return categoryKeys.includes(ticket.category);
+    }
     if (ticket.createdBy === userId || ticket.assignedTo === userId) return true;
     if (categoryKeys.length === 0) return false;
     return categoryKeys.includes(ticket.category);

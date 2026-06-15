@@ -30,6 +30,7 @@ import UserAvatar from '@/components/UserAvatar';
 import AvatarCropModal from '@/components/AvatarCropModal';
 import { AvatarService } from '@/services/avatarService';
 import { CategoryService } from '@/services/categoryService';
+import { LOCKED_FRENTE_BY_ROLE } from '@/services/frenteAccessService';
 
 
 export default function UserManagement() {
@@ -99,7 +100,7 @@ export default function UserManagement() {
   const [pendingDeleteRole, setPendingDeleteRole] = useState<Role | null>(null);
 
   const [departments, setDepartments] = useState<Dept[]>([]);
-  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
+  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string; key: string }[]>([]);
   const [createDepartmentOpen, setCreateDepartmentOpen] = useState(false);
   const [editDepartmentOpen, setEditDepartmentOpen] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Dept | null>(null);
@@ -111,6 +112,14 @@ export default function UserManagement() {
   const isAdmin = Boolean(user && String(user.role ?? '').toLowerCase() === 'admin');
   const activeDepartments = departments.filter((d) => d.isActive);
   const defaultDepartmentName = activeDepartments.find((d) => d.name === 'Geral')?.name ?? activeDepartments[0]?.name ?? Department.GERAL;
+
+  const getLockedFrenteIdForRole = (role?: string) => {
+    const tagKey = LOCKED_FRENTE_BY_ROLE[String(role ?? '').trim().toLowerCase()];
+    if (!tagKey) return undefined;
+    return frentes.find((f) => f.key === tagKey)?.id;
+  };
+
+  const isRoleFrenteLocked = (role?: string) => Boolean(getLockedFrenteIdForRole(role));
 
   useEffect(() => {
     if (!user) return;
@@ -127,7 +136,7 @@ export default function UserManagement() {
       RoleService.getRoles(true).then(setRoles);
       DepartmentService.getDepartments().then(setDepartments);
       CategoryService.getAllTags(false).then((tags) =>
-        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color })))
+        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color, key: t.key })))
       );
     }
   }, [has, isAdmin]);
@@ -299,11 +308,14 @@ const handleCreateUser = async () => {
         return;
       }
 
+      const lockedFrenteId = getLockedFrenteIdForRole(editingUser.role);
+      const tagId = lockedFrenteId ?? editingUser.tagId;
+
       await UserService.updateUser(editingUser.id, {
         name: editingUser.name,
         role: editingUser.role,
         department: editingUser.department,
-        tagId: editingUser.tagId,
+        tagId,
         avatarUrl: editingUser.avatarUrl ?? undefined,
       });
 
@@ -678,7 +690,15 @@ const handleConfirmDelete = async () => {
                 <Label htmlFor="edit-role">Função (Role) <span className="text-red-500">*</span></Label>
                 <Select
                   value={editingUser.role}
-                  onValueChange={(value) => setEditingUser({ ...editingUser, role: value as UserRole })}
+                  onValueChange={(value) => {
+                    const role = value as UserRole;
+                    const lockedFrenteId = getLockedFrenteIdForRole(role);
+                    setEditingUser({
+                      ...editingUser,
+                      role,
+                      ...(lockedFrenteId ? { tagId: lockedFrenteId } : {}),
+                    });
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione uma função" />
@@ -718,17 +738,27 @@ const handleConfirmDelete = async () => {
               <div className="grid gap-2">
                 <Label htmlFor="edit-frente">Frente de Atuação</Label>
                 <Select
-                  value={editingUser.tagId || 'none'}
+                  value={
+                    isRoleFrenteLocked(editingUser.role)
+                      ? getLockedFrenteIdForRole(editingUser.role) || 'none'
+                      : editingUser.tagId || 'none'
+                  }
                   onValueChange={(value) =>
                     setEditingUser({ ...editingUser, tagId: value === 'none' ? undefined : value })
                   }
+                  disabled={isRoleFrenteLocked(editingUser.role)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a frente de atuação" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Automático (por role/categorias)</SelectItem>
-                    {frentes.map((f) => (
+                    {!isRoleFrenteLocked(editingUser.role) && (
+                      <SelectItem value="none">Automático (por role/categorias)</SelectItem>
+                    )}
+                    {(isRoleFrenteLocked(editingUser.role)
+                      ? frentes.filter((f) => f.id === getLockedFrenteIdForRole(editingUser.role))
+                      : frentes
+                    ).map((f) => (
                       <SelectItem key={f.id} value={f.id}>
                         <span className="flex items-center gap-2">
                           <span
@@ -742,7 +772,9 @@ const handleConfirmDelete = async () => {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Define quais tickets o usuário de suporte/advogado pode visualizar.
+                  {isRoleFrenteLocked(editingUser.role)
+                    ? 'Advogados visualizam exclusivamente tickets da Controladoria Jurídica.'
+                    : 'Define quais tickets o usuário de suporte/advogado pode visualizar.'}
                 </p>
               </div>
               {/* Foto do usuário */}

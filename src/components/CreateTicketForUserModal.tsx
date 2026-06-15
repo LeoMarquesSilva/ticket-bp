@@ -20,6 +20,18 @@ import { TicketService } from '@/services/ticketService';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryService } from '@/services/categoryService';
 import { toast } from 'sonner';
+import DesenvolvimentoContinuoFields from '@/components/DesenvolvimentoContinuoFields';
+import {
+  buildDesenvolvimentoContinuoChatMessage,
+  buildDesenvolvimentoContinuoDescription,
+  buildDesenvolvimentoContinuoTitle,
+  buildSharepointTreinamentoPayload,
+  emptyDesenvolvimentoContinuoForm,
+  isDesenvolvimentoContinuoCategory,
+  validateDesenvolvimentoContinuoForm,
+  type DesenvolvimentoContinuoFormData,
+} from '@/utils/desenvolvimentoContinuoForm';
+import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
 
 interface CreateTicketForUserModalProps {
   isOpen: boolean;
@@ -62,6 +74,11 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const [categoriesConfig, setCategoriesConfig] = useState<Record<string, { label: string; tagId?: string; subcategories: { value: string; label: string; slaHours: number }[] }>>({});
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
+
+  const isDcCategory = isDesenvolvimentoContinuoCategory(category);
+  const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
+    useDesenvolvimentoContinuoOptions(isDcCategory);
 
   // Gradiente oficial da marca
   const brandGradient = 'linear-gradient(90deg, rgba(246, 159, 25, 1) 0%, rgba(222, 85, 50, 1) 50%, rgba(189, 45, 41, 1) 100%)';
@@ -106,12 +123,14 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setCategory('');
     setSubcategory('');
     setSlaHours(null);
+    setDcForm(emptyDesenvolvimentoContinuoForm());
   }, [frenteId]);
 
   // Resetar subcategoria quando categoria muda
   useEffect(() => {
     setSubcategory('');
     setSlaHours(null);
+    setDcForm(emptyDesenvolvimentoContinuoForm());
   }, [category]);
 
   // Categorias filtradas pela frente selecionada
@@ -147,6 +166,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setSubcategory('');
     setResolution('');
     setIsAlreadyResolved(false);
+    setDcForm(emptyDesenvolvimentoContinuoForm());
     setSearchTerm('');
     setErrors({});
     setStep('user');
@@ -179,23 +199,30 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
 
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
-    
+
     if (!selectedUser) {
       newErrors.user = 'Selecione um usuário';
     }
-    
-    if (!title.trim()) {
-      newErrors.title = 'O título é obrigatório';
-    } else if (title.length < 5) {
-      newErrors.title = 'O título deve ter pelo menos 5 caracteres';
+
+    if (isDcCategory) {
+      if (!subcategory) {
+        newErrors.subcategory = 'A subcategoria é obrigatória';
+      }
+      Object.assign(newErrors, validateDesenvolvimentoContinuoForm(dcForm));
+    } else {
+      if (!title.trim()) {
+        newErrors.title = 'O título é obrigatório';
+      } else if (title.length < 5) {
+        newErrors.title = 'O título deve ter pelo menos 5 caracteres';
+      }
+
+      if (!description.trim()) {
+        newErrors.description = 'A descrição é obrigatória';
+      } else if (description.length < 10) {
+        newErrors.description = 'A descrição deve ter pelo menos 10 caracteres';
+      }
     }
-    
-    if (!description.trim()) {
-      newErrors.description = 'A descrição é obrigatória';
-    } else if (description.length < 10) {
-      newErrors.description = 'A descrição deve ter pelo menos 10 caracteres';
-    }
-    
+
     if (!frenteId) {
       newErrors.frente = 'Selecione a frente de atuação';
     }
@@ -204,14 +231,14 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
       newErrors.category = 'A categoria é obrigatória';
     }
 
-    if (!subcategory && category) {
+    if (!subcategory && category && !isDcCategory) {
       newErrors.subcategory = 'A subcategoria é obrigatória';
     }
 
     if (isAlreadyResolved && !resolution.trim()) {
       newErrors.resolution = 'A resolução é obrigatória quando o ticket já foi resolvido';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -224,16 +251,43 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Criar o ticket
+      let ticketTitle = title;
+      let ticketDescription = description;
+      let initialChatMessage: string | undefined;
+      let sharepointTreinamento: ReturnType<typeof buildSharepointTreinamentoPayload> | undefined;
+
+      if (isDcCategory) {
+        const subcategoryLabel =
+          categoriesConfig[category]?.subcategories.find((s) => s.value === subcategory)?.label ??
+          subcategory;
+        const categoryLabel = categoriesConfig[category]?.label ?? category;
+
+        ticketTitle = buildDesenvolvimentoContinuoTitle(subcategoryLabel, dcForm.tema);
+        ticketDescription = buildDesenvolvimentoContinuoDescription(dcForm, subcategoryLabel, dcUsers);
+        initialChatMessage = buildDesenvolvimentoContinuoChatMessage(
+          dcForm,
+          subcategoryLabel,
+          categoryLabel,
+          dcUsers,
+        );
+        sharepointTreinamento = buildSharepointTreinamentoPayload(
+          dcForm,
+          subcategoryLabel,
+          dcUsers,
+        );
+      }
+
       const ticketData = {
-        title,
-        description,
+        title: ticketTitle,
+        description: ticketDescription,
         category,
         subcategory,
         createdBy: selectedUser.id,
         createdByName: selectedUser.name,
         createdByDepartment: selectedUser.department,
         skipFeedbackCheck: true,
+        initialChatMessage,
+        sharepointTreinamento,
       };
 
       const newTicket = await TicketService.createTicket(ticketData);
@@ -407,40 +461,44 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                 </Button>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="title" className="text-[#2C2D2F]">Título do Ticket</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Ex: Problema com senha do tribunal"
-                  className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.title ? 'border-[#BD2D29]' : ''}`}
-                />
-                {errors.title && (
-                  <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    {errors.title}
-                  </p>
-                )}
-              </div>
+              {!isDcCategory && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="title" className="text-[#2C2D2F]">Título do Ticket</Label>
+                    <Input
+                      id="title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Ex: Problema com senha do tribunal"
+                      className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.title ? 'border-[#BD2D29]' : ''}`}
+                    />
+                    {errors.title && (
+                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        {errors.title}
+                      </p>
+                    )}
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-[#2C2D2F]">Descrição do Problema/Solicitação</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Descreva o que o usuário relatou ou solicitou..."
-                  rows={4}
-                  className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.description ? 'border-[#BD2D29]' : ''}`}
-                />
-                {errors.description && (
-                  <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    {errors.description}
-                  </p>
-                )}
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="description" className="text-[#2C2D2F]">Descrição do Problema/Solicitação</Label>
+                    <Textarea
+                      id="description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Descreva o que o usuário relatou ou solicitou..."
+                      rows={4}
+                      className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.description ? 'border-[#BD2D29]' : ''}`}
+                    />
+                    {errors.description && (
+                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        {errors.description}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
 
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -528,6 +586,17 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                     )}
                   </div>
                 </div>
+
+                {isDcCategory && subcategory && (
+                  <DesenvolvimentoContinuoFields
+                    data={dcForm}
+                    onChange={setDcForm}
+                    errors={errors}
+                    users={dcUsers}
+                    departments={dcDepartments}
+                    loading={dcOptionsLoading}
+                  />
+                )}
               </div>
 
               {slaHours !== null && (

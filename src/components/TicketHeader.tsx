@@ -29,7 +29,7 @@ import ticketEventService from '@/services/ticketEventService';
 import UserAvatar from '@/components/UserAvatar';
 import { usePermissions } from '@/hooks/usePermissions';
 import { CategoryService } from '@/services/categoryService';
-import { FrenteAccessService } from '@/services/frenteAccessService';
+import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
 import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
 
 interface User {
@@ -69,14 +69,18 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   filtersOpen = true,
   onToggleFilters
 }) => {
-  const { has } = usePermissions();
+  const { has, loading: permissionsLoading } = usePermissions();
   const isAdmin = user?.role === 'admin';
   const isSupport = user?.role === 'support';
   const isLawyer = user?.role === 'lawyer';
   const isUser = user?.role === 'user';
   const isStaff = isAdmin || isSupport || isLawyer;
   const isFrenteRestricted = has('view_frente_tickets') && !has('view_all_tickets');
+  const isAssignedOnly = isAssignedOnlyRole(user?.role);
+  const strictFrenteOnly = isStrictFrenteRole(user?.role);
+  const isFrenteScoped = isFrenteRestricted && !isAssignedOnly;
   const [userCategoryKeys, setUserCategoryKeys] = useState<string[]>([]);
+  const [frenteAccessReady, setFrenteAccessReady] = useState(false);
 
   const normalizeRole = (role?: string) => String(role || '').trim().toLowerCase();
   const isUserRole = (role?: string) => {
@@ -160,30 +164,38 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
 
   useEffect(() => {
     const loadFrenteAccess = async () => {
-      if (!user?.id || !isFrenteRestricted) {
+      if (permissionsLoading) return;
+
+      if (!user?.id || !isFrenteScoped) {
         setUserCategoryKeys([]);
+        setFrenteAccessReady(true);
         return;
       }
 
+      setFrenteAccessReady(false);
       try {
         const [frenteIds, categoriesConfig] = await Promise.all([
-          FrenteAccessService.getUserFrenteIds(user.id, user.tagId),
+          FrenteAccessService.getUserFrenteIds(user.id, user.tagId, user.role),
           CategoryService.getCategoriesConfig(),
         ]);
         setUserCategoryKeys(getCategoryKeysForFrenteIds(categoriesConfig, frenteIds));
       } catch (error) {
         console.error('Erro ao carregar frente para estatísticas:', error);
         setUserCategoryKeys([]);
+      } finally {
+        setFrenteAccessReady(true);
       }
     };
 
     void loadFrenteAccess();
-  }, [user?.id, user?.tagId, isFrenteRestricted]);
+  }, [user?.id, user?.tagId, isFrenteScoped, permissionsLoading]);
 
   // Função para buscar estatísticas dos tickets
   const fetchTicketStats = async () => {
     try {
       if (!user?.id || !isMountedRef.current) return;
+      if (permissionsLoading) return;
+      if (isFrenteScoped && !frenteAccessReady) return;
       
       // Atualizar estado para mostrar carregamento
       setTicketStats(prev => ({ ...prev, loading: true }));
@@ -209,8 +221,16 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         openQuery.eq('created_by', user.id);
         inProgressQuery.eq('created_by', user.id);
         resolvedQuery.eq('created_by', user.id);
-      } else if (isFrenteRestricted) {
-        const orFilter = FrenteAccessService.buildFrenteAccessOrFilter(user.id, userCategoryKeys);
+      } else if (isAssignedOnly) {
+        openQuery.eq('assigned_to', user.id);
+        inProgressQuery.eq('assigned_to', user.id);
+        resolvedQuery.eq('assigned_to', user.id);
+      } else if (isFrenteScoped) {
+        const orFilter = FrenteAccessService.buildFrenteAccessOrFilter(
+          user.id,
+          userCategoryKeys,
+          strictFrenteOnly
+        );
         openQuery.or(orFilter);
         inProgressQuery.or(orFilter);
         resolvedQuery.or(orFilter);
@@ -218,6 +238,12 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         openQuery.eq('assigned_to', user.id);
         inProgressQuery.eq('assigned_to', user.id);
         resolvedQuery.eq('assigned_to', user.id);
+      } else if (has('view_all_tickets')) {
+        // Admin / analista: sem filtro adicional
+      } else if (user.id) {
+        openQuery.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
+        inProgressQuery.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
+        resolvedQuery.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
       }
       
       // Executar as consultas
@@ -253,7 +279,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   // Configurar um único canal de tempo real para todas as atualizações necessárias
   useEffect(() => {
     isMountedRef.current = true;
-    
+
+    if (permissionsLoading || (isFrenteScoped && !frenteAccessReady)) {
+      return () => {
+        isMountedRef.current = false;
+      };
+    }
+
     // Buscar estatísticas iniciais
     fetchTicketStats();
 
@@ -322,12 +354,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [isUser, isSupport, isLawyer, isAdmin, isFrenteRestricted, userCategoryKeys.join(','), user?.id]);
+  }, [isUser, isSupport, isLawyer, isAdmin, isFrenteScoped, isAssignedOnly, userCategoryKeys.join(','), user?.id, permissionsLoading, frenteAccessReady]);
 
   // Função para obter o título das estatísticas com base no tipo de usuário
   const getStatsTitle = () => {
     if (isUser) return "Seus tickets";
-    if (isFrenteRestricted) return "Tickets da sua frente";
+    if (isAssignedOnly) return "Seus tickets atribuídos";
+    if (isFrenteScoped) return "Tickets da sua frente";
     if (isSupport || isLawyer) return "Seus tickets atribuídos";
     if (isAdmin) return "Todos os tickets";
     return "Tickets";

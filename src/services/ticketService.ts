@@ -6,6 +6,8 @@ import ticketEventService from './ticketEventService';
 import { notifyDetractorFeedback, notifyUnfulfilledRequest } from './webhookService';
 import { CategoryService } from './categoryService';
 import { notifyTicketWhatsApp } from './evolutionEdgeService';
+import { submitSharepointTreinamento } from './sharepointTreinamentosService';
+import type { SharepointTreinamentoPayload } from '@/utils/desenvolvimentoContinuoForm';
 import { FrenteAccessService } from './frenteAccessService';
 
 export interface Ticket {
@@ -65,6 +67,10 @@ export interface CreateTicketData {
   createdByName: string;
   createdByDepartment?: string;
   skipFeedbackCheck?: boolean;
+  /** Mensagem formatada enviada automaticamente no chat ao abrir o ticket. */
+  initialChatMessage?: string;
+  /** Envio para lista SharePoint (Desenvolvimento Contínuo da Equipe). */
+  sharepointTreinamento?: SharepointTreinamentoPayload;
 }
 
 export interface UpdateTicketData {
@@ -330,12 +336,16 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
   }
 
   /** Tickets da frente + tickets criados por ou atribuídos ao usuário. */
-  static async getTicketsForFrenteAccess(userId: string, categoryKeys: string[]): Promise<Ticket[]> {
+  static async getTicketsForFrenteAccess(
+    userId: string,
+    categoryKeys: string[],
+    strictFrenteOnly = false
+  ): Promise<Ticket[]> {
     try {
       const { data, error } = await supabase
         .from(TABLES.TICKETS)
         .select('*')
-        .or(FrenteAccessService.buildFrenteAccessOrFilter(userId, categoryKeys))
+        .or(FrenteAccessService.buildFrenteAccessOrFilter(userId, categoryKeys, strictFrenteOnly))
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -348,6 +358,29 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
       return tickets;
     } catch (error) {
       console.error('Error in getTicketsForFrenteAccess:', error);
+      throw error;
+    }
+  }
+
+  /** Tickets atribuídos ao usuário (Suporte Op. Legais). */
+  static async getTicketsAssignedToUser(userId: string): Promise<Ticket[]> {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.TICKETS)
+        .select('*')
+        .eq('assigned_to', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching tickets assigned to user:', error);
+        throw error;
+      }
+
+      let tickets = (data || []).map(mapFromDatabase);
+      tickets = await enrichTicketsWithAvatars(tickets);
+      return tickets;
+    } catch (error) {
+      console.error('Error in getTicketsAssignedToUser:', error);
       throw error;
     }
   }
@@ -1010,6 +1043,20 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
       console.warn('Erro ao buscar atribuição automática, usando algoritmo padrão:', error);
     }
 
+    if (!assignedUser) {
+      try {
+        const tagId = await CategoryService.getCategoryTagId(ticketData.category);
+        if (tagId) {
+          const tagUser = await UserService.getNextAvailableByTag(tagId);
+          if (tagUser) {
+            assignedUser = { id: tagUser.id, name: tagUser.name };
+          }
+        }
+      } catch (error) {
+        console.warn('Erro ao buscar atribuição por frente (tag):', error);
+      }
+    }
+
     // Se não encontrou atribuição automática, usar algoritmo padrão (próximo advogado disponível)
     if (!assignedUser) {
       const availableLawyer = await UserService.getNextAvailableLawyer();
@@ -1039,7 +1086,27 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
 
     console.log('Created ticket data from DB:', data); // Log para verificar o resultado
     const ticket = mapFromDatabase(data);
+
+    if (ticketData.initialChatMessage?.trim()) {
+      try {
+        await this.sendChatMessage(
+          ticket.id,
+          ticketData.createdBy,
+          ticketData.createdByName,
+          ticketData.initialChatMessage.trim(),
+          [],
+        );
+      } catch (chatError) {
+        console.warn('Erro ao enviar mensagem inicial no chat:', chatError);
+      }
+    }
+
     void notifyTicketWhatsApp(ticket.id);
+
+    if (ticketData.sharepointTreinamento) {
+      void submitSharepointTreinamento(ticket.id, ticketData.sharepointTreinamento);
+    }
+
     return ticket;
   } catch (error) {
     console.error('Error in createTicket:', error);

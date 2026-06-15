@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useNotificationOrchestrator } from '@/hooks/useNotificationOrchestrator';
 import { CategoryService } from '@/services/categoryService';
-import { FrenteAccessService } from '@/services/frenteAccessService';
+import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
 import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
 import {
   shouldNotifyMessage,
@@ -46,7 +46,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const normalizedUserId = normalizeId(user?.id);
   const isStaffByRole = isStaffRole(user?.role);
   const isStaffByPermissions = Boolean(user && (has('assign_ticket') || has('view_all_tickets') || has('view_frente_tickets')));
-  const isFrenteRestricted = has('view_frente_tickets') && !has('view_all_tickets');
+  const isAssignedOnly = isAssignedOnlyRole(user?.role);
+  const isFrenteRestricted =
+    !isAssignedOnly && has('view_frente_tickets') && !has('view_all_tickets');
+  const strictFrenteOnly = isStrictFrenteRole(user?.role);
   const canViewAllTickets = has('view_all_tickets');
   const isStaff = isStaffByRole || isStaffByPermissions;
   const userCategoryKeysRef = useRef<string[]>([]);
@@ -72,7 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       try {
         const [frenteIds, categoriesConfig] = await Promise.all([
-          FrenteAccessService.getUserFrenteIds(normalizedUserId, user?.tagId),
+          FrenteAccessService.getUserFrenteIds(normalizedUserId, user?.tagId, user?.role),
           CategoryService.getCategoriesConfig(),
         ]);
         userCategoryKeysRef.current = getCategoryKeysForFrenteIds(categoriesConfig, frenteIds);
@@ -123,7 +126,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       try {
         const [frenteIds, categoriesConfig] = await Promise.all([
-          FrenteAccessService.getUserFrenteIds(normalizedUserId!, user?.tagId),
+          FrenteAccessService.getUserFrenteIds(normalizedUserId!, user?.tagId, user?.role),
           CategoryService.getCategoriesConfig(),
         ]);
         const keys = getCategoryKeysForFrenteIds(categoriesConfig, frenteIds);
@@ -139,6 +142,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       isFrenteRestricted,
       userCategoryKeys: await resolveUserCategoryKeys(),
       canViewAllTickets,
+      strictFrenteOnly,
+      assignedOnly: isAssignedOnly,
       isStaff,
     });
 
