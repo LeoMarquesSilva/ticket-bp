@@ -1,4 +1,4 @@
-import { getGraphConfig, graphFetch } from "./graphClient.ts";
+import { type GraphConfig, getGraphConfig, graphFetch } from "./graphClient.ts";
 import {
   persistGraphUserId,
   resolveGraphUserIdByEmail,
@@ -25,7 +25,7 @@ export type SharepointTreinamentoInput = {
   precisaAjustePpt: boolean;
   linkPpt?: string;
   ticketId: string;
-  /** URL pública do ticket no app (ex.: https://app/tickets/uuid). */
+  /** URL pública do ticket no app (ex.: https://www.responsum.com.br/tickets/uuid). */
   ticketAppUrl?: string;
 };
 
@@ -91,10 +91,13 @@ function appendResponsavelToObservacoes(
   fields[obsCol.name] = current ? `${current}\n${extra}` : extra;
 }
 
-export async function listTreinamentosColumns(): Promise<ListColumn[]> {
-  const { siteId, listId } = getGraphConfig();
+export async function listTreinamentosColumns(
+  config?: GraphConfig,
+): Promise<ListColumn[]> {
+  const { siteId, listId } = config ?? getGraphConfig();
   const res = await graphFetch(
     `/sites/${siteId}/lists/${listId}/columns?$select=name,displayName,readOnly`,
+    { config: config ?? getGraphConfig() },
   );
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {

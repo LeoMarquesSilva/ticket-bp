@@ -1,5 +1,4 @@
 import { graphFetch } from "./graphClient.ts";
-import { ensureSharepointUserLookupId } from "./sharepointEnsureUser.ts";
 
 const SETTINGS_KEY = "sharepoint_person_lookups";
 const PERSON_FIELD_DISPLAYS = new Set([
@@ -151,14 +150,6 @@ export async function resolveSharepointPersonLookupIdFull(
 
   const inferred = await inferSharepointPersonLookupId(email, displayName, siteId, listId);
   if (inferred) return inferred;
-
-  const ensured = await ensureSharepointUserLookupId(email, admin);
-  if (ensured) {
-    if (admin) {
-      await persistSharepointPersonLookup(admin, email, displayName, ensured);
-    }
-    return ensured;
-  }
 
   return null;
 }

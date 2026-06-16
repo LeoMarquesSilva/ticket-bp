@@ -224,6 +224,26 @@ if (dryRun) {
   process.exit(0);
 }
 
+const existingRes = await fetch(
+  `${url}/rest/v1/app_c009c0e4f1_integration_settings?key=eq.sharepoint_person_lookups&select=value`,
+  { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+).then((r) => r.json());
+
+let merged = {};
+try {
+  merged = JSON.parse(existingRes[0]?.value ?? '{}');
+} catch {
+  merged = {};
+}
+
+let added = 0;
+for (const [k, v] of Object.entries(map)) {
+  if (!merged[k]) {
+    merged[k] = v;
+    added++;
+  }
+}
+
 const res = await fetch(`${url}/rest/v1/app_c009c0e4f1_integration_settings`, {
   method: 'POST',
   headers: {
@@ -234,7 +254,7 @@ const res = await fetch(`${url}/rest/v1/app_c009c0e4f1_integration_settings`, {
   },
   body: JSON.stringify({
     key: 'sharepoint_person_lookups',
-    value: JSON.stringify(map),
+    value: JSON.stringify(merged),
     updated_at: new Date().toISOString(),
   }),
 });
@@ -244,4 +264,4 @@ if (!res.ok) {
   process.exit(1);
 }
 
-console.log('\nSalvo em integration_settings (sharepoint_person_lookups)');
+console.log(`\nMerge: +${added} chaves (${Object.keys(merged).length} total). Salvo em integration_settings (sharepoint_person_lookups)`);

@@ -54,7 +54,7 @@ if (responsavelName) {
   if (users[0]?.email) responsavelEmail = users[0].email.trim();
 }
 
-const appBase = (process.env.VITE_SITE_URL || 'http://localhost:5173').replace(/\/$/, '');
+const appBase = (process.env.VITE_SITE_URL || 'https://www.responsum.com.br').replace(/\/$/, '');
 const payload = {
   tema: pick('Tema', desc) || ticket.title.replace(/^Treinamento — /, ''),
   facilitador: pick('Facilitador', desc),

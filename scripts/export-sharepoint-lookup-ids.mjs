@@ -259,8 +259,9 @@ Exportar LookupIds SharePoint
 IMPORTANTE: LookupId é por site. IDs do BISMARCHIPIRES ≠ CONTROLADORIAJURDICA.
 Para treinamentos use sempre: controladoria
 
-Para completar lacunas no site Controladoria (ensureUser):
-  Configure SHAREPOINT_ENSURE_USER_WEBHOOK_URL no Supabase (workflow n8n OAuth delegado).
+Para completar lacunas: edite integration_settings.sharepoint_person_lookups no Supabase
+  (e-mail → LookupId) ou rode build-sharepoint-lookup-from-protocolos.mjs.
+  Quem não tiver LookupId: responsável vai em Observações (automação não trava).
 `);
 }
 

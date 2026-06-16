@@ -6,18 +6,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = 'supabase/functions/sharepoint-treinamentos';
-const files = [
+const fileNames = [
   'index.ts',
   '_shared/cors.ts',
   '_shared/graphClient.ts',
+  '_shared/graphUsers.ts',
   '_shared/sharepointPerson.ts',
   '_shared/treinamentosList.ts',
-].map(
-  (name) => ({
-    name,
-    content: fs.readFileSync(path.join(root, name), 'utf8'),
-  }),
-);
+];
+const files = fileNames.map((name) => ({
+  name,
+  content: fs.readFileSync(path.join(root, name), 'utf8'),
+}));
 
 const payload = {
   name: 'sharepoint-treinamentos',

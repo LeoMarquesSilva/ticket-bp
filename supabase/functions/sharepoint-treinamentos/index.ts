@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
 
     if (body.action === "listColumns") {
       await getGraphAccessToken(graphConfig);
-      const columns = await listTreinamentosColumns();
+      const columns = await listTreinamentosColumns(graphConfig);
       return new Response(JSON.stringify({ ok: true, columns }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

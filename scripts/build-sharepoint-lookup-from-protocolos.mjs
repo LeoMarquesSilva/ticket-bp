@@ -68,7 +68,7 @@ function vote(lookupId, email) {
 
 let items = 0;
 let next = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${LIST}/items?expand=fields(select=PROTOCOLADOPORLookupId,CHECKADOPORLookupId,AuthorLookupId,EditorLookupId)&select=id,createdBy,lastModifiedBy&$top=200`;
-while (next && items < 12000) {
+while (next && items < 50000) {
   const page = await fetch(next, { headers: h }).then((r) => r.json());
   if (page.error) {
     console.error(page.error.message);
