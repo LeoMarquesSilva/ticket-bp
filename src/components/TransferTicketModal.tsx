@@ -71,9 +71,11 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
-  // Categoria / Subcategoria
+  // Frente / Categoria / Subcategoria
   const [categoriesConfig, setCategoriesConfig] = useState<CategoriesConfig>({});
+  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [frenteId, setFrenteId] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [subcategory, setSubcategory] = useState<string>('');
 
@@ -83,16 +85,18 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
       setLoadingUsers(true);
       setLoadingCategories(true);
       try {
-        const [usersRes, deptsRes, catsRes] = await Promise.allSettled([
+        const [usersRes, deptsRes, catsRes, tagsRes] = await Promise.allSettled([
           supportUsersProp.length > 0
             ? Promise.resolve(supportUsersProp)
             : UserService.getSupportUsers(),
           DepartmentService.getActiveDepartments(),
           CategoryService.getCategoriesConfig(),
+          CategoryService.getAllTags(false),
         ]);
         const users = usersRes.status === 'fulfilled' ? usersRes.value : [];
         const depts = deptsRes.status === 'fulfilled' ? deptsRes.value : [];
         const cats = catsRes.status === 'fulfilled' ? catsRes.value : {};
+        const tags = tagsRes.status === 'fulfilled' ? tagsRes.value : [];
         if (usersRes.status === 'rejected') {
           toast.error('Erro ao carregar usuários');
         }
@@ -100,10 +104,13 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
         setSupportUsers(filtered);
         setDepartments(depts);
         setCategoriesConfig(cats);
+        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color })));
         setSelectedDept('all');
         setSelectedUser('');
         setSearchTerm('');
-        // Pré-preencher com a categoria/subcategoria atual do ticket
+        // Pré-preencher com a frente/categoria/subcategoria atual do ticket
+        const currentTagId = cats[currentCategory]?.tagId;
+        setFrenteId(currentCategory ? (currentTagId || 'sem-frente') : '');
         setCategory(currentCategory || '');
         setSubcategory(currentSubcategory || '');
       } catch (e) {
@@ -116,6 +123,13 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
     };
     load();
   }, [open, currentAssignee, supportUsersProp, currentCategory, currentSubcategory]);
+
+  // Categorias filtradas pela frente selecionada
+  const categoriesByFrente = frenteId === ''
+    ? Object.entries(categoriesConfig)
+    : frenteId === 'sem-frente'
+      ? Object.entries(categoriesConfig).filter(([, c]) => !c.tagId)
+      : Object.entries(categoriesConfig).filter(([, c]) => c.tagId === frenteId);
 
   const subcategories = category ? categoriesConfig[category]?.subcategories ?? [] : [];
 
@@ -181,29 +195,58 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
             <div className="flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-[#F69F19] mt-0.5 shrink-0" />
               <p className="text-xs text-slate-600">
-                Confirme ou ajuste a <strong>categoria</strong> do ticket antes de transferir. Ela
-                define as notificações automáticas (ex: aviso no WhatsApp).
+                Confirme ou ajuste a <strong>frente</strong>, <strong>categoria</strong> e{' '}
+                <strong>subcategoria</strong> do ticket antes de transferir. Elas definem as
+                notificações automáticas (ex: aviso no WhatsApp).
               </p>
             </div>
 
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <Tag className="h-4 w-4 text-slate-500" />
-                Categoria
+                Frente de Atuação
               </Label>
+              <Select
+                value={frenteId}
+                onValueChange={(v) => {
+                  setFrenteId(v);
+                  setCategory('');
+                  setSubcategory('');
+                }}
+                disabled={loadingCategories}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingCategories ? 'Carregando...' : 'Selecione a frente de atuação'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sem-frente">Sem Frente de Atuação</SelectItem>
+                  {frentes.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                        {f.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Categoria</Label>
               <Select
                 value={category}
                 onValueChange={(v) => {
                   setCategory(v);
                   setSubcategory('');
                 }}
-                disabled={loadingCategories}
+                disabled={!frenteId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingCategories ? 'Carregando...' : 'Selecione a categoria'} />
+                  <SelectValue placeholder={!frenteId ? 'Selecione a frente primeiro' : 'Selecione a categoria'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(categoriesConfig).map(([key, cfg]) => (
+                  {categoriesByFrente.map(([key, cfg]) => (
                     <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
                   ))}
                 </SelectContent>
