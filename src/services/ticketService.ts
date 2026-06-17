@@ -1273,7 +1273,9 @@ static async transferTicket(ticketId: string, newSupportId: string, newSupportNa
     }
 
     console.log('Ticket transferido com sucesso, dados atualizados:', data);
-    return mapFromDatabase(data);
+    const ticket = mapFromDatabase(data);
+    void notifyTicketWhatsApp(ticket.id);
+    return ticket;
   } catch (error) {
     console.error('Erro em transferTicket:', error);
     throw error;
