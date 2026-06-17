@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -16,9 +17,11 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
-import { UserPlus, Building2, RefreshCw } from 'lucide-react';
+import { UserPlus, Building2, RefreshCw, Search, Tag, AlertCircle } from 'lucide-react';
 import { UserService } from '@/services/userService';
 import { DepartmentService } from '@/services/departmentService';
+import { CategoryService } from '@/services/categoryService';
+import { TicketService } from '@/services/ticketService';
 import { User } from '@/types';
 import { toast } from 'sonner';
 
@@ -34,11 +37,18 @@ function getRoleLabel(role: string): string {
   return (ROLE_LABELS[r] ?? role) || '—';
 }
 
+type CategoriesConfig = Record<
+  string,
+  { label: string; tagId?: string; subcategories: { value: string; label: string; slaHours: number }[] }
+>;
+
 interface TransferTicketModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   ticketId: string;
   currentAssignee?: string;
+  currentCategory?: string;
+  currentSubcategory?: string;
   supportUsers?: User[];
   onTransfer: (supportId: string, supportName: string) => Promise<void>;
 }
@@ -48,6 +58,8 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
   onOpenChange,
   ticketId,
   currentAssignee,
+  currentCategory = '',
+  currentSubcategory = '',
   supportUsers: supportUsersProp = [],
   onTransfer,
 }) => {
@@ -55,45 +67,82 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
   const [supportUsers, setSupportUsers] = useState<User[]>([]);
   const [selectedDept, setSelectedDept] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Categoria / Subcategoria
+  const [categoriesConfig, setCategoriesConfig] = useState<CategoriesConfig>({});
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [category, setCategory] = useState<string>('');
+  const [subcategory, setSubcategory] = useState<string>('');
 
   useEffect(() => {
     if (!open) return;
     const load = async () => {
       setLoadingUsers(true);
+      setLoadingCategories(true);
       try {
-        const [usersRes, deptsRes] = await Promise.allSettled([
+        const [usersRes, deptsRes, catsRes] = await Promise.allSettled([
           supportUsersProp.length > 0
             ? Promise.resolve(supportUsersProp)
             : UserService.getSupportUsers(),
           DepartmentService.getActiveDepartments(),
+          CategoryService.getCategoriesConfig(),
         ]);
         const users = usersRes.status === 'fulfilled' ? usersRes.value : [];
         const depts = deptsRes.status === 'fulfilled' ? deptsRes.value : [];
+        const cats = catsRes.status === 'fulfilled' ? catsRes.value : {};
         if (usersRes.status === 'rejected') {
           toast.error('Erro ao carregar usuários');
         }
         const filtered = users.filter((u) => u.id !== currentAssignee);
         setSupportUsers(filtered);
         setDepartments(depts);
+        setCategoriesConfig(cats);
         setSelectedDept('all');
         setSelectedUser('');
+        setSearchTerm('');
+        // Pré-preencher com a categoria/subcategoria atual do ticket
+        setCategory(currentCategory || '');
+        setSubcategory(currentSubcategory || '');
       } catch (e) {
         console.error(e);
         toast.error('Erro ao carregar dados');
       } finally {
         setLoadingUsers(false);
+        setLoadingCategories(false);
       }
     };
     load();
-  }, [open, currentAssignee, supportUsersProp]);
+  }, [open, currentAssignee, supportUsersProp, currentCategory, currentSubcategory]);
 
-  const filteredUsers = selectedDept === 'all'
-    ? supportUsers
-    : supportUsers.filter((u) => String(u.department ?? '').trim() === selectedDept);
+  const subcategories = category ? categoriesConfig[category]?.subcategories ?? [] : [];
+
+  const filteredUsers = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return supportUsers.filter((u) => {
+      const matchesDept =
+        selectedDept === 'all' || String(u.department ?? '').trim() === selectedDept;
+      const matchesSearch =
+        term === '' ||
+        u.name.toLowerCase().includes(term) ||
+        getRoleLabel(u.role).toLowerCase().includes(term) ||
+        String(u.department ?? '').toLowerCase().includes(term);
+      return matchesDept && matchesSearch;
+    });
+  }, [supportUsers, selectedDept, searchTerm]);
+
+  const categoryChanged =
+    category !== (currentCategory || '') || subcategory !== (currentSubcategory || '');
+
+  const canTransfer = !!selectedUser && !!category && !!subcategory && !loading;
 
   const handleTransfer = async () => {
+    if (!category || !subcategory) {
+      toast.error('Selecione a categoria e a subcategoria antes de transferir');
+      return;
+    }
     if (!selectedUser) {
       toast.error('Selecione um usuário');
       return;
@@ -102,6 +151,10 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
     if (!u) return;
     setLoading(true);
     try {
+      // Atualizar categoria/subcategoria antes de transferir (garante notificação correta)
+      if (categoryChanged) {
+        await TicketService.updateTicket(ticketId, { category, subcategory });
+      }
       await onTransfer(selectedUser, u.name);
       onOpenChange(false);
       toast.success(`Ticket transferido para ${u.name}`);
@@ -123,6 +176,56 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* Passo 1: Categoria / Subcategoria */}
+          <div className="rounded-lg border border-[#F69F19]/30 bg-[#F69F19]/5 p-3 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-[#F69F19] mt-0.5 shrink-0" />
+              <p className="text-xs text-slate-600">
+                Confirme ou ajuste a <strong>categoria</strong> do ticket antes de transferir. Ela
+                define as notificações automáticas (ex: aviso no WhatsApp).
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2 text-sm font-medium">
+                <Tag className="h-4 w-4 text-slate-500" />
+                Categoria
+              </Label>
+              <Select
+                value={category}
+                onValueChange={(v) => {
+                  setCategory(v);
+                  setSubcategory('');
+                }}
+                disabled={loadingCategories}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingCategories ? 'Carregando...' : 'Selecione a categoria'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(categoriesConfig).map(([key, cfg]) => (
+                    <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Subcategoria</Label>
+              <Select value={subcategory} onValueChange={setSubcategory} disabled={!category}>
+                <SelectTrigger>
+                  <SelectValue placeholder={!category ? 'Selecione a categoria primeiro' : 'Selecione a subcategoria'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {subcategories.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Passo 2: Filtro por departamento + busca */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2 text-sm font-medium">
               <Building2 className="h-4 w-4 text-slate-500" />
@@ -143,18 +246,29 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
 
           <div className="space-y-2">
             <Label className="text-sm font-medium">Usuários</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Buscar por nome, perfil ou departamento..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
             {loadingUsers ? (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="h-6 w-6 animate-spin text-[#F69F19]" />
               </div>
             ) : filteredUsers.length === 0 ? (
               <p className="text-sm text-slate-500 py-4 text-center">
-                {selectedDept === 'all'
-                  ? 'Nenhum usuário disponível para transferência.'
-                  : 'Nenhum usuário neste departamento.'}
+                {searchTerm.trim()
+                  ? 'Nenhum usuário encontrado para a busca.'
+                  : selectedDept === 'all'
+                    ? 'Nenhum usuário disponível para transferência.'
+                    : 'Nenhum usuário neste departamento.'}
               </p>
             ) : (
-              <ScrollArea className="h-[220px] rounded-md border p-1">
+              <ScrollArea className="h-[200px] rounded-md border p-1">
                 <div className="space-y-1">
                   {filteredUsers.map((u) => (
                     <button
@@ -194,7 +308,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
           </Button>
           <Button
             onClick={handleTransfer}
-            disabled={!selectedUser || loading}
+            disabled={!canTransfer}
             className="bg-[#F69F19] hover:bg-[#e08e12] text-white"
           >
             {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Transferir'}
