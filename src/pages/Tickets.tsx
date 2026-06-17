@@ -7,6 +7,7 @@ import { AlertCircle, X, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
+import { notifyTicketWhatsApp } from '@/services/evolutionEdgeService';
 import { UserService } from '@/services/userService';
 import TicketHeader from '@/components/TicketHeader';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
@@ -1187,13 +1188,16 @@ const handleAssignTicket = async (ticketId: string, supportUserId: string) => {
     // Encontrar o nome do usuário de suporte pelo ID
     const supportUser = supportUsers.find(user => user.id === supportUserId);
     const supportUserName = supportUser ? supportUser.name : "Usuário de suporte";
-    
+
     // Atualizar o ticket com o ID e o nome do usuário atribuído
-    await handleUpdateTicket(ticketId, { 
+    await handleUpdateTicket(ticketId, {
       assignedTo: supportUserId,
       assignedToName: supportUserName,
       status: 'in_progress'
     });
+
+    // Disparar notificação WhatsApp para categorias configuradas (ex: T.I)
+    void notifyTicketWhatsApp(ticketId);
   } catch (error) {
     console.error('Error assigning ticket:', error);
     toast.error('Erro ao atribuir ticket');
