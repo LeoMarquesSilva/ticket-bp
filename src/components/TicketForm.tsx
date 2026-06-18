@@ -304,45 +304,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
         </div>
       ) : (
         <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-          {!isDcCategory && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="title" className="text-[#2C2D2F] font-medium">Título</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Digite um título breve para o ticket"
-                  className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.title ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
-                />
-                {errors.title && (
-                  <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    {errors.title}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-[#2C2D2F] font-medium">Descrição</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Descreva seu problema ou solicitação em detalhes"
-                  rows={5}
-                  className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.description ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
-                />
-                {errors.description && (
-                  <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    {errors.description}
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-
+          {/* 2º passo: Categoria e Subcategoria */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="category" className="text-[#2C2D2F] font-medium">Categoria</Label>
@@ -397,27 +359,75 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
             </div>
           </div>
 
-          {isDcCategory && subcategory && (
-            <DesenvolvimentoContinuoFields
-              data={dcForm}
-              onChange={setDcForm}
-              errors={errors}
-              users={dcUsers}
-              departments={dcDepartments}
-              loading={dcOptionsLoading}
-            />
-          )}
+          {/* 3º passo: campos da solicitação - só após escolher categoria e subcategoria */}
+          {!category || !subcategory ? (
+            <div className="text-center py-8 px-4 text-sm text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
+              Selecione a categoria e a subcategoria para preencher os demais campos.
+            </div>
+          ) : (
+            <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+              {!isDcCategory && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="title" className="text-[#2C2D2F] font-medium">Título</Label>
+                    <Input
+                      id="title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Digite um título breve para o ticket"
+                      className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.title ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
+                    />
+                    {errors.title && (
+                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        {errors.title}
+                      </p>
+                    )}
+                  </div>
 
-          {slaHours !== null && (
-            <div className="bg-[#F69F19]/5 p-4 rounded-lg border border-[#F69F19]/20 animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center text-sm text-slate-700">
-                <div className="p-1.5 bg-white rounded-full shadow-sm mr-3">
-                  <Clock className="h-4 w-4 text-[#F69F19]" />
+                  <div className="space-y-2">
+                    <Label htmlFor="description" className="text-[#2C2D2F] font-medium">Descrição</Label>
+                    <Textarea
+                      id="description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Descreva seu problema ou solicitação em detalhes"
+                      rows={5}
+                      className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 transition-all ${errors.description ? 'border-[#BD2D29] focus:ring-[#BD2D29]/20' : ''}`}
+                    />
+                    {errors.description && (
+                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        {errors.description}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {isDcCategory && (
+                <DesenvolvimentoContinuoFields
+                  data={dcForm}
+                  onChange={setDcForm}
+                  errors={errors}
+                  users={dcUsers}
+                  departments={dcDepartments}
+                  loading={dcOptionsLoading}
+                />
+              )}
+
+              {slaHours !== null && (
+                <div className="bg-[#F69F19]/5 p-4 rounded-lg border border-[#F69F19]/20 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center text-sm text-slate-700">
+                    <div className="p-1.5 bg-white rounded-full shadow-sm mr-3">
+                      <Clock className="h-4 w-4 text-[#F69F19]" />
+                    </div>
+                    <span>
+                      Tempo estimado de atendimento: <strong>{slaHours} {slaHours === 1 ? 'hora' : 'horas'}</strong>
+                    </span>
+                  </div>
                 </div>
-                <span>
-                  Tempo estimado de atendimento: <strong>{slaHours} {slaHours === 1 ? 'hora' : 'horas'}</strong>
-                </span>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -435,7 +445,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
         </Button>
         <Button
           type="submit"
-          disabled={isSubmitting || !frenteId}
+          disabled={isSubmitting || !frenteId || !category || !subcategory}
           className="text-white font-bold shadow-md border-0 hover:opacity-90 transition-opacity"
           style={{ background: brandGradient }}
         >
