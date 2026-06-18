@@ -461,194 +461,207 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                 </Button>
               </div>
 
-              {!isDcCategory && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="title" className="text-[#2C2D2F]">Título do Ticket</Label>
-                    <Input
-                      id="title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Ex: Problema com senha do tribunal"
-                      className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.title ? 'border-[#BD2D29]' : ''}`}
-                    />
-                    {errors.title && (
-                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        {errors.title}
-                      </p>
+              {/* 1º passo: Frente de Atuação */}
+              <div className="space-y-2">
+                <Label htmlFor="frente" className="text-[#2C2D2F]">Frente de Atuação <span className="text-red-500">*</span></Label>
+                <Select value={frenteId} onValueChange={setFrenteId}>
+                  <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.frente ? 'border-[#BD2D29]' : ''}`}>
+                    <SelectValue placeholder="Selecione a frente de atuação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingCategories ? (
+                      <div className="px-2 py-1.5 text-sm text-slate-500">Carregando...</div>
+                    ) : (
+                      <>
+                        <SelectItem value="sem-frente">Sem Frente de Atuação</SelectItem>
+                        {frentes.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            <span className="flex items-center gap-2">
+                              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                              {f.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </>
                     )}
-                  </div>
+                  </SelectContent>
+                </Select>
+                {errors.frente && (
+                  <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    {errors.frente}
+                  </p>
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="description" className="text-[#2C2D2F]">Descrição do Problema/Solicitação</Label>
-                    <Textarea
-                      id="description"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Descreva o que o usuário relatou ou solicitou..."
-                      rows={4}
-                      className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.description ? 'border-[#BD2D29]' : ''}`}
-                    />
-                    {errors.description && (
-                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        {errors.description}
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="frente" className="text-[#2C2D2F]">Frente de Atuação</Label>
-                  <Select value={frenteId} onValueChange={setFrenteId}>
-                    <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.frente ? 'border-[#BD2D29]' : ''}`}>
-                      <SelectValue placeholder="Selecione a frente de atuação" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingCategories ? (
-                        <div className="px-2 py-1.5 text-sm text-slate-500">Carregando...</div>
-                      ) : (
-                        <>
-                          <SelectItem value="sem-frente">Sem Frente de Atuação</SelectItem>
-                          {frentes.map((f) => (
-                            <SelectItem key={f.id} value={f.id}>
-                              <span className="flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
-                                {f.label}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {errors.frente && (
-                    <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      {errors.frente}
-                    </p>
-                  )}
+              {!frenteId ? (
+                <div className="text-center py-8 px-4 text-sm text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
+                  Selecione a frente de atuação acima para preencher o restante da solicitação.
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="category" className="text-[#2C2D2F]">Categoria</Label>
-                    <Select value={category} onValueChange={setCategory} disabled={!frenteId}>
-                      <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.category ? 'border-[#BD2D29]' : ''}`}>
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {!frenteId ? (
-                          <div className="px-2 py-1.5 text-sm text-slate-500">Selecione primeiro a frente de atuação</div>
-                        ) : (
-                          categoriesByFrente.map(([key, config]) => (
+              ) : (
+                <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                  {/* 2º passo: Categoria e Subcategoria */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="category" className="text-[#2C2D2F]">Categoria</Label>
+                      <Select value={category} onValueChange={setCategory} disabled={!frenteId}>
+                        <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.category ? 'border-[#BD2D29]' : ''}`}>
+                          <SelectValue placeholder="Selecione" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoriesByFrente.map(([key, config]) => (
                             <SelectItem key={key} value={key}>
                               {config.label}
                             </SelectItem>
-                          ))
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.category && (
+                        <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          {errors.category}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="subcategory" className="text-[#2C2D2F]">Subcategoria</Label>
+                      <Select
+                        value={subcategory}
+                        onValueChange={setSubcategory}
+                        disabled={!category}
+                      >
+                        <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.subcategory ? 'border-[#BD2D29]' : ''}`}>
+                          <SelectValue placeholder="Selecione" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {category && categoriesConfig[category]?.subcategories.map((sub) => (
+                            <SelectItem key={sub.value} value={sub.value}>
+                              {sub.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.subcategory && (
+                        <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          {errors.subcategory}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3º passo: campos da solicitação - só após escolher categoria e subcategoria */}
+                  {!category || !subcategory ? (
+                    <div className="text-center py-8 px-4 text-sm text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
+                      Selecione a categoria e a subcategoria para preencher os demais campos.
+                    </div>
+                  ) : (
+                    <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                      {!isDcCategory && (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="title" className="text-[#2C2D2F]">Título do Ticket</Label>
+                            <Input
+                              id="title"
+                              value={title}
+                              onChange={(e) => setTitle(e.target.value)}
+                              placeholder="Ex: Problema com senha do tribunal"
+                              className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.title ? 'border-[#BD2D29]' : ''}`}
+                            />
+                            {errors.title && (
+                              <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                {errors.title}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="description" className="text-[#2C2D2F]">Descrição do Problema/Solicitação</Label>
+                            <Textarea
+                              id="description"
+                              value={description}
+                              onChange={(e) => setDescription(e.target.value)}
+                              placeholder="Descreva o que o usuário relatou ou solicitou..."
+                              rows={4}
+                              className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.description ? 'border-[#BD2D29]' : ''}`}
+                            />
+                            {errors.description && (
+                              <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                {errors.description}
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {isDcCategory && (
+                        <DesenvolvimentoContinuoFields
+                          data={dcForm}
+                          onChange={setDcForm}
+                          errors={errors}
+                          users={dcUsers}
+                          departments={dcDepartments}
+                          loading={dcOptionsLoading}
+                        />
+                      )}
+
+                      {slaHours !== null && (
+                        <div className="bg-[#F69F19]/5 p-3 rounded-md border border-[#F69F19]/20 flex items-center gap-3">
+                          <div className="p-1.5 bg-white rounded-full shadow-sm">
+                            <Clock className="h-4 w-4 text-[#F69F19]" />
+                          </div>
+                          <span className="text-sm text-slate-700">
+                            Tempo estimado de atendimento: <strong>{slaHours} {slaHours === 1 ? 'hora' : 'horas'}</strong>
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="border-t border-slate-100 pt-4 mt-2">
+                        <div className="flex items-center space-x-2 mb-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <Switch
+                            id="resolved"
+                            checked={isAlreadyResolved}
+                            onCheckedChange={setIsAlreadyResolved}
+                            className="data-[state=checked]:bg-[#F69F19]"
+                          />
+                          <Label htmlFor="resolved" className="text-sm font-medium text-[#2C2D2F] cursor-pointer">
+                            Este problema já foi resolvido presencialmente
+                          </Label>
+                        </div>
+
+                        {isAlreadyResolved && (
+                          <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <Label htmlFor="resolution" className="text-[#2C2D2F]">Resolução Aplicada</Label>
+                            <Textarea
+                              id="resolution"
+                              value={resolution}
+                              onChange={(e) => setResolution(e.target.value)}
+                              placeholder="Descreva como o problema foi resolvido..."
+                              rows={3}
+                              className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.resolution ? 'border-[#BD2D29]' : ''}`}
+                            />
+                            {errors.resolution && (
+                              <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                {errors.resolution}
+                              </p>
+                            )}
+                            <Alert className="bg-green-50 border-green-200 mt-2">
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              <AlertDescription className="text-green-800 text-xs">
+                                O ticket será criado como <strong>resolvido</strong> e o usuário receberá uma notificação para avaliar o atendimento.
+                              </AlertDescription>
+                            </Alert>
+                          </div>
                         )}
-                      </SelectContent>
-                    </Select>
-                    {errors.category && (
-                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        {errors.category}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="subcategory" className="text-[#2C2D2F]">Subcategoria</Label>
-                    <Select
-                      value={subcategory}
-                      onValueChange={setSubcategory}
-                      disabled={!category}
-                    >
-                      <SelectTrigger className={`border-slate-300 focus:ring-[#F69F19]/20 ${errors.subcategory ? 'border-[#BD2D29]' : ''}`}>
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {category && categoriesConfig[category]?.subcategories.map((sub) => (
-                          <SelectItem key={sub.value} value={sub.value}>
-                            {sub.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.subcategory && (
-                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        {errors.subcategory}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {isDcCategory && subcategory && (
-                  <DesenvolvimentoContinuoFields
-                    data={dcForm}
-                    onChange={setDcForm}
-                    errors={errors}
-                    users={dcUsers}
-                    departments={dcDepartments}
-                    loading={dcOptionsLoading}
-                  />
-                )}
-              </div>
-
-              {slaHours !== null && (
-                <div className="bg-[#F69F19]/5 p-3 rounded-md border border-[#F69F19]/20 flex items-center gap-3">
-                  <div className="p-1.5 bg-white rounded-full shadow-sm">
-                    <Clock className="h-4 w-4 text-[#F69F19]" />
-                  </div>
-                  <span className="text-sm text-slate-700">
-                    Tempo estimado de atendimento: <strong>{slaHours} {slaHours === 1 ? 'hora' : 'horas'}</strong>
-                  </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-
-              <div className="border-t border-slate-100 pt-4 mt-2">
-                <div className="flex items-center space-x-2 mb-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                  <Switch
-                    id="resolved"
-                    checked={isAlreadyResolved}
-                    onCheckedChange={setIsAlreadyResolved}
-                    className="data-[state=checked]:bg-[#F69F19]"
-                  />
-                  <Label htmlFor="resolved" className="text-sm font-medium text-[#2C2D2F] cursor-pointer">
-                    Este problema já foi resolvido presencialmente
-                  </Label>
-                </div>
-
-                {isAlreadyResolved && (
-                  <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <Label htmlFor="resolution" className="text-[#2C2D2F]">Resolução Aplicada</Label>
-                    <Textarea
-                      id="resolution"
-                      value={resolution}
-                      onChange={(e) => setResolution(e.target.value)}
-                      placeholder="Descreva como o problema foi resolvido..."
-                      rows={3}
-                      className={`border-slate-300 focus:border-[#F69F19] focus:ring-[#F69F19]/20 ${errors.resolution ? 'border-[#BD2D29]' : ''}`}
-                    />
-                    {errors.resolution && (
-                      <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        {errors.resolution}
-                      </p>
-                    )}
-                    <Alert className="bg-green-50 border-green-200 mt-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <AlertDescription className="text-green-800 text-xs">
-                        O ticket será criado como <strong>resolvido</strong> e o usuário receberá uma notificação para avaliar o atendimento.
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-                )}
-              </div>
 
               <DialogFooter className="flex justify-between pt-2 gap-2">
                 <Button
@@ -673,7 +686,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                   </Button>
                   <Button
                     onClick={handleSubmit}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !frenteId || !category || !subcategory}
                     className="text-white font-bold shadow-md border-0"
                     style={{ background: brandGradient }}
                   >
