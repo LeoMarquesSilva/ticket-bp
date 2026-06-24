@@ -1,16 +1,15 @@
 /**
  * API serverless (Vercel) para enviar Web Push quando há nova mensagem ou ticket.
- * Configure no Supabase: Database Webhook POST para esta URL.
- *
- * Variáveis de ambiente (Vercel):
- * - VAPID_PUBLIC_KEY
- * - VAPID_PRIVATE_KEY
- * - SUPABASE_URL (ex: https://xxx.supabase.co)
- * - SUPABASE_SERVICE_ROLE_KEY
- * - APP_URL (ex: https://seu-dominio.vercel.app) - usado no link da notificação
+ * Regras de destinatário: api/shared/notificationRules.mjs (espelho de notificationAccessUtils.ts).
  */
 
 import { createRequire } from 'module';
+import {
+  getMessageRecipientUserIds,
+  getNewTicketRecipientUserIds,
+  normalizeNotifyUserId,
+} from './shared/notificationRules.mjs';
+
 const require = createRequire(import.meta.url);
 const { createClient } = require('@supabase/supabase-js');
 
@@ -73,10 +72,11 @@ export default async function handler(req, res) {
         return res.status(200).json({ sent: 0 });
       }
 
-      const toNotify = new Set();
-      if (ticket.created_by && ticket.created_by !== senderUserId) toNotify.add(ticket.created_by);
-      if (ticket.assigned_to && ticket.assigned_to !== senderUserId) toNotify.add(ticket.assigned_to);
-      const userIds = [...toNotify];
+      const ctx = {
+        requester: normalizeNotifyUserId(ticket.created_by),
+        assignee: normalizeNotifyUserId(ticket.assigned_to),
+      };
+      const userIds = getMessageRecipientUserIds(ctx, senderUserId);
       if (userIds.length === 0) return res.status(200).json({ sent: 0 });
 
       const { data: subs } = await supabase
@@ -116,9 +116,20 @@ export default async function handler(req, res) {
 
       const supabase = createClient(supabaseUrl, supabaseKey);
 
+      const ctx = {
+        requester: normalizeNotifyUserId(record.created_by),
+        assignee: normalizeNotifyUserId(record.assigned_to),
+      };
+      const userIds = getNewTicketRecipientUserIds(ctx);
+      if (userIds.length === 0) {
+        console.log('[send-push] Novo ticket sem participantes para push', { ticketId });
+        return res.status(200).json({ sent: 0 });
+      }
+
       const { data: subs } = await supabase
         .from(TABLES.PUSH_SUBSCRIPTIONS)
-        .select('subscription');
+        .select('subscription, user_id')
+        .in('user_id', userIds);
 
       if (!subs || subs.length === 0) return res.status(200).json({ sent: 0 });
 

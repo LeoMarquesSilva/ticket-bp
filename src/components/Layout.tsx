@@ -12,6 +12,7 @@ import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
 import {
   shouldNotifyMessage,
   shouldNotifyNewTicket,
+  shouldNotifyTicketAssigned,
   type TicketNotifyContext,
 } from '@/utils/notificationAccessUtils';
 
@@ -306,7 +307,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         const newAssignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
         const oldAssignedTo = normalizeId((payload.old?.assigned_to as string | null | undefined) ?? null);
-        if (newAssignedTo === normalizedUserId && oldAssignedTo !== normalizedUserId) {
+        if (shouldNotifyTicketAssigned(newAssignedTo, oldAssignedTo, normalizedUserId!)) {
           console.info('[notify] notify_ticket_assigned', { ticketId, oldAssignedTo, newAssignedTo, userId: normalizedUserId });
           void notifyRef.current({
             type: 'ticket_assigned',
@@ -339,15 +340,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         if (!ticketId) return;
 
         void (async () => {
-          const [ticketContext, access] = await Promise.all([
-            getTicketContext(ticketId),
-            getNotifyAccessOptions(),
-          ]);
-
+          const ticketContext = await getTicketContext(ticketId);
           if (!ticketContext) return;
 
-          const shouldNotify = shouldNotifyMessage(ticketContext, normalizedUserId!, access);
-          if (!shouldNotify) {
+          if (!shouldNotifyMessage(ticketContext, normalizedUserId!)) {
             console.info('[notify] skip_message_received', {
               ticketId,
               category: ticketContext.category,

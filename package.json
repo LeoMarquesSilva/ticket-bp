@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build && cp .nojekyll dist/ && cp public/test.html dist/",
     "lint": "eslint --quiet ./src",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "preview": "vite preview"
@@ -98,6 +100,7 @@
     "tailwindcss": "^3.4.11",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
-    "vite": "^5.4.1"
+    "vite": "^5.4.1",
+    "vitest": "^3.2.4"
   }
 }
