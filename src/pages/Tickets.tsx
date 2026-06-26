@@ -30,6 +30,7 @@ import {
   getCategoryKeysForFrenteIds,
   ticketMatchesFrente,
 } from '@/utils/ticketFilterUtils';
+import { matchesUserTicketFilter } from '@/utils/ticketFiltersUtils';
 import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
 
 interface SupportUser {
@@ -148,6 +149,7 @@ const Tickets = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [assignedFilter, setAssignedFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
+  const [hideResolvedTickets, setHideResolvedTickets] = useState(false);
   // Painel de filtros recolhível: aberto por padrão em telas altas, recolhido em telas baixas
   // (notebooks) para devolver altura à lista de tickets e ao chat.
   const [filtersOpen, setFiltersOpen] = useState<boolean>(
@@ -170,6 +172,46 @@ const Tickets = () => {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCreateForUserModal, setShowCreateForUserModal] = useState(false);
+  const filtersPrefsStorageKey = React.useMemo(
+    () => (user?.id ? `tickets_filters_prefs:${user.id}` : null),
+    [user?.id]
+  );
+
+  useEffect(() => {
+    if (!filtersPrefsStorageKey) return;
+    try {
+      const raw = localStorage.getItem(filtersPrefsStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        userFilter?: string;
+        hideResolvedTickets?: boolean;
+      };
+      if (typeof parsed.userFilter === 'string') {
+        setUserFilter(parsed.userFilter);
+      }
+      if (typeof parsed.hideResolvedTickets === 'boolean') {
+        setHideResolvedTickets(parsed.hideResolvedTickets);
+      }
+    } catch (error) {
+      console.warn('Falha ao carregar preferências de filtros de tickets', error);
+    }
+  }, [filtersPrefsStorageKey]);
+
+  useEffect(() => {
+    if (!filtersPrefsStorageKey) return;
+    try {
+      localStorage.setItem(
+        filtersPrefsStorageKey,
+        JSON.stringify({
+          userFilter,
+          hideResolvedTickets,
+        })
+      );
+    } catch (error) {
+      console.warn('Falha ao salvar preferências de filtros de tickets', error);
+    }
+  }, [filtersPrefsStorageKey, userFilter, hideResolvedTickets]);
+
   const normalizeRole = (role?: string | null) => String(role ?? '').trim().toLowerCase();
   const isStaffRole = (role?: string | null) => {
     const normalized = normalizeRole(role);
@@ -206,6 +248,8 @@ const Tickets = () => {
   const channelRetryTimerRef = useRef<Record<string, NodeJS.Timeout | null>>({});
   const selectedTicketIdRef = useRef<string | null>(null);
   const lastMessageReconcileAtRef = useRef<Record<string, number>>({});
+  const ticketsRef = useRef<Ticket[]>([]);
+  const chatOpenRef = useRef(false);
   
   const canCreateTicketForUser = has('create_ticket_for_user');
   const isAssignedOnly = isAssignedOnlyRole(user?.role);
@@ -806,13 +850,13 @@ const setupGlobalMessagesChannel = () => {
     }
     
     // Verificar se a mensagem é de um ticket que o usuário pode ver
-    const ticket = tickets.find(t => t.id === newMessage.ticketId);
+    const ticket = ticketsRef.current.find(t => t.id === newMessage.ticketId);
     if (!ticket) {
       return; // Ticket não encontrado ou usuário não tem acesso
     }
     
     // Verificar se o ticket NÃO está aberto no chat atual
-    const isCurrentTicket = selectedTicket?.id === newMessage.ticketId && showChat;
+    const isCurrentTicket = selectedTicketIdRef.current === newMessage.ticketId && chatOpenRef.current;
     
     if (!isCurrentTicket) {
       // Atualizar contador de mensagens não lidas EM TEMPO REAL
@@ -962,12 +1006,18 @@ useEffect(() => {
 // Mantém o contexto de chat ativo sincronizado com o estado visual real.
 useEffect(() => {
   if (showChat && selectedTicket?.id) {
+    chatOpenRef.current = true;
     setActiveChatId(selectedTicket.id);
     return;
   }
 
+  chatOpenRef.current = false;
   setActiveChatId(null);
 }, [showChat, selectedTicket?.id, setActiveChatId]);
+
+useEffect(() => {
+  ticketsRef.current = tickets;
+}, [tickets]);
 
   // Configurar canal de mensagens quando o ticket selecionado mudar
   useEffect(() => {
@@ -1490,6 +1540,8 @@ const openChat = (ticket: Ticket) => {
   
   setSelectedTicket(ticket);
   setShowChat(true);
+  selectedTicketIdRef.current = ticket.id;
+  chatOpenRef.current = true;
   setActiveChatId(ticket.id); // 🎯 NOVA LINHA
   
   // Marcar mensagens como lidas quando abrir o chat
@@ -1501,6 +1553,8 @@ const openChat = (ticket: Ticket) => {
 const closeChat = () => {
   setShowChat(false);
   setSelectedTicket(null);
+  selectedTicketIdRef.current = null;
+  chatOpenRef.current = false;
   setChatMessages([]);
   setNewMessage('');
   setUploadingFiles([]);
@@ -1522,77 +1576,114 @@ const handleFeedbackSubmitted = () => {
 // Funções para filtrar tickets
 const getFilteredTickets = () => {
   const searchLower = searchTerm.trim().toLowerCase();
+  const statusPriority = (status: Ticket['status']) => {
+    switch (status) {
+      case 'in_progress':
+        return 0;
+      case 'open':
+      case 'assigned':
+        return 1;
+      case 'resolved':
+        return 2;
+      default:
+        return 3;
+    }
+  };
 
-  return tickets.filter((ticket) => {
-    const categoryLabel = categoriesConfig[ticket.category]?.label ?? '';
-    const subcategoryLabel =
-      categoriesConfig[ticket.category]?.subcategories?.find((s) => s.value === ticket.subcategory)
-        ?.label ?? '';
-
-    const matchesSearch =
-      searchLower === '' ||
-      [
-        ticket.title,
-        ticket.description,
-        ticket.id,
-        ticket.createdByName,
-        ticket.assignedToName,
-        categoryLabel,
-        subcategoryLabel,
-        ticket.subcategory,
-      ].some((field) => field?.toLowerCase().includes(searchLower));
-
-    const matchesStatus =
-      statusFilter === 'all' ||
-      ticket.status === statusFilter ||
-      (statusFilter === 'open' && ticket.status === 'assigned');
-
-    const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
-
-    const matchesFrente = (() => {
-      if (isFrenteRestricted && user?.id) {
-        const inScope = FrenteAccessService.canUserAccessTicket(
-          ticket,
-          user.id,
-          userCategoryKeys,
-          strictFrenteOnly
-        );
-        if (!inScope) return false;
-        if (frenteFilter === 'all') return true;
-        return (
-          ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig) ||
-          ticket.createdBy === user.id ||
-          ticket.assignedTo === user.id
-        );
+  return tickets
+    .filter((ticket) => {
+      if (hideResolvedTickets && ticket.status === 'resolved') {
+        return false;
       }
-      return ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig);
-    })();
 
-    const matchesAssigned =
-      assignedFilter === 'all' ||
-      (assignedFilter === 'assigned' && Boolean(ticket.assignedTo)) ||
-      (assignedFilter === 'unassigned' && !ticket.assignedTo);
+      const categoryLabel = categoriesConfig[ticket.category]?.label ?? '';
+      const subcategoryLabel =
+        categoriesConfig[ticket.category]?.subcategories?.find((s) => s.value === ticket.subcategory)
+          ?.label ?? '';
 
-    const matchesUser =
-      userFilter === 'all' ||
-      (userFilter === 'mine' && ticket.assignedTo === user?.id) ||
-      (userFilter !== 'mine' && userFilter !== 'all' && ticket.assignedTo === userFilter);
+      const matchesSearch =
+        searchLower === '' ||
+        [
+          ticket.title,
+          ticket.description,
+          ticket.id,
+          ticket.createdByName,
+          ticket.assignedToName,
+          categoryLabel,
+          subcategoryLabel,
+          ticket.subcategory,
+        ].some((field) => field?.toLowerCase().includes(searchLower));
 
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesCategory &&
-      matchesFrente &&
-      matchesAssigned &&
-      matchesUser
-    );
-  });
+      const matchesStatus =
+        statusFilter === 'all' ||
+        ticket.status === statusFilter ||
+        (statusFilter === 'open' && ticket.status === 'assigned');
+
+      const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
+
+      const matchesFrente = (() => {
+        if (isFrenteRestricted && user?.id) {
+          const inScope = FrenteAccessService.canUserAccessTicket(
+            ticket,
+            user.id,
+            userCategoryKeys,
+            strictFrenteOnly
+          );
+          if (!inScope) return false;
+          if (frenteFilter === 'all') return true;
+          return (
+            ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig) ||
+            ticket.createdBy === user.id ||
+            ticket.assignedTo === user.id
+          );
+        }
+        return ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig);
+      })();
+
+      const matchesAssigned =
+        assignedFilter === 'all' ||
+        (assignedFilter === 'assigned' && Boolean(ticket.assignedTo)) ||
+        (assignedFilter === 'unassigned' && !ticket.assignedTo);
+
+      const matchesUser = matchesUserTicketFilter(ticket, user?.id, userFilter);
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesCategory &&
+        matchesFrente &&
+        matchesAssigned &&
+        matchesUser
+      );
+    })
+    .sort((a, b) => {
+      const priorityDiff = statusPriority(a.status) - statusPriority(b.status);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
 };
+
+const filteredTickets = React.useMemo(
+  () => getFilteredTickets(),
+  [
+    tickets,
+    hideResolvedTickets,
+    searchTerm,
+    statusFilter,
+    categoryFilter,
+    frenteFilter,
+    assignedFilter,
+    userFilter,
+    categoriesConfig,
+    isFrenteRestricted,
+    strictFrenteOnly,
+    userCategoryKeys,
+    user?.id,
+  ]
+);
 
 // Organizar tickets por status para o quadro Kanban
 const getTicketsByStatus = () => {
-  const filteredTickets = getFilteredTickets();
-
   // Fluxo ativo: open → in_progress → resolved (status "assigned" é legado, exibido em Abertos)
   return {
     open: filteredTickets.filter(
@@ -1605,8 +1696,6 @@ const getTicketsByStatus = () => {
 
 // Organizar tickets por usuário para o quadro de usuários
 const getTicketsByUser = () => {
-  const filteredTickets = getFilteredTickets();
-
   const result: Record<string, Ticket[]> = {
     unassigned: filteredTickets.filter(ticket => !ticket.assignedTo)
   };
@@ -1617,22 +1706,6 @@ const getTicketsByUser = () => {
   });
   
   return result;
-};
-
-// Funções para cores de status e prioridade
-const getPriorityColor = (priority: string) => {
-  switch (priority) {
-    case 'urgent':
-      return 'bg-[#BD2D29]/10 text-[#BD2D29] border-[#BD2D29]/20';
-    case 'high':
-      return 'bg-[#DE5532]/10 text-[#DE5532] border-[#DE5532]/20';
-    case 'medium':
-      return 'bg-[#F69F19]/10 text-[#F69F19] border-[#F69F19]/20';
-    case 'low':
-      return 'bg-[#2C2D2F]/10 text-[#2C2D2F] border-[#2C2D2F]/20';
-    default:
-      return 'bg-gray-100 text-[#2C2D2F] border-gray-200';
-  }
 };
 
 const getStatusColor = (status: string) => {
@@ -1658,13 +1731,25 @@ const renderTicketCard = (ticket: Ticket) => {
       selectedTicketId={selectedTicket?.id}
       unreadCount={unreadMessages[ticket.id] || 0}
       onClick={() => openChat(ticket)}
-      getPriorityColor={getPriorityColor}
       getStatusColor={getStatusColor}
       isTicketFinalized={isTicketFinalized}
       compact={showChat}
     />
   );
 };
+
+const headerStats = React.useMemo(() => {
+  if (loading) {
+    return { open: 0, inProgress: 0, resolved: 0, loading: true };
+  }
+
+  return {
+    open: filteredTickets.filter((ticket) => ticket.status === 'open' || ticket.status === 'assigned').length,
+    inProgress: filteredTickets.filter((ticket) => ticket.status === 'in_progress').length,
+    resolved: filteredTickets.filter((ticket) => ticket.status === 'resolved').length,
+    loading: false,
+  };
+}, [filteredTickets, loading]);
 
 return (
   <div className="flex flex-col overflow-hidden w-full h-[calc(100dvh-var(--layout-chrome-height))] max-h-[calc(100dvh-var(--layout-chrome-height))] pb-2 sm:pb-3 lg:pb-4">
@@ -1685,6 +1770,11 @@ return (
         setShowCreateForUserModal={setShowCreateForUserModal}
         supportUsers={supportUsers}
         user={user}
+        userFilter={userFilter}
+        onUserFilterChange={setUserFilter}
+        ticketStatsOverride={headerStats}
+        hideResolvedTickets={hideResolvedTickets}
+        onToggleHideResolvedTickets={() => setHideResolvedTickets((prev) => !prev)}
         canCreateTicket={has('create_ticket')}
         canCreateTicketForUser={canCreateTicketForUser}
         filtersOpen={filtersOpen}
@@ -1779,7 +1869,7 @@ return (
                 <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden border-r border-slate-200 bg-white">
                   {view === 'list' && (
                     <TicketList
-                      filteredTickets={getFilteredTickets()}
+                      filteredTickets={filteredTickets}
                       tickets={tickets}
                       renderTicketCard={renderTicketCard}
                       isChatOpen={false}
@@ -1841,7 +1931,7 @@ return (
                 <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden border-r border-slate-200 bg-white">
                   {view === 'list' && (
                     <TicketList
-                      filteredTickets={getFilteredTickets()}
+                      filteredTickets={filteredTickets}
                       tickets={tickets}
                       renderTicketCard={renderTicketCard}
                       isChatOpen={false}
@@ -1873,7 +1963,7 @@ return (
                     <div className="flex-1 flex flex-col min-h-0 border-r border-slate-200 bg-white">
                       {view === 'list' && (
                         <TicketList
-                          filteredTickets={getFilteredTickets()}
+                          filteredTickets={filteredTickets}
                           tickets={tickets}
                           renderTicketCard={renderTicketCard}
                           isChatOpen={true}

@@ -480,16 +480,6 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     ? (assignedUser?.name || selectedTicket.assignedToName || "Usuário não encontrado") 
     : null;
 
-  const getPriorityLabel = (priority: string) => {
-    switch(priority) {
-      case 'urgent': return 'Urgente';
-      case 'high': return 'Alta';
-      case 'medium': return 'Média';
-      case 'low': return 'Baixa';
-      default: return priority || 'Normal';
-    }
-  };
-
   const getStatusLabel = (status: string) => {
     switch(status) {
       case 'open': return 'Aberto';
@@ -497,17 +487,6 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       case 'in_progress': return 'Em Andamento';
       case 'resolved': return 'Resolvido';
       default: return status;
-    }
-  };
-
-  // Cores atualizadas para a marca
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'bg-[#BD2D29]/10 text-[#BD2D29] border-[#BD2D29]/20';
-      case 'high': return 'bg-[#DE5532]/10 text-[#DE5532] border-[#DE5532]/20';
-      case 'medium': return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'low': return 'bg-slate-100 text-slate-600 border-slate-200';
-      default: return 'bg-slate-100 text-slate-600 border-slate-200';
     }
   };
 
@@ -699,11 +678,6 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   <Badge className={`${getStatusColor(selectedTicket.status)} border text-xs font-medium shadow-sm`}>
                     {getStatusLabel(selectedTicket.status)}
                   </Badge>
-                  {selectedTicket.priority && (
-                    <Badge className={`${getPriorityColor(selectedTicket.priority)} border text-xs font-medium shadow-sm`}>
-                      {getPriorityLabel(selectedTicket.priority)}
-                    </Badge>
-                  )}
                 </div>
               </div>
             </div>

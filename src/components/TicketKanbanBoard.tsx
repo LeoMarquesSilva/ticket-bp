@@ -53,7 +53,7 @@ const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
                 <div className="p-1.5 bg-[#F69F19]/10 rounded-md">
                   <Clock className="h-4 w-4 text-[#F69F19]" />
                 </div>
-                <h3 className="font-bold text-[#DE5532] text-sm uppercase tracking-wide">Em Progresso</h3>
+                <h3 className="font-bold text-[#DE5532] text-sm uppercase tracking-wide">Em andamento</h3>
               </div>
               <Badge className="bg-[#F69F19]/10 text-[#DE5532] border-[#F69F19]/20 font-bold hover:bg-[#F69F19]/20 shadow-none">
                 {ticketsByStatus.in_progress.length}

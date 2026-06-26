@@ -8,7 +8,9 @@ import {
   Filter,
   Circle,
   ChevronDown,
-  UserPlus
+  UserPlus,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { 
   Tooltip, 
@@ -25,6 +27,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase, TABLES } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import ticketEventService from '@/services/ticketEventService';
 import UserAvatar from '@/components/UserAvatar';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -44,7 +48,17 @@ interface TicketHeaderProps {
   view: 'list' | 'board' | 'users';
   setView: (view: 'list' | 'board' | 'users') => void;
   supportUsers: User[];
-  user: { role: string; id?: string; tagId?: string } | null;
+  user: { role: string; id?: string; tagId?: string; name?: string } | null;
+  userFilter: string;
+  onUserFilterChange: (value: string) => void;
+  hideResolvedTickets: boolean;
+  onToggleHideResolvedTickets: () => void;
+  ticketStatsOverride?: {
+    open: number;
+    inProgress: number;
+    resolved: number;
+    loading: boolean;
+  };
   setShowCreateForm: (show: boolean) => void;
   setShowCreateForUserModal?: (show: boolean) => void;
   /** Criar ticket próprio (permissão create_ticket) */
@@ -62,6 +76,11 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   setView,
   supportUsers,
   user,
+  userFilter,
+  onUserFilterChange,
+  hideResolvedTickets,
+  onToggleHideResolvedTickets,
+  ticketStatsOverride,
   setShowCreateForm,
   setShowCreateForUserModal,
   canCreateTicket = false,
@@ -79,6 +98,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   const isAssignedOnly = isAssignedOnlyRole(user?.role);
   const strictFrenteOnly = isStrictFrenteRole(user?.role);
   const isFrenteScoped = isFrenteRestricted && !isAssignedOnly;
+  const onlyMyTickets = userFilter === 'mine';
   const [userCategoryKeys, setUserCategoryKeys] = useState<string[]>([]);
   const [frenteAccessReady, setFrenteAccessReady] = useState(false);
 
@@ -104,6 +124,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
     resolved: 0,
     loading: true
   });
+  const statsToDisplay = ticketStatsOverride ?? ticketStats;
 
   // Referências para controlar inscrições e evitar vazamentos de memória
   const channelRef = useRef<any>(null);
@@ -217,7 +238,11 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         .eq('status', 'resolved');
       
       // Filtrar consultas com base no tipo de usuário
-      if (isUser) {
+      if (onlyMyTickets && user?.id) {
+        openQuery.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
+        inProgressQuery.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
+        resolvedQuery.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
+      } else if (isUser) {
         openQuery.eq('created_by', user.id);
         inProgressQuery.eq('created_by', user.id);
         resolvedQuery.eq('created_by', user.id);
@@ -354,10 +379,11 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [isUser, isSupport, isLawyer, isAdmin, isFrenteScoped, isAssignedOnly, userCategoryKeys.join(','), user?.id, permissionsLoading, frenteAccessReady]);
+  }, [isUser, isSupport, isLawyer, isAdmin, isFrenteScoped, isAssignedOnly, userCategoryKeys.join(','), user?.id, userFilter, permissionsLoading, frenteAccessReady]);
 
   // Função para obter o título das estatísticas com base no tipo de usuário
   const getStatsTitle = () => {
+    if (onlyMyTickets) return "Meus tickets";
     if (isUser) return "Seus tickets";
     if (isAssignedOnly) return "Seus tickets atribuídos";
     if (isFrenteScoped) return "Tickets da sua frente";
@@ -586,8 +612,8 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
           {/* Estatísticas reais do banco de dados - apenas em desktop */}
           <div className="hidden md:flex flex-col items-start">
             <div className="text-xs text-slate-500 mb-1">{getStatsTitle()}</div>
-            <div className="flex items-center gap-3">
-              {ticketStats.loading ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              {statsToDisplay.loading ? (
                 <div className="text-sm text-slate-500 flex items-center">
                   <div className="h-4 w-4 border-2 border-[#F69F19]/30 border-t-[#F69F19] rounded-full animate-spin mr-2"></div>
                   Carregando...
@@ -595,15 +621,31 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
               ) : (
                 <>
                   <Badge variant="outline" className="bg-[#F69F19]/10 text-[#F69F19] border-[#F69F19]/20 px-3 py-1 hover:bg-[#F69F19]/15 transition-colors">
-                    Abertos: <span className="font-bold ml-1">{ticketStats.open}</span>
+                    Abertos: <span className="font-bold ml-1">{statsToDisplay.open}</span>
                   </Badge>
                   <Badge variant="outline" className="bg-[#DE5532]/10 text-[#DE5532] border-[#DE5532]/20 px-3 py-1 hover:bg-[#DE5532]/15 transition-colors">
-                    Em andamento: <span className="font-bold ml-1">{ticketStats.inProgress}</span>
+                    Em andamento: <span className="font-bold ml-1">{statsToDisplay.inProgress}</span>
                   </Badge>
                   <Badge variant="outline" className="bg-[#2C2D2F]/10 text-[#2C2D2F] border-[#2C2D2F]/20 px-3 py-1 hover:bg-[#2C2D2F]/15 transition-colors">
-                    Resolvidos: <span className="font-bold ml-1">{ticketStats.resolved}</span>
+                    Resolvidos: <span className="font-bold ml-1">{statsToDisplay.resolved}</span>
                   </Badge>
                 </>
+              )}
+              {!isUser && user?.id && (
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5">
+                  <Switch
+                    id="header-only-my-tickets"
+                    checked={onlyMyTickets}
+                    onCheckedChange={(checked) => onUserFilterChange(checked ? 'mine' : 'all')}
+                    className="data-[state=checked]:bg-[#F69F19]"
+                  />
+                  <Label
+                    htmlFor="header-only-my-tickets"
+                    className="cursor-pointer text-xs font-medium text-[#2C2D2F]"
+                  >
+                    Meus tickets
+                  </Label>
+                </div>
               )}
             </div>
           </div>
@@ -611,6 +653,28 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         
         {/* Filtros */}
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleHideResolvedTickets}
+            className={cn(
+              'border-[#F69F19]/20 hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5 transition-colors',
+              hideResolvedTickets && 'bg-[#F69F19]/10 border-[#F69F19]/40 text-[#F69F19]'
+            )}
+          >
+            {hideResolvedTickets ? (
+              <>
+                <Eye className="h-4 w-4 mr-2" />
+                Mostrar resolvidos
+              </>
+            ) : (
+              <>
+                <EyeOff className="h-4 w-4 mr-2" />
+                Ocultar resolvidos
+              </>
+            )}
+          </Button>
+
           {/* Botão de Equipe Online para dispositivos móveis */}
           {!isUser && (
             <div className="md:hidden">

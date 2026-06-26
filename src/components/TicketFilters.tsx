@@ -2,12 +2,10 @@ import React, { useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Search, X } from 'lucide-react';
-import UserMention from '@/components/UserMention';
 import type { CategoriesConfigMap } from '@/utils/ticketFilterUtils';
 import { getCategoryKeysForFrente } from '@/utils/ticketFilterUtils';
+import UserMention from '@/components/UserMention';
 
 export interface FilterSupportUser {
   id: string;
@@ -73,13 +71,11 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
     return entries.filter(([key]) => keys.has(key));
   }, [categoriesConfig, frenteFilter, allowedCategoryKeys]);
 
-  const onlyMyTickets = userFilter === 'mine';
-
   const selectedResponsible = useMemo(() => {
-    if (onlyMyTickets && currentUser) return currentUser;
     if (userFilter === 'all') return null;
+    if (userFilter === 'mine' && currentUser) return currentUser;
     return supportUsers.find((u) => u.id === userFilter) ?? null;
-  }, [onlyMyTickets, currentUser, userFilter, supportUsers]);
+  }, [currentUser, userFilter, supportUsers]);
 
   const hasActiveFilters =
     searchTerm.trim() !== '' ||
@@ -149,7 +145,7 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
           <SelectContent>
             <SelectItem value="all">Todos os status</SelectItem>
             <SelectItem value="open">Aberto</SelectItem>
-            <SelectItem value="in_progress">Em progresso</SelectItem>
+              <SelectItem value="in_progress">Em andamento</SelectItem>
             <SelectItem value="resolved">Resolvido</SelectItem>
           </SelectContent>
         </Select>
@@ -189,9 +185,9 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
 
         {isSupport && (
           <Select
-            value={onlyMyTickets ? 'all' : userFilter}
+            value={userFilter === 'mine' ? 'all' : userFilter}
             onValueChange={handleResponsibleChange}
-            disabled={onlyMyTickets}
+            disabled={userFilter === 'mine'}
           >
             <SelectTrigger className="h-auto min-h-10 py-1.5">
               <div className="flex items-center gap-2 min-w-0 flex-1 text-left">
@@ -220,31 +216,6 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
           </Select>
         )}
       </div>
-
-      {isSupport && currentUser && (
-        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100">
-          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2">
-            <Switch
-              id="only-my-tickets"
-              checked={onlyMyTickets}
-              onCheckedChange={(checked) => onUserFilterChange(checked ? 'mine' : 'all')}
-              className="data-[state=checked]:bg-[#F69F19]"
-            />
-            <Label
-              htmlFor="only-my-tickets"
-              className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#2C2D2F]"
-            >
-              <UserMention
-                name={currentUser.name}
-                avatarUrl={currentUser.avatarUrl}
-                size="sm"
-                nameClassName="font-medium"
-              />
-              <span>Mostrar apenas meus tickets</span>
-            </Label>
-          </div>
-        </div>
-      )}
 
       {hasActiveFilters && (
         <div className="flex justify-end">

@@ -801,7 +801,7 @@ const Dashboard = () => {
                           data={[
                             { name: 'Abertos', value: stats.openTickets, color: STATUS_COLORS_MAP.open },
                             { name: 'Atribuídos', value: stats.assignedTickets, color: STATUS_COLORS_MAP.assigned },
-                            { name: 'Em Progresso', value: stats.inProgressTickets, color: STATUS_COLORS_MAP.in_progress },
+                            { name: 'Em andamento', value: stats.inProgressTickets, color: STATUS_COLORS_MAP.in_progress },
                             { name: 'Resolvidos', value: stats.resolvedTickets, color: STATUS_COLORS_MAP.resolved }
                           ]}
                           cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value"

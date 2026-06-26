@@ -2,8 +2,8 @@ import React from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import UserAvatar from '@/components/UserAvatar';
-import { Clock, Calendar, AlertCircle, CheckCircle, UserCheck, MessageSquare, ArrowUpCircle, MinusCircle } from 'lucide-react';
-import { Ticket, TicketStatus, TicketPriority } from '@/types';
+import { Clock, Calendar, AlertCircle, CheckCircle, UserCheck, MessageSquare } from 'lucide-react';
+import { Ticket, TicketStatus } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -12,7 +12,6 @@ interface SimpleTicketCardProps {
   selectedTicketId?: string;
   unreadCount?: number;
   onClick?: () => void;
-  getPriorityColor?: (priority: string) => string;
   getStatusColor?: (status: string) => string;
   isTicketFinalized?: (ticket: Ticket) => boolean;
   compact?: boolean;
@@ -23,27 +22,10 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   selectedTicketId,
   unreadCount = 0,
   onClick,
-  getPriorityColor,
   getStatusColor,
   isTicketFinalized,
   compact = false
 }) => {
-  
-  // Cores de Prioridade ajustadas para a nova paleta
-  const defaultGetPriorityColor = (priority: TicketPriority) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-[#BD2D29]/10 text-[#BD2D29] border-[#BD2D29]/20'; // Vermelho Marca
-      case 'high':
-        return 'bg-[#DE5532]/10 text-[#DE5532] border-[#DE5532]/20'; // Laranja Escuro Marca
-      case 'medium':
-        return 'bg-amber-50 text-amber-700 border-amber-200'; // Amarelo/Amber
-      case 'low':
-        return 'bg-slate-100 text-slate-600 border-slate-200'; // Cinza Neutro
-      default:
-        return 'bg-slate-100 text-slate-600 border-slate-200';
-    }
-  };
 
   // Cores de Status ajustadas
   const defaultGetStatusColor = (status: TicketStatus) => {
@@ -76,33 +58,11 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
     }
   };
 
-  const getPriorityIcon = (priority: TicketPriority) => {
-    switch (priority) {
-      case 'urgent':
-      case 'high':
-        return <ArrowUpCircle className="h-3 w-3 mr-1" />;
-      case 'low':
-        return <ArrowUpCircle className="h-3 w-3 mr-1 rotate-180" />;
-      default:
-        return <MinusCircle className="h-3 w-3 mr-1" />;
-    }
-  };
-
-  const getPriorityLabel = (priority: TicketPriority) => {
-    switch (priority) {
-      case 'urgent': return 'Urgente';
-      case 'high': return 'Alta';
-      case 'medium': return 'Média';
-      case 'low': return 'Baixa';
-      default: return priority;
-    }
-  };
-
   const getStatusLabel = (status: TicketStatus) => {
     switch (status) {
       case 'open': return 'Aberto';
       case 'assigned': return 'Atribuído';
-      case 'in_progress': return 'Em Progresso';
+      case 'in_progress': return 'Em andamento';
       case 'resolved': return 'Resolvido';
       default: return status;
     }
@@ -120,7 +80,6 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   const isSelected = selectedTicketId === ticket.id;
   const isFinalized = isTicketFinalized ? isTicketFinalized(ticket) : false;
 
-  const priorityColor = getPriorityColor ? getPriorityColor(ticket.priority) : defaultGetPriorityColor(ticket.priority);
   const statusColor = getStatusColor ? getStatusColor(ticket.status) : defaultGetStatusColor(ticket.status);
 
   return (
@@ -177,10 +136,6 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
           <div className="flex flex-wrap gap-1.5">
             <Badge variant="secondary" className={`${statusColor} border text-[10px] font-medium px-2 py-0`}>
               {getStatusLabel(ticket.status)}
-            </Badge>
-            <Badge variant="secondary" className={`${priorityColor} border text-[10px] font-medium px-2 py-0 flex items-center`}>
-              {getPriorityIcon(ticket.priority)}
-              {getPriorityLabel(ticket.priority)}
             </Badge>
           </div>
 

@@ -206,19 +206,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         const nextAttempt = (channelRetryCountRef.current[key] ?? 0) + 1;
         channelRetryCountRef.current[key] = nextAttempt;
-        const delay = Math.min(1000 * 2 ** Math.min(nextAttempt, 5), 30000);
-        clearRetryTimer(key);
-
-        channelRetryTimerRef.current[key] = setTimeout(() => {
-          console.warn(`[notify] retry ${key} status=${status} attempt=${nextAttempt}`);
-          channel.subscribe((nextStatus) => {
-            onStatus?.(nextStatus);
-            if (nextStatus === 'SUBSCRIBED') {
-              channelRetryCountRef.current[key] = 0;
-              clearRetryTimer(key);
-            }
-          });
-        }, delay);
+        // Evita subscribe duplicado no mesmo canal (gera notificações duplicadas).
+        // O cliente Realtime já tenta reconectar automaticamente.
+        console.warn(`[notify] channel_issue key=${key} status=${status} attempt=${nextAttempt}`);
       });
     };
 
@@ -255,6 +245,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         const assignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
         const createdBy = normalizeId((payload.new.created_by as string | null | undefined) ?? null);
         const ticketCategory = String(payload.new.category ?? '').trim();
+        if (createdBy === normalizedUserId) {
+          console.info('[notify] skip_ticket_created_self', {
+            ticketId: newTicketId,
+            createdBy,
+          });
+          return;
+        }
 
         void (async () => {
           const access = await getNotifyAccessOptions();
