@@ -362,13 +362,13 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
     }
   }
 
-  /** Tickets atribuídos ao usuário (Suporte Op. Legais). */
+  /** Tickets atribuídos ao usuário ou abertos por ele (Suporte Op. Legais). */
   static async getTicketsAssignedToUser(userId: string): Promise<Ticket[]> {
     try {
       const { data, error } = await supabase
         .from(TABLES.TICKETS)
         .select('*')
-        .eq('assigned_to', userId)
+        .or(FrenteAccessService.buildParticipantOrFilter(userId))
         .order('created_at', { ascending: false });
 
       if (error) {

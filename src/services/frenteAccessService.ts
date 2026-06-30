@@ -116,20 +116,27 @@ export class FrenteAccessService {
     );
   }
 
+  /** Filtro Supabase: tickets criados por ou atribuídos ao usuário. */
+  static buildParticipantOrFilter(userId: string): string {
+    return `created_by.eq.${userId},assigned_to.eq.${userId}`;
+  }
+
   /** Filtro Supabase: frente do usuário + tickets que ele criou ou está atendendo. */
   static buildFrenteAccessOrFilter(
     userId: string,
     categoryKeys: string[],
     strictFrenteOnly = false
   ): string {
+    const participantParts = [`created_by.eq.${userId}`, `assigned_to.eq.${userId}`];
+
     if (strictFrenteOnly) {
       if (categoryKeys.length === 0) {
-        return `id.eq.00000000-0000-0000-0000-000000000000`;
+        return participantParts.join(',');
       }
-      return `category.in.(${categoryKeys.join(',')})`;
+      return [`category.in.(${categoryKeys.join(',')})`, ...participantParts].join(',');
     }
 
-    const parts = [`created_by.eq.${userId}`, `assigned_to.eq.${userId}`];
+    const parts = [...participantParts];
     if (categoryKeys.length > 0) {
       parts.unshift(`category.in.(${categoryKeys.join(',')})`);
     }
@@ -142,11 +149,8 @@ export class FrenteAccessService {
     categoryKeys: string[],
     strictFrenteOnly = false
   ): boolean {
-    if (strictFrenteOnly) {
-      if (categoryKeys.length === 0) return false;
-      return categoryKeys.includes(ticket.category);
-    }
     if (ticket.createdBy === userId || ticket.assignedTo === userId) return true;
+
     if (categoryKeys.length === 0) return false;
     return categoryKeys.includes(ticket.category);
   }

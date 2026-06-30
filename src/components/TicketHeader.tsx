@@ -247,9 +247,9 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         inProgressQuery.eq('created_by', user.id);
         resolvedQuery.eq('created_by', user.id);
       } else if (isAssignedOnly) {
-        openQuery.eq('assigned_to', user.id);
-        inProgressQuery.eq('assigned_to', user.id);
-        resolvedQuery.eq('assigned_to', user.id);
+        openQuery.or(FrenteAccessService.buildParticipantOrFilter(user.id));
+        inProgressQuery.or(FrenteAccessService.buildParticipantOrFilter(user.id));
+        resolvedQuery.or(FrenteAccessService.buildParticipantOrFilter(user.id));
       } else if (isFrenteScoped) {
         const orFilter = FrenteAccessService.buildFrenteAccessOrFilter(
           user.id,
@@ -385,7 +385,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   const getStatsTitle = () => {
     if (onlyMyTickets) return "Meus tickets";
     if (isUser) return "Seus tickets";
-    if (isAssignedOnly) return "Seus tickets atribuídos";
+    if (isAssignedOnly) return "Seus tickets";
     if (isFrenteScoped) return "Tickets da sua frente";
     if (isSupport || isLawyer) return "Seus tickets atribuídos";
     if (isAdmin) return "Todos os tickets";

@@ -247,7 +247,7 @@ export async function getDashboardStats(
     if (userId) {
       query = query.eq('created_by', userId);
     } else if (frenteAccess?.assignedOnly && frenteAccess.userId) {
-      query = query.eq('assigned_to', frenteAccess.userId);
+      query = query.or(FrenteAccessService.buildParticipantOrFilter(frenteAccess.userId));
     } else if (frenteAccess?.userId) {
       query = query.or(
         FrenteAccessService.buildFrenteAccessOrFilter(

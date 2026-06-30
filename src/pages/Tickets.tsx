@@ -280,7 +280,7 @@ const Tickets = () => {
   const canUserSeeTicket = (ticket: Ticket) => {
     if (has('view_all_tickets')) return true;
     if (isAssignedOnly && user?.id) {
-      return ticket.assignedTo === user.id;
+      return ticket.createdBy === user.id || ticket.assignedTo === user.id;
     }
     if (isFrenteRestricted && user?.id) {
       return FrenteAccessService.canUserAccessTicket(
@@ -1622,20 +1622,22 @@ const getFilteredTickets = () => {
       const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
 
       const matchesFrente = (() => {
-        if (isFrenteRestricted && user?.id) {
-          const inScope = FrenteAccessService.canUserAccessTicket(
-            ticket,
-            user.id,
-            userCategoryKeys,
-            strictFrenteOnly
-          );
+        const isParticipant =
+          Boolean(user?.id) &&
+          (ticket.createdBy === user.id || ticket.assignedTo === user.id);
+
+        if ((isFrenteRestricted || isAssignedOnly) && user?.id) {
+          const inScope = isAssignedOnly
+            ? isParticipant
+            : FrenteAccessService.canUserAccessTicket(
+                ticket,
+                user.id,
+                userCategoryKeys,
+                strictFrenteOnly
+              );
           if (!inScope) return false;
           if (frenteFilter === 'all') return true;
-          return (
-            ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig) ||
-            ticket.createdBy === user.id ||
-            ticket.assignedTo === user.id
-          );
+          return ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig) || isParticipant;
         }
         return ticketMatchesFrente(ticket.category, frenteFilter, categoriesConfig);
       })();
@@ -1676,6 +1678,7 @@ const filteredTickets = React.useMemo(
     userFilter,
     categoriesConfig,
     isFrenteRestricted,
+    isAssignedOnly,
     strictFrenteOnly,
     userCategoryKeys,
     user?.id,
