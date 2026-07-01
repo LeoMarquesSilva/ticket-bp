@@ -3,6 +3,7 @@ import {
   getMessageRecipientUserIds,
   getNewTicketRecipientUserIds,
   shouldNotifyNewTicket,
+  shouldNotifyTicketAssigned,
 } from './notificationRules.mjs';
 
 const MARKETING_CATEGORY = 'formularios_marketing';
@@ -61,5 +62,19 @@ describe('notificationRules - novo ticket', () => {
       }
     );
     expect(recipients).toEqual(['u-admin']);
+  });
+});
+
+describe('notificationRules - ticket reatribuído', () => {
+  it('notifica o novo responsável quando a atribuição muda', () => {
+    expect(shouldNotifyTicketAssigned('u-new', 'u-old')).toBe(true);
+  });
+
+  it('não notifica quando o responsável não mudou', () => {
+    expect(shouldNotifyTicketAssigned('u-same', 'u-same')).toBe(false);
+  });
+
+  it('não notifica quando o ticket ficou sem responsável', () => {
+    expect(shouldNotifyTicketAssigned(null, 'u-old')).toBe(false);
   });
 });

@@ -80,10 +80,11 @@ Para que a API envie push quando houver **nova mensagem** ou **novo ticket**:
    - **HTTP Headers:** `Content-Type: application/json`
    - O corpo (body) costuma ser enviado automaticamente com o registro inserido (formato depende do Supabase; a API aceita `record` ou `new` com os campos da linha).
 
-3. Repita para **novos tickets** (opcional):
+3. Novos tickets e reatribuições (✅ configurado em 2026-07-01, migração `20260701190000_push_notification_tickets_trigger.sql`):
    - **Table:** `app_c009c0e4f1_tickets`
-   - **Events:** Insert
+   - **Events:** Insert e Update
    - **URL:** mesma `.../api/send-push`
+   - Antes só existia o webhook de `chat_messages` (`notfication_push`); tickets criados ou reatribuídos não disparavam push nenhum — o atendente só via a mudança se estivesse com a aba do sistema aberta (toast/som via Realtime). O `api/send-push.js` agora trata `UPDATE` em tickets para notificar o novo responsável quando `assigned_to` muda.
 
 Se o Supabase enviar o payload em outro formato (ex.: `payload.record` ou nome de tabela diferente), ajuste em `api/send-push.js` na leitura de `body.table` e `body.record` / `body.new`.
 

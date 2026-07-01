@@ -31,6 +31,13 @@ export function isTicketParticipant(ctx, userId) {
   return ctx.requester === uid || ctx.assignee === uid;
 }
 
+/** Ticket reatribuído: notifica apenas o novo responsável (espelha o frontend). */
+export function shouldNotifyTicketAssigned(newAssignee, previousAssignee) {
+  const next = normalizeNotifyUserId(newAssignee);
+  const prev = normalizeNotifyUserId(previousAssignee);
+  return Boolean(next && next !== prev);
+}
+
 export function shouldNotifyNewTicket(ctx, userId, options) {
   if (isTicketParticipant(ctx, userId)) return true;
   if (options.canViewAllTickets) return true;

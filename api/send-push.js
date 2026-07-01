@@ -8,6 +8,7 @@ import {
   getMessageRecipientUserIds,
   getNewTicketRecipientUserIds,
   normalizeNotifyUserId,
+  shouldNotifyTicketAssigned,
 } from './shared/notificationRules.mjs';
 
 const require = createRequire(import.meta.url);
@@ -156,12 +157,65 @@ export default async function handler(req, res) {
     const record = body.record || body.new || body.payload?.record || body;
     console.log('[send-push] Webhook recebido:', { type, table, hasRecord: !!record?.ticket_id });
 
+    const oldRecord = body.old_record || body.old || body.payload?.old_record || {};
     const isInsert = type === 'INSERT' || (!type && (Boolean(record?.id) || Boolean(record?.ticket_id)));
-    if (!isInsert) {
+    const isUpdate = type === 'UPDATE';
+    if (!isInsert && !isUpdate) {
       return res.status(200).json({ ok: true, message: 'Event ignored' });
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    if (
+      isUpdate &&
+      (table === 'app_c009c0e4f1_tickets' || table === 'tickets') &&
+      Boolean(record.id)
+    ) {
+      const ticketId = record.id;
+      const newAssignee = normalizeNotifyUserId(record.assigned_to);
+      const oldAssignee = normalizeNotifyUserId(oldRecord.assigned_to);
+
+      if (!shouldNotifyTicketAssigned(newAssignee, oldAssignee)) {
+        return res.status(200).json({ sent: 0, message: 'No reassignment to notify' });
+      }
+
+      const { data: subs } = await supabase
+        .from(TABLES.PUSH_SUBSCRIPTIONS)
+        .select('subscription, user_id')
+        .eq('user_id', newAssignee);
+
+      if (!subs || subs.length === 0) return res.status(200).json({ sent: 0 });
+
+      const title = record.title || `Ticket #${(ticketId || '').slice(0, 8)}`;
+      const payload = {
+        title: 'Ticket atribuído para você',
+        body: title,
+        url: `${appUrl}/tickets/${ticketId}`,
+        tag: `ticket-assigned-${ticketId}`,
+      };
+
+      let sent = 0;
+      const expiredSubs = [];
+      for (const row of subs) {
+        const sub = row.subscription;
+        if (!sub || !sub.endpoint) continue;
+        try {
+          await webpush.sendNotification(sub, JSON.stringify(payload));
+          sent++;
+        } catch (e) {
+          if (isExpiredSubscriptionError(e)) {
+            expiredSubs.push(row);
+          }
+          console.warn('[send-push] Erro ao enviar (atribuição de ticket):', e.message);
+        }
+      }
+      await cleanupExpiredSubscriptions(supabase, expiredSubs);
+      return res.status(200).json({ sent });
+    }
+
+    if (!isInsert) {
+      return res.status(200).json({ ok: true, message: 'Event ignored' });
+    }
 
     if (
       (table === 'app_c009c0e4f1_chat_messages' || table === 'chat_messages') &&
