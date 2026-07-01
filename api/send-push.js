@@ -196,6 +196,7 @@ export default async function handler(req, res) {
 
       let sent = 0;
       const expiredSubs = [];
+      const errors = [];
       for (const row of subs) {
         const sub = row.subscription;
         if (!sub || !sub.endpoint) continue;
@@ -206,11 +207,12 @@ export default async function handler(req, res) {
           if (isExpiredSubscriptionError(e)) {
             expiredSubs.push(row);
           }
+          errors.push({ userId: row.user_id, statusCode: e?.statusCode, message: e?.message });
           console.warn('[send-push] Erro ao enviar (atribuição de ticket):', e.message);
         }
       }
       await cleanupExpiredSubscriptions(supabase, expiredSubs);
-      return res.status(200).json({ sent });
+      return res.status(200).json({ sent, errors });
     }
 
     if (!isInsert) {
@@ -260,6 +262,7 @@ export default async function handler(req, res) {
 
       let sent = 0;
       const expiredSubs = [];
+      const errors = [];
       for (const row of subs) {
         const sub = row.subscription;
         if (!sub || !sub.endpoint) continue;
@@ -270,11 +273,12 @@ export default async function handler(req, res) {
           if (isExpiredSubscriptionError(e)) {
             expiredSubs.push(row);
           }
+          errors.push({ userId: row.user_id, statusCode: e?.statusCode, message: e?.message });
           console.warn('[send-push] Erro ao enviar para um subscription:', e.message);
         }
       }
       await cleanupExpiredSubscriptions(supabase, expiredSubs);
-      return res.status(200).json({ sent });
+      return res.status(200).json({ sent, errors });
     }
 
     if (table === 'app_c009c0e4f1_tickets' && Boolean(record.id)) {
@@ -348,6 +352,7 @@ export default async function handler(req, res) {
 
       let sent = 0;
       const expiredSubs = [];
+      const errors = [];
       for (const row of subsByUser) {
         const sub = row.subscription;
         if (!sub || !sub.endpoint) continue;
@@ -358,11 +363,12 @@ export default async function handler(req, res) {
           if (isExpiredSubscriptionError(e)) {
             expiredSubs.push(row);
           }
+          errors.push({ userId: row.user_id, statusCode: e?.statusCode, message: e?.message });
           console.warn('[send-push] Erro ao enviar:', e.message);
         }
       }
       await cleanupExpiredSubscriptions(supabase, expiredSubs);
-      return res.status(200).json({ sent });
+      return res.status(200).json({ sent, errors });
     }
 
     return res.status(200).json({ ok: true, message: 'No action' });
