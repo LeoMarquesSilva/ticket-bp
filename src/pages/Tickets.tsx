@@ -250,6 +250,7 @@ const Tickets = () => {
   const lastMessageReconcileAtRef = useRef<Record<string, number>>({});
   const ticketsRef = useRef<Ticket[]>([]);
   const chatOpenRef = useRef(false);
+  const deniedTicketLinkRef = useRef<string | null>(null);
   
   const canCreateTicketForUser = has('create_ticket_for_user');
   const isAssignedOnly = isAssignedOnlyRole(user?.role);
@@ -1052,13 +1053,22 @@ useEffect(() => {
 
   // Abrir o chat do ticket quando a URL for /tickets/:ticketId (ex.: clique em "Ver" no toast)
   useEffect(() => {
-    if (!ticketIdParam || loading || tickets.length === 0) return;
+    if (!ticketIdParam || loading) return;
     if (selectedTicket?.id === ticketIdParam) return;
+
     const ticket = tickets.find((t) => t.id === ticketIdParam);
     if (ticket) {
+      deniedTicketLinkRef.current = null;
       openChat(ticket);
+      return;
     }
-  }, [ticketIdParam, loading, tickets]);
+
+    if (deniedTicketLinkRef.current === ticketIdParam) return;
+    deniedTicketLinkRef.current = ticketIdParam;
+
+    toast.error('Você não tem acesso a este ticket');
+    navigate('/tickets', { replace: true });
+  }, [ticketIdParam, loading, tickets, selectedTicket?.id, navigate]);
 
   const loadTickets = async () => {
     if (!user?.id || permissionsLoading) return;

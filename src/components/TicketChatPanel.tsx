@@ -8,6 +8,7 @@ import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle, Bold, Italic, List, ListOrdered, Link2, Code, Maximize2, Minimize2, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
 import FinishTicketButton from './FinishTicketButton';
 import TransferTicketModal from './TransferTicketModal';
 import ChangeTicketCategoryModal from './ChangeTicketCategoryModal';
@@ -500,6 +501,45 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     }
   };
 
+  const buildTicketLink = (ticketId: string) => {
+    if (typeof window === 'undefined') return `/tickets/${ticketId}`;
+    return `${window.location.origin}/tickets/${ticketId}`;
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // fallback abaixo
+    }
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleCopyTicketLink = async () => {
+    const link = buildTicketLink(selectedTicket.id);
+    const ok = await copyToClipboard(link);
+    if (ok) toast.success('Link do ticket copiado');
+    else toast.error('Não foi possível copiar o link');
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden border-l border-slate-200 chat-container bg-white">
       {/* Chat Header - mesmo estilo do header da página de tickets */}
@@ -554,6 +594,17 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
           {/* Lado direito: ações */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs border-slate-200 hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5 rounded-lg"
+              onClick={handleCopyTicketLink}
+              title="Copiar link do ticket"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Copiar link</span>
+            </Button>
+
             {canEditTicketCategory && handleUpdateTicket && (
               <>
                 <Button
@@ -842,7 +893,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         {message.userName}
                       </span>
                       <span className="text-[10px] text-slate-400">
-                        {formatTime(message.createdAt)}
+                        {formatDate(message.createdAt)} às {formatTime(message.createdAt)}
                       </span>
                       {isTemp && (
                         <Clock className="h-3 w-3 text-slate-400 animate-pulse" />
