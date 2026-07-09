@@ -25,6 +25,24 @@ const EQUIPAMENTOS: Array<{ key: keyof Pick<RequisicaoPessoalFormData, 'estacaoT
   { key: 'usuarioLegalOne', label: 'Usuário do Legal One' },
 ];
 
+/** Input com máscara de moeda (estilo caixa/PDV): os dígitos digitados entram como centavos, sempre lidos da esquerda para a direita a partir do valor completo já digitado — por isso não precisa gerenciar posição de cursor. */
+const CurrencyInput: React.FC<{
+  id?: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+}> = ({ id, value, onValueChange, placeholder, className }) => (
+  <Input
+    id={id}
+    inputMode="numeric"
+    value={value}
+    onChange={(e) => onValueChange(formatCurrencyBRL(e.target.value))}
+    placeholder={placeholder}
+    className={className}
+  />
+);
+
 const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) => {
   const update = (patch: Partial<RequisicaoPessoalFormData>) => {
     onChange({ ...data, ...patch });
@@ -302,11 +320,10 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
         <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Remuneração</p>
         <div className="space-y-2 max-w-xs">
           <Label htmlFor="rp-remuneracao">Remuneração sugerida <span className="text-red-500">*</span></Label>
-          <Input
+          <CurrencyInput
             id="rp-remuneracao"
-            inputMode="numeric"
             value={data.remuneracaoSugerida}
-            onChange={(e) => update({ remuneracaoSugerida: formatCurrencyBRL(e.target.value) })}
+            onValueChange={(value) => update({ remuneracaoSugerida: value })}
             placeholder="R$ 0,00"
             className={errors.remuneracaoSugerida ? 'border-[#BD2D29]' : ''}
           />
@@ -336,10 +353,9 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
                 </div>
               </RadioGroup>
               {item.necessario === 'sim' && (
-                <Input
-                  inputMode="numeric"
+                <CurrencyInput
                   value={item.valor}
-                  onChange={(e) => updateEquipamento(key, { valor: formatCurrencyBRL(e.target.value) })}
+                  onValueChange={(value) => updateEquipamento(key, { valor: value })}
                   placeholder="R$ 0,00"
                   className={`h-8 w-32 ${errors[`${key}Valor`] ? 'border-[#BD2D29]' : ''}`}
                 />

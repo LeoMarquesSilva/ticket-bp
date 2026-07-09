@@ -5,12 +5,17 @@ export function isRequisicaoPessoalSelection(categoryKey: string, subcategoryKey
   return categoryKey === REQUISICAO_PESSOAL_CATEGORY_KEY && subcategoryKey === REQUISICAO_PESSOAL_SUBCATEGORY_KEY;
 }
 
-/** Aplica máscara de moeda (R$ 1.234,56) a partir dos dígitos digitados, tratando-os como centavos. */
+/**
+ * Aplica máscara de moeda (R$ 1.234,56) a partir dos dígitos digitados,
+ * tratando-os como centavos (padrão de caixa/PDV: os dígitos entram da
+ * direita para a esquerda). Evita bugs de posição de cursor porque o valor
+ * exibido é sempre recalculado a partir de todos os dígitos já digitados.
+ */
 export function formatCurrencyBRL(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   if (!digits) return '';
   const cents = parseInt(digits, 10);
-  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
+  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export type MotivoRequisicao = 'aumento_quadro' | 'reposicao' | '';
