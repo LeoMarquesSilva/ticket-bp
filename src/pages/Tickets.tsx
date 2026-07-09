@@ -2102,7 +2102,7 @@ return (
     {/* Preview de imagem - overlay fixo */}
     {showImagePreview && (
       <div 
-        className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4"
         onClick={() => setShowImagePreview(null)}
       >
         <div className="max-w-4xl max-h-[90vh] relative">
