@@ -184,8 +184,16 @@ export function validateRequisicaoPessoalForm(data: RequisicaoPessoalFormData): 
   return errors;
 }
 
+export interface RequisicaoPessoalRequester {
+  name: string;
+  department?: string;
+}
+
 export function buildRequisicaoPessoalTitle(data: RequisicaoPessoalFormData): string {
-  const title = `Requisição de Pessoal — ${data.cargo.trim()}`;
+  const motivoLabel = data.motivo === 'aumento_quadro' ? 'Aumento de Quadro' : data.motivo === 'reposicao' ? 'Reposição' : '';
+  const title = motivoLabel
+    ? `Requisição de Pessoal (${motivoLabel}) — ${data.cargo.trim()}`
+    : `Requisição de Pessoal — ${data.cargo.trim()}`;
   return title.length > 120 ? title.slice(0, 117) + '...' : title;
 }
 
@@ -212,7 +220,8 @@ function idadeDescricao(data: RequisicaoPessoalFormData): string {
   return 'Indiferente';
 }
 
-function equipamentosLinhas(data: RequisicaoPessoalFormData, withEmoji: boolean): string[] {
+/** Lista apenas os itens marcados como necessários (evita ruído de "Não" repetido). */
+function equipamentosLinhas(data: RequisicaoPessoalFormData, bullet: string): string[] {
   const itens: Array<[string, EquipamentoItem]> = [
     ['Estação de trabalho | Cadeira', data.estacaoTrabalho],
     ['Notebook', data.notebook],
@@ -220,20 +229,25 @@ function equipamentosLinhas(data: RequisicaoPessoalFormData, withEmoji: boolean)
     ['Licença da Microsoft', data.licencaMicrosoft],
     ['Usuário do Legal One', data.usuarioLegalOne],
   ];
-  const bullet = withEmoji ? '🔹' : '-';
-  return itens.map(([label, item]) => {
-    if (item.necessario === 'sim') {
-      return `${bullet} ${label}: Sim (valor estimado: ${item.valor.trim()})`;
-    }
-    return `${bullet} ${label}: Não`;
-  });
+  const solicitados = itens.filter(([, item]) => item.necessario === 'sim');
+  if (solicitados.length === 0) {
+    return ['Nenhum equipamento ou licença adicional solicitado.'];
+  }
+  return solicitados.map(([label, item]) => `${bullet} ${label} (valor estimado: ${item.valor.trim()})`);
 }
 
 /** Texto simples armazenado na descrição do ticket. */
-export function buildRequisicaoPessoalDescription(data: RequisicaoPessoalFormData): string {
+export function buildRequisicaoPessoalDescription(
+  data: RequisicaoPessoalFormData,
+  requester: RequisicaoPessoalRequester,
+): string {
   const lines = [
+    `Solicitante: ${requester.name}`,
+    requester.department && `Área: ${requester.department}`,
+    '',
     ...motivoDescricaoLinha(data),
     '',
+    'Requisitos do candidato / cargo:',
     `Cargo: ${data.cargo.trim()}`,
     data.experienciaDesejada.trim() && `Experiência desejada: ${data.experienciaDesejada.trim()}`,
     data.atribuicoes.trim() && `Atribuições do cargo: ${data.atribuicoes.trim()}`,
@@ -247,7 +261,7 @@ export function buildRequisicaoPessoalDescription(data: RequisicaoPessoalFormDat
     `Remuneração sugerida: ${data.remuneracaoSugerida.trim()}`,
     '',
     'Licenças | Equipamentos de TI | Suprimentos:',
-    ...equipamentosLinhas(data, false),
+    ...equipamentosLinhas(data, '-'),
     '',
     `Já obteve o "de acordo" do sócio?: ${data.aprovacaoSocio === 'sim' ? 'Sim (comprovante anexado no chat)' : 'Não'}`,
   ].filter((line): line is string => Boolean(line || line === ''));
@@ -255,29 +269,39 @@ export function buildRequisicaoPessoalDescription(data: RequisicaoPessoalFormDat
   return lines.join('\n');
 }
 
-/** Mensagem inicial enviada no chat com formatação estruturada. */
-export function buildRequisicaoPessoalChatMessage(data: RequisicaoPessoalFormData): string {
+/** Mensagem inicial enviada no chat com formatação estruturada, seguindo as seções da ficha original. */
+export function buildRequisicaoPessoalChatMessage(
+  data: RequisicaoPessoalFormData,
+  requester: RequisicaoPessoalRequester,
+): string {
   const lines = [
-    '📋 **Ficha de Requisição de Pessoal**',
+    '📋 **FICHA DE REQUISIÇÃO DE PESSOAL**',
     '',
-    ...motivoDescricaoLinha(data).map((l) => `📌 **${l}**`),
+    `👤 **Solicitante:** ${requester.name}`,
+    requester.department && `🏢 **Área:** ${requester.department}`,
     '',
+    '**MOTIVO DA REQUISIÇÃO**',
+    ...motivoDescricaoLinha(data).map((l) => `📌 ${l}`),
+    '',
+    '**REQUISITOS DO CANDIDATO / CARGO**',
     `💼 **Cargo:** ${data.cargo.trim()}`,
     data.experienciaDesejada.trim() && `🎓 **Experiência desejada:** ${data.experienciaDesejada.trim()}`,
     data.atribuicoes.trim() && `📝 **Atribuições:** ${data.atribuicoes.trim()}`,
-    data.perfilCargo.trim() && `👤 **Perfil desejado:** ${data.perfilCargo.trim()}`,
-    `🔞 **Idade:** ${idadeDescricao(data)}`,
-    `⚧ **Sexo:** ${data.sexo ? SEXO_LABELS[data.sexo] : ''}`,
-    `🏫 **Escolaridade:** ${data.escolaridade ? ESCOLARIDADE_LABELS[data.escolaridade] : ''}`,
+    data.perfilCargo.trim() && `✨ **Perfil desejado:** ${data.perfilCargo.trim()}`,
+    `📊 **Idade:** ${idadeDescricao(data)} · **Sexo:** ${data.sexo ? SEXO_LABELS[data.sexo] : ''} · **Escolaridade:** ${data.escolaridade ? ESCOLARIDADE_LABELS[data.escolaridade] : ''}`,
     data.cursoEspecial.trim() &&
       `📚 **Curso especial:** ${data.cursoEspecial.trim()} (${data.cursoEspecialNivel ? NIVEL_EXIGENCIA_LABELS[data.cursoEspecialNivel] : 'Indiferente'})`,
     '',
+    '**REMUNERAÇÃO**',
     `💰 **Remuneração sugerida:** ${data.remuneracaoSugerida.trim()}`,
     '',
-    '🖥️ **Licenças | Equipamentos de TI | Suprimentos:**',
-    ...equipamentosLinhas(data, true),
+    '**LICENÇAS | EQUIPAMENTOS DE TI | SUPRIMENTOS**',
+    ...equipamentosLinhas(data, '🔹'),
     '',
-    `✅ **Já obteve o "de acordo" do sócio?:** ${data.aprovacaoSocio === 'sim' ? 'Sim — comprovante anexado abaixo' : 'Não'}`,
+    '**APROVAÇÃO**',
+    data.aprovacaoSocio === 'sim'
+      ? '✅ **Já obteve o "de acordo" do sócio?:** Sim — comprovante anexado na mensagem logo abaixo ⬇️'
+      : '⚠️ **Já obteve o "de acordo" do sócio?:** Não',
   ].filter((line): line is string => Boolean(line || line === ''));
 
   return lines.join('\n');

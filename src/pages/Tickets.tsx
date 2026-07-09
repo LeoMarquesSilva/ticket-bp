@@ -1329,7 +1329,7 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
             newTicket.id,
             user.id,
             user.name,
-            '📎 Comprovante do "de acordo" do sócio anexado.',
+            '✅ Comprovante do "de acordo" do sócio — referente à Ficha de Requisição de Pessoal acima.',
             [attachment],
           );
         } catch (uploadError) {

@@ -32,6 +32,7 @@ import {
   validateRequisicaoPessoalForm,
   type RequisicaoPessoalFormData,
 } from '@/utils/requisicaoPessoalForm';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Configuração hardcoded como fallback (caso haja erro ao buscar do banco)
 const FALLBACK_CATEGORIES_CONFIG: Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }> = {
@@ -109,6 +110,7 @@ interface TicketFormProps {
 }
 
 const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser = false, initialData = {} }) => {
+  const { user } = useAuth();
   const [title, setTitle] = useState(initialData.title || '');
   const [description, setDescription] = useState(initialData.description || '');
   const [frenteId, setFrenteId] = useState<string>('');
@@ -314,12 +316,13 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
           ),
         });
       } else if (isReqPessoalCategory) {
+        const requester = { name: user?.name ?? '', department: user?.department };
         await onSubmit({
           title: buildRequisicaoPessoalTitle(reqForm),
-          description: buildRequisicaoPessoalDescription(reqForm),
+          description: buildRequisicaoPessoalDescription(reqForm, requester),
           category,
           subcategory,
-          initialChatMessage: buildRequisicaoPessoalChatMessage(reqForm),
+          initialChatMessage: buildRequisicaoPessoalChatMessage(reqForm, requester),
           pendingApprovalFile: reqForm.aprovacaoSocio === 'sim' ? reqForm.anexoAprovacao : null,
         });
       } else {

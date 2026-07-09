@@ -300,9 +300,10 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
           dcUsers,
         );
       } else if (isReqPessoalCategory) {
+        const requester = { name: selectedUser.name, department: selectedUser.department };
         ticketTitle = buildRequisicaoPessoalTitle(reqForm);
-        ticketDescription = buildRequisicaoPessoalDescription(reqForm);
-        initialChatMessage = buildRequisicaoPessoalChatMessage(reqForm);
+        ticketDescription = buildRequisicaoPessoalDescription(reqForm, requester);
+        initialChatMessage = buildRequisicaoPessoalChatMessage(reqForm, requester);
       }
 
       const ticketData = {
@@ -331,7 +332,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
             newTicket.id,
             selectedUser.id,
             selectedUser.name,
-            '📎 Comprovante do "de acordo" do sócio anexado.',
+            '✅ Comprovante do "de acordo" do sócio — referente à Ficha de Requisição de Pessoal acima.',
             [attachment],
           );
         } catch (uploadError) {
