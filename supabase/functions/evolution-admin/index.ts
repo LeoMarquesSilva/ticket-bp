@@ -37,6 +37,28 @@ function getRequestedInstanceName(body: unknown): string {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
+/** Extrai um array de chats de qualquer formato de resposta da Evolution API
+ * (varia entre versões: array puro, {chats:[...]}, {response:[...]},
+ * {response:{chats:[...]}}, {response:{data:[...]}}, {data:[...]}). */
+function extractChatList(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) return raw as Record<string, unknown>[];
+  if (!raw || typeof raw !== "object") return [];
+
+  const obj = raw as Record<string, unknown>;
+  if (Array.isArray(obj.chats)) return obj.chats as Record<string, unknown>[];
+  if (Array.isArray(obj.response)) return obj.response as Record<string, unknown>[];
+  if (Array.isArray(obj.data)) return obj.data as Record<string, unknown>[];
+
+  const nested = obj.response;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const nestedObj = nested as Record<string, unknown>;
+    if (Array.isArray(nestedObj.chats)) return nestedObj.chats as Record<string, unknown>[];
+    if (Array.isArray(nestedObj.data)) return nestedObj.data as Record<string, unknown>[];
+  }
+
+  return [];
+}
+
 function normalizeEvolutionInstances(raw: unknown): Array<{
   name: string;
   state: string | null;
@@ -246,13 +268,9 @@ Deno.serve(async (req) => {
         },
       );
       const raw = await res.json().catch(() => ({}));
-      const list = Array.isArray(raw)
-        ? raw
-        : (raw as { chats?: unknown[] }).chats ??
-          (raw as { response?: unknown[] }).response ??
-          [];
+      const list = extractChatList(raw);
 
-      const chats = (list as Record<string, unknown>[]).map((c) => {
+      const chats = list.map((c) => {
         const jid = String(
           c.remoteJid ?? c.id ?? (c.key as Record<string, string>)?.remoteJid ??
             "",
