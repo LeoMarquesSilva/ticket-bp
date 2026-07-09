@@ -2101,25 +2101,24 @@ return (
 
     {/* Preview de imagem - overlay fixo */}
     {showImagePreview && (
-      <div 
+      <div
         className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4"
         onClick={() => setShowImagePreview(null)}
       >
-        <div className="max-w-4xl max-h-[90vh] relative">
-          <img 
-            src={showImagePreview} 
-            alt="Preview" 
-            className="max-w-full max-h-[90vh] object-contain"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            className="absolute top-2 right-2 bg-white/80"
-            onClick={() => setShowImagePreview(null)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="fixed top-4 right-4 z-[101] bg-white/90 hover:bg-white shadow-lg"
+          onClick={() => setShowImagePreview(null)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+        <img
+          src={showImagePreview}
+          alt="Preview"
+          onClick={(e) => e.stopPropagation()}
+          className="max-w-full max-h-[90vh] object-contain rounded-lg"
+        />
       </div>
     )}
   </div>
