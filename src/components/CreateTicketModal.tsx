@@ -28,6 +28,10 @@ interface CreateTicketModalProps {
     initialChatMessage?: string;
     sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
     pendingApprovalFile?: File | null;
+    reqPessoalCard?: {
+      data: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalFormData;
+      requester: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalRequester;
+    };
   }) => void;
   onOpenTicket?: (ticket: any) => void;
 }
@@ -83,6 +87,10 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     initialChatMessage?: string;
     sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
     pendingApprovalFile?: File | null;
+    reqPessoalCard?: {
+      data: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalFormData;
+      requester: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalRequester;
+    };
   }) => {
     // Se houver feedback pendente, não permitir a criação do ticket
     if (hasPendingFeedback) {

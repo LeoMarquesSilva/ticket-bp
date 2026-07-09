@@ -197,7 +197,7 @@ export function buildRequisicaoPessoalTitle(data: RequisicaoPessoalFormData): st
   return title.length > 120 ? title.slice(0, 117) + '...' : title;
 }
 
-function motivoDescricaoLinha(data: RequisicaoPessoalFormData): string[] {
+export function motivoDescricaoLinha(data: RequisicaoPessoalFormData): string[] {
   if (data.motivo === 'aumento_quadro') {
     return [
       'Motivo: Aumento de Quadro',
@@ -215,13 +215,13 @@ function motivoDescricaoLinha(data: RequisicaoPessoalFormData): string[] {
   return [];
 }
 
-function idadeDescricao(data: RequisicaoPessoalFormData): string {
+export function idadeDescricao(data: RequisicaoPessoalFormData): string {
   if (data.faixaIdade === 'ate') return `Até ${data.idadeAte.trim()} anos`;
   return 'Indiferente';
 }
 
-/** Lista apenas os itens marcados como necessários (evita ruído de "Não" repetido). */
-function equipamentosLinhas(data: RequisicaoPessoalFormData, bullet: string): string[] {
+/** Itens de equipamento/licença marcados como necessários, com o valor estimado (para renderização em grid). */
+export function equipamentosSolicitados(data: RequisicaoPessoalFormData): Array<{ label: string; valor: string }> {
   const itens: Array<[string, EquipamentoItem]> = [
     ['Estação de trabalho | Cadeira', data.estacaoTrabalho],
     ['Notebook', data.notebook],
@@ -229,11 +229,18 @@ function equipamentosLinhas(data: RequisicaoPessoalFormData, bullet: string): st
     ['Licença da Microsoft', data.licencaMicrosoft],
     ['Usuário do Legal One', data.usuarioLegalOne],
   ];
-  const solicitados = itens.filter(([, item]) => item.necessario === 'sim');
+  return itens
+    .filter(([, item]) => item.necessario === 'sim')
+    .map(([label, item]) => ({ label, valor: item.valor.trim() }));
+}
+
+/** Lista apenas os itens marcados como necessários (evita ruído de "Não" repetido). */
+function equipamentosLinhas(data: RequisicaoPessoalFormData, bullet: string): string[] {
+  const solicitados = equipamentosSolicitados(data);
   if (solicitados.length === 0) {
     return ['Nenhum equipamento ou licença adicional solicitado.'];
   }
-  return solicitados.map(([label, item]) => `${bullet} ${label} (valor estimado: ${item.valor.trim()})`);
+  return solicitados.map(({ label, valor }) => `${bullet} ${label} (valor estimado: ${valor})`);
 }
 
 /** Texto simples armazenado na descrição do ticket. */
@@ -269,40 +276,38 @@ export function buildRequisicaoPessoalDescription(
   return lines.join('\n');
 }
 
-/** Mensagem inicial enviada no chat com formatação estruturada, seguindo as seções da ficha original. */
-export function buildRequisicaoPessoalChatMessage(
+/** Texto curto que acompanha o card da ficha no chat (o detalhamento fica no modal). */
+export function buildRequisicaoPessoalCardMessageText(data: RequisicaoPessoalFormData): string {
+  return `📋 Ficha de Requisição de Pessoal enviada — ${data.cargo.trim()}.`;
+}
+
+export interface RequisicaoPessoalApprovalAttachment {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+}
+
+/** Payload estruturado (guardado no campo `attachments`, jsonb, da mensagem) usado para renderizar o card + modal da ficha no chat. */
+export interface RequisicaoPessoalFichaCardAttachment {
+  kind: 'requisicao_pessoal_ficha';
+  version: 1;
+  requester: RequisicaoPessoalRequester;
+  data: Omit<RequisicaoPessoalFormData, 'anexoAprovacao'>;
+  approvalAttachment: RequisicaoPessoalApprovalAttachment | null;
+}
+
+export function buildRequisicaoPessoalFichaCardAttachment(
   data: RequisicaoPessoalFormData,
   requester: RequisicaoPessoalRequester,
-): string {
-  const lines = [
-    '📋 **FICHA DE REQUISIÇÃO DE PESSOAL**',
-    '',
-    `👤 **Solicitante:** ${requester.name}`,
-    requester.department && `🏢 **Área:** ${requester.department}`,
-    '',
-    '**MOTIVO DA REQUISIÇÃO**',
-    ...motivoDescricaoLinha(data).map((l) => `📌 ${l}`),
-    '',
-    '**REQUISITOS DO CANDIDATO / CARGO**',
-    `💼 **Cargo:** ${data.cargo.trim()}`,
-    data.experienciaDesejada.trim() && `🎓 **Experiência desejada:** ${data.experienciaDesejada.trim()}`,
-    data.atribuicoes.trim() && `📝 **Atribuições:** ${data.atribuicoes.trim()}`,
-    data.perfilCargo.trim() && `✨ **Perfil desejado:** ${data.perfilCargo.trim()}`,
-    `📊 **Idade:** ${idadeDescricao(data)} · **Sexo:** ${data.sexo ? SEXO_LABELS[data.sexo] : ''} · **Escolaridade:** ${data.escolaridade ? ESCOLARIDADE_LABELS[data.escolaridade] : ''}`,
-    data.cursoEspecial.trim() &&
-      `📚 **Curso especial:** ${data.cursoEspecial.trim()} (${data.cursoEspecialNivel ? NIVEL_EXIGENCIA_LABELS[data.cursoEspecialNivel] : 'Indiferente'})`,
-    '',
-    '**REMUNERAÇÃO**',
-    `💰 **Remuneração sugerida:** ${data.remuneracaoSugerida.trim()}`,
-    '',
-    '**LICENÇAS | EQUIPAMENTOS DE TI | SUPRIMENTOS**',
-    ...equipamentosLinhas(data, '🔹'),
-    '',
-    '**APROVAÇÃO**',
-    data.aprovacaoSocio === 'sim'
-      ? '✅ **Já obteve o "de acordo" do sócio?:** Sim — comprovante anexado na mensagem logo abaixo ⬇️'
-      : '⚠️ **Já obteve o "de acordo" do sócio?:** Não',
-  ].filter((line): line is string => Boolean(line || line === ''));
-
-  return lines.join('\n');
+  approvalAttachment: RequisicaoPessoalApprovalAttachment | null = null,
+): RequisicaoPessoalFichaCardAttachment {
+  const { anexoAprovacao: _anexoAprovacao, ...rest } = data;
+  return {
+    kind: 'requisicao_pessoal_ficha',
+    version: 1,
+    requester,
+    data: rest,
+    approvalAttachment,
+  };
 }

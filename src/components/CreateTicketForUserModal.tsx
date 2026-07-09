@@ -35,8 +35,9 @@ import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoCon
 import { isInverseTicketFlow } from '@/utils/inverseTicketFlow';
 import RequisicaoPessoalFields from '@/components/RequisicaoPessoalFields';
 import {
-  buildRequisicaoPessoalChatMessage,
+  buildRequisicaoPessoalCardMessageText,
   buildRequisicaoPessoalDescription,
+  buildRequisicaoPessoalFichaCardAttachment,
   buildRequisicaoPessoalTitle,
   emptyRequisicaoPessoalForm,
   isRequisicaoPessoalSelection,
@@ -303,7 +304,6 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
         const requester = { name: selectedUser.name, department: selectedUser.department };
         ticketTitle = buildRequisicaoPessoalTitle(reqForm);
         ticketDescription = buildRequisicaoPessoalDescription(reqForm, requester);
-        initialChatMessage = buildRequisicaoPessoalChatMessage(reqForm, requester);
       }
 
       const ticketData = {
@@ -325,19 +325,23 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
         throw new Error('Falha ao criar ticket');
       }
 
-      if (isReqPessoalCategory && reqForm.aprovacaoSocio === 'sim' && reqForm.anexoAprovacao) {
+      if (isReqPessoalCategory) {
         try {
-          const attachment = await TicketService.uploadAttachment(newTicket.id, reqForm.anexoAprovacao);
+          let approvalAttachment = null;
+          if (reqForm.aprovacaoSocio === 'sim' && reqForm.anexoAprovacao) {
+            approvalAttachment = await TicketService.uploadAttachment(newTicket.id, reqForm.anexoAprovacao);
+          }
+          const requester = { name: selectedUser.name, department: selectedUser.department };
           await TicketService.sendChatMessage(
             newTicket.id,
             selectedUser.id,
             selectedUser.name,
-            '✅ Comprovante do "de acordo" do sócio — referente à Ficha de Requisição de Pessoal acima.',
-            [attachment],
+            buildRequisicaoPessoalCardMessageText(reqForm),
+            [buildRequisicaoPessoalFichaCardAttachment(reqForm, requester, approvalAttachment)],
           );
         } catch (uploadError) {
-          console.error('Erro ao anexar comprovante:', uploadError);
-          toast.error('Ticket criado, mas houve um erro ao anexar o comprovante. Anexe manualmente pelo chat.');
+          console.error('Erro ao montar ficha no chat:', uploadError);
+          toast.error('Ticket criado, mas houve um erro ao montar a ficha no chat.');
         }
       }
 

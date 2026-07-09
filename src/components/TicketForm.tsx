@@ -24,13 +24,13 @@ import DepartmentUserPicker, { type DepartmentUserPickerUser } from '@/component
 import { UserService } from '@/services/userService';
 import RequisicaoPessoalFields from '@/components/RequisicaoPessoalFields';
 import {
-  buildRequisicaoPessoalChatMessage,
   buildRequisicaoPessoalDescription,
   buildRequisicaoPessoalTitle,
   emptyRequisicaoPessoalForm,
   isRequisicaoPessoalSelection,
   validateRequisicaoPessoalForm,
   type RequisicaoPessoalFormData,
+  type RequisicaoPessoalRequester,
 } from '@/utils/requisicaoPessoalForm';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -98,6 +98,7 @@ interface TicketFormProps {
     initialChatMessage?: string;
     sharepointTreinamento?: SharepointTreinamentoPayload;
     pendingApprovalFile?: File | null;
+    reqPessoalCard?: { data: RequisicaoPessoalFormData; requester: RequisicaoPessoalRequester };
   }) => void;
   onCancel: () => void;
   isStaffUser?: boolean;
@@ -322,8 +323,8 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
           description: buildRequisicaoPessoalDescription(reqForm, requester),
           category,
           subcategory,
-          initialChatMessage: buildRequisicaoPessoalChatMessage(reqForm, requester),
           pendingApprovalFile: reqForm.aprovacaoSocio === 'sim' ? reqForm.anexoAprovacao : null,
+          reqPessoalCard: { data: reqForm, requester },
         });
       } else {
         const attendant = juridicoUsers.find((u) => u.id === selectedAttendantId);

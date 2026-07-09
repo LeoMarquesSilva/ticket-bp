@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/dialog";
 import { usePasteImage } from '@/hooks/usePasteImage';
 import PastedImagePreview from '@/components/PastedImagePreview';
+import RequisicaoPessoalFichaCard from '@/components/RequisicaoPessoalFichaCard';
+import { RequisicaoPessoalFichaCardAttachment } from '@/utils/requisicaoPessoalForm';
 import {
   FormattedChatMessage,
   applyWrap,
@@ -913,7 +915,24 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                       {message.message && (
                         <FormattedChatMessage text={message.message} tone={isOwnMessage ? 'own' : 'other'} />
                       )}
-                      {renderAttachments(message.attachments)}
+                      {(() => {
+                        const fichaCard = message.attachments?.find(
+                          (a: any) => a?.kind === 'requisicao_pessoal_ficha'
+                        ) as RequisicaoPessoalFichaCardAttachment | undefined;
+                        const fileAttachments = message.attachments?.filter(
+                          (a: any) => a?.kind !== 'requisicao_pessoal_ficha'
+                        );
+                        if (fichaCard) {
+                          return (
+                            <RequisicaoPessoalFichaCard
+                              payload={fichaCard}
+                              tone={isOwnMessage ? 'own' : 'other'}
+                              onPreviewImage={setShowImagePreview}
+                            />
+                          );
+                        }
+                        return renderAttachments(fileAttachments);
+                      })()}
                     </div>
                   </div>
                 </div>

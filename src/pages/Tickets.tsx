@@ -7,6 +7,10 @@ import { AlertCircle, X, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Ticket, ChatMessage } from '@/types';
 import { TicketService } from '@/services/ticketService';
+import {
+  buildRequisicaoPessoalCardMessageText,
+  buildRequisicaoPessoalFichaCardAttachment,
+} from '@/utils/requisicaoPessoalForm';
 import { notifyTicketWhatsApp } from '@/services/evolutionEdgeService';
 import { UserService } from '@/services/userService';
 import TicketHeader from '@/components/TicketHeader';
@@ -71,6 +75,10 @@ interface CreateTicketData {
   initialChatMessage?: string;
   sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
   pendingApprovalFile?: File | null;
+  reqPessoalCard?: {
+    data: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalFormData;
+    requester: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalRequester;
+  };
 }
 
 interface CreateTicketForUserData {
@@ -1322,19 +1330,26 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
       setShowCreateForm(false);
       toast.success('Ticket criado com sucesso!');
 
-      if (ticketData.pendingApprovalFile) {
+      if (ticketData.reqPessoalCard) {
         try {
-          const attachment = await TicketService.uploadAttachment(newTicket.id, ticketData.pendingApprovalFile);
+          let approvalAttachment = null;
+          if (ticketData.pendingApprovalFile) {
+            approvalAttachment = await TicketService.uploadAttachment(newTicket.id, ticketData.pendingApprovalFile);
+          }
           await TicketService.sendChatMessage(
             newTicket.id,
             user.id,
             user.name,
-            '✅ Comprovante do "de acordo" do sócio — referente à Ficha de Requisição de Pessoal acima.',
-            [attachment],
+            buildRequisicaoPessoalCardMessageText(ticketData.reqPessoalCard.data),
+            [buildRequisicaoPessoalFichaCardAttachment(
+              ticketData.reqPessoalCard.data,
+              ticketData.reqPessoalCard.requester,
+              approvalAttachment,
+            )],
           );
         } catch (uploadError) {
-          console.error('Error uploading approval attachment:', uploadError);
-          toast.error('Ticket criado, mas houve um erro ao anexar o comprovante. Anexe manualmente pelo chat.');
+          console.error('Error building requisicao pessoal ficha card:', uploadError);
+          toast.error('Ticket criado, mas houve um erro ao montar a ficha no chat.');
         }
       }
     }
