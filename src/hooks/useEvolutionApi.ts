@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { evolutionAdminInvoke, type EvolutionChatOption } from '@/services/evolutionEdgeService';
 import { CategoryService, type Subcategory, type Tag as TagType } from '@/services/categoryService';
 import { IntegrationSettingsService } from '@/services/integrationSettingsService';
+import { TicketService, type Ticket } from '@/services/ticketService';
 import { toast } from 'sonner';
 
 export function isEvolutionConnected(state: string | null | undefined) {
@@ -37,6 +38,8 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
   const [staleTicketTemplate, setStaleTicketTemplate] = useState('');
   const [staleTicketLoading, setStaleTicketLoading] = useState(false);
   const [staleTicketSaving, setStaleTicketSaving] = useState(false);
+  const [unansweredTickets, setUnansweredTickets] = useState<Ticket[]>([]);
+  const [unansweredTicketsLoading, setUnansweredTicketsLoading] = useState(false);
 
   // Load instance name on mount
   const loadInstanceName = useCallback(async () => {
@@ -253,6 +256,18 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
     }
   }, [staleTicketDays, staleTicketRecipient, staleTicketTemplate]);
 
+  const loadUnansweredTickets = useCallback(async () => {
+    try {
+      setUnansweredTicketsLoading(true);
+      const tickets = await TicketService.getUnansweredTickets();
+      setUnansweredTickets(tickets);
+    } catch (e) {
+      toast.error('Tickets sem resposta', { description: e instanceof Error ? e.message : 'Erro ao carregar a lista.' });
+    } finally {
+      setUnansweredTicketsLoading(false);
+    }
+  }, []);
+
   return {
     // Instance
     evolutionInstanceName, setEvolutionInstanceName,
@@ -277,5 +292,7 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
     staleTicketTemplate, setStaleTicketTemplate,
     staleTicketLoading, staleTicketSaving,
     loadStaleTicketSettings, saveStaleTicketSettings,
+    // Acompanhamento de tickets sem resposta
+    unansweredTickets, unansweredTicketsLoading, loadUnansweredTickets,
   };
 }

@@ -2,10 +2,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import WhatsAppConnectionCard from './WhatsAppConnectionCard';
 import WhatsAppBulkConfig from './WhatsAppBulkConfig';
 import WhatsAppStaleTicketsCard from './WhatsAppStaleTicketsCard';
+import WhatsAppUnansweredTicketsCard from './WhatsAppUnansweredTicketsCard';
 import WhatsAppSubcategoryList from './WhatsAppSubcategoryList';
 import { isEvolutionConnected } from '@/hooks/useEvolutionApi';
 import type { Category, Tag as TagType, Subcategory } from '@/services/categoryService';
 import type { EvolutionChatOption } from '@/services/evolutionEdgeService';
+import type { Ticket } from '@/services/ticketService';
 
 interface TagGroup {
   tag: TagType | null;
@@ -61,6 +63,10 @@ interface Props {
   staleTicketLoading: boolean;
   staleTicketSaving: boolean;
   onSaveStaleTicketSettings: () => void;
+  // Acompanhamento de tickets sem resposta
+  unansweredTickets: Ticket[];
+  unansweredTicketsLoading: boolean;
+  onLoadUnansweredTickets: () => void;
 }
 
 export default function WhatsAppTab(props: Props) {
@@ -137,6 +143,14 @@ export default function WhatsAppTab(props: Props) {
           whatsappChatsLoading={props.whatsappChatsLoading}
           onLoadChats={props.onLoadChats}
         />
+        <div className="mt-6">
+          <WhatsAppUnansweredTicketsCard
+            tickets={props.unansweredTickets}
+            loading={props.unansweredTicketsLoading}
+            staleTicketDays={props.staleTicketDays}
+            onRefresh={props.onLoadUnansweredTickets}
+          />
+        </div>
       </TabsContent>
     </Tabs>
   );

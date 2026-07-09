@@ -42,6 +42,7 @@ export interface Ticket {
   createdAt: string;
   attachments?: any[];
   updatedAt: string;
+  staleWhatsappNotifiedAt?: string;
 }
 
 export interface ChatMessage {
@@ -173,6 +174,7 @@ const mapFromDatabase = (data: any): Ticket => {
     feedbackSubmittedAt: data.feedback_submitted_at,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
+    staleWhatsappNotifiedAt: data.stale_whatsapp_notified_at,
   };
 };
 
@@ -637,6 +639,23 @@ static async hasUnsubmittedFeedback(userId: string): Promise<boolean> {
     console.error('Erro em hasUnsubmittedFeedback:', error);
     // Em caso de erro, permitir a criação do ticket para não bloquear o usuário
     return false;
+  }
+}
+
+// Obter tickets abertos sem nenhuma resposta do suporte (para acompanhar o alerta de tickets parados)
+static async getUnansweredTickets(): Promise<Ticket[]> {
+  try {
+    const { data, error } = await supabase.rpc('helpdesk_get_unanswered_tickets');
+
+    if (error) {
+      console.error('Erro ao buscar tickets sem resposta:', error);
+      throw error;
+    }
+
+    return (data || []).map(mapFromDatabase);
+  } catch (error) {
+    console.error('Erro em getUnansweredTickets:', error);
+    throw error;
   }
 }
 

@@ -24,6 +24,7 @@ export default function CategoryManagement() {
       evo.loadInstanceName();
       evo.loadEvolutionInstances();
       evo.loadStaleTicketSettings();
+      evo.loadUnansweredTickets();
     }
   }, [cat.canAccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -214,6 +215,9 @@ export default function CategoryManagement() {
             staleTicketLoading={evo.staleTicketLoading}
             staleTicketSaving={evo.staleTicketSaving}
             onSaveStaleTicketSettings={() => void evo.saveStaleTicketSettings()}
+            unansweredTickets={evo.unansweredTickets}
+            unansweredTicketsLoading={evo.unansweredTicketsLoading}
+            onLoadUnansweredTickets={() => void evo.loadUnansweredTickets()}
           />
         </TabsContent>
       </Tabs>
