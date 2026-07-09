@@ -260,6 +260,29 @@ Deno.serve(async (req) => {
     }
 
     if (action === "listChats") {
+      // Tenta primeiro o endpoint de grupos: não carrega prévia de mensagens/mídia,
+      // evitando o crash "Cannot read properties of null (reading 'mediaUrl')"
+      // que algumas versões da Evolution API têm em /chat/findChats.
+      const groupsRes = await evoFetch(
+        `/group/fetchAllGroups/${encodeURIComponent(instance)}?getParticipants=false`,
+        { method: "GET" },
+      );
+      const groupsRaw = await groupsRes.json().catch(() => ({}));
+      const groupsList = extractChatList(groupsRaw);
+
+      if (groupsRes.ok && groupsList.length > 0) {
+        const chats = groupsList.map((c) => {
+          const jid = String(c.id ?? c.jid ?? "");
+          const name = String(c.subject ?? c.name ?? jid ?? "Grupo");
+          return { jid, name };
+        }).filter((c) => c.jid);
+
+        return new Response(JSON.stringify({ chats, raw: groupsRaw }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Fallback: endpoint genérico de conversas (inclui chats individuais)
       const res = await evoFetch(
         `/chat/findChats/${encodeURIComponent(instance)}`,
         {
@@ -281,7 +304,7 @@ Deno.serve(async (req) => {
         return { jid, name };
       }).filter((c) => c.jid);
 
-      return new Response(JSON.stringify({ chats, raw }), {
+      return new Response(JSON.stringify({ chats, raw, groupsError: groupsRes.ok ? undefined : groupsRaw }), {
         status: res.ok ? 200 : 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
