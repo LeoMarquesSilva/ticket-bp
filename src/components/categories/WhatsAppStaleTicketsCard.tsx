@@ -1,15 +1,46 @@
+import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Search, MessageSquareText, Clock3, Send } from 'lucide-react';
 import type { EvolutionChatOption } from '@/services/evolutionEdgeService';
 
+// Mantido em espelho com DEFAULT_TEMPLATE em supabase/functions/notify-stale-tickets/index.ts
+const DEFAULT_TEMPLATE =
+  '⚠️ *TICKET PARADO — sem resposta há {days} dia(s)*\n\n' +
+  '*Título:* {title}\n' +
+  '*Solicitante:* {createdByName}\n' +
+  '*Responsável:* {assignedToName}\n\n' +
+  '*Categoria:* {categoryLabel}\n' +
+  '*Subcategoria:* {subcategoryLabel}\n\n' +
+  '*Aberto em:* {createdAtLocal}\n\n' +
+  'Por favor, verifique este chamado.';
+
 const STALE_TEMPLATE_VARIABLES = [
-  '{title}', '{createdByName}', '{assignedToName}', '{categoryLabel}', '{subcategoryLabel}', '{days}', '{createdAtLocal}',
+  { token: '{title}', label: 'Título' },
+  { token: '{createdByName}', label: 'Solicitante' },
+  { token: '{assignedToName}', label: 'Responsável' },
+  { token: '{categoryLabel}', label: 'Categoria' },
+  { token: '{subcategoryLabel}', label: 'Subcategoria' },
+  { token: '{days}', label: 'Dias parado' },
+  { token: '{createdAtLocal}', label: 'Data de abertura' },
 ];
+
+function renderTemplatePreview(template: string) {
+  const parts = template.split(/(\{[a-zA-Z]+\})/g);
+  return parts.map((part, i) =>
+    /^\{[a-zA-Z]+\}$/.test(part) ? (
+      <span key={i} className="rounded bg-amber-200/70 px-1 py-0.5 font-mono text-[11px] font-semibold text-amber-900">
+        {part}
+      </span>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    ),
+  );
+}
 
 interface Props {
   staleTicketDays: string;
@@ -33,9 +64,12 @@ export default function WhatsAppStaleTicketsCard({
   staleTicketLoading, staleTicketSaving, onSave,
   whatsappChats, whatsappChatsLoading, onLoadChats,
 }: Props) {
+  const isUsingDefaultTemplate = !staleTicketTemplate.trim();
+  const effectiveTemplate = isUsingDefaultTemplate ? DEFAULT_TEMPLATE : staleTicketTemplate;
+
   return (
-    <Card className="border-amber-500/25">
-      <CardHeader>
+    <Card className="border-amber-500/25 overflow-hidden">
+      <CardHeader className="border-b border-amber-100 bg-amber-50/40">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-amber-500/10 p-2 text-amber-700">
             <AlertTriangle className="h-5 w-5" />
@@ -43,40 +77,63 @@ export default function WhatsAppStaleTicketsCard({
           <div>
             <CardTitle>Alerta de Tickets Parados</CardTitle>
             <CardDescription>
-              Envia um aviso no WhatsApp quando um ticket ficar aberto por mais de X dias sem nenhuma resposta do suporte.
+              Envia um aviso no WhatsApp quando um ticket fica aberto por dias sem nenhuma resposta do suporte.
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {staleTicketLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <RefreshCw className="h-5 w-5 animate-spin text-amber-600" />
-          </div>
-        ) : (
-          <div className="rounded-md border border-amber-200 bg-amber-50/60 p-4 space-y-4">
-            <div className="grid gap-2 max-w-[200px]">
-              <Label className="text-xs text-slate-600">Dias sem resposta</Label>
+
+      {staleTicketLoading ? (
+        <CardContent className="flex items-center justify-center py-10">
+          <RefreshCw className="h-5 w-5 animate-spin text-amber-600" />
+        </CardContent>
+      ) : (
+        <CardContent className="space-y-6 pt-6">
+          {/* Passo 1: Quando alertar */}
+          <section className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#2C2D2F]">
+              <Clock3 className="h-4 w-4 text-amber-600" />
+              Quando alertar
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pl-6 text-sm text-slate-600">
+              <span>Um ticket é considerado parado após</span>
               <Input
                 type="number"
-                min={1}
+                min={0}
                 value={staleTicketDays}
                 onChange={(e) => setStaleTicketDays(e.target.value)}
                 placeholder="3"
+                className="h-8 w-16 text-center"
               />
+              <span>dia(s) sem nenhuma resposta da equipe.</span>
             </div>
+          </section>
 
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-slate-600">Grupo/número de destino</Label>
+          {/* Passo 2: Para onde enviar */}
+          <section className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#2C2D2F]">
+              <Send className="h-4 w-4 text-amber-600" />
+              Para onde enviar
+            </div>
+            <div className="pl-6 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={staleTicketRecipient}
+                    onChange={(e) => setStaleTicketRecipient(e.target.value)}
+                    placeholder="Número (5511999999999) ou JID de grupo (120363...@g.us)"
+                    className="pl-8"
+                  />
+                </div>
                 <Button type="button" size="sm" variant="outline" onClick={onLoadChats} disabled={whatsappChatsLoading}>
                   {whatsappChatsLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Buscar grupos/chats'}
                 </Button>
               </div>
               {whatsappChats.length > 0 && (
                 <Select value={staleTicketRecipient || 'none'} onValueChange={(v) => setStaleTicketRecipient(v === 'none' ? '' : v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um chat/grupo" />
+                  <SelectTrigger className="text-xs">
+                    <SelectValue placeholder="Ou selecione um chat/grupo já conectado" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Selecionar manualmente</SelectItem>
@@ -86,39 +143,64 @@ export default function WhatsAppStaleTicketsCard({
                   </SelectContent>
                 </Select>
               )}
-              <Input
-                value={staleTicketRecipient}
-                onChange={(e) => setStaleTicketRecipient(e.target.value)}
-                placeholder="5511999999999 ou 120363...@g.us"
-              />
+            </div>
+          </section>
+
+          {/* Passo 3: Mensagem */}
+          <section className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#2C2D2F]">
+              <MessageSquareText className="h-4 w-4 text-amber-600" />
+              Mensagem enviada
             </div>
 
-            <div className="grid gap-2">
-              <Label className="text-xs text-slate-600">Modelo da mensagem (opcional)</Label>
-              <Textarea
-                value={staleTicketTemplate}
-                onChange={(e) => setStaleTicketTemplate(e.target.value)}
-                placeholder="Deixe em branco para usar o modelo padrão"
-                rows={4}
-              />
-              <p className="text-xs text-slate-500">
-                Variáveis disponíveis: {STALE_TEMPLATE_VARIABLES.join(' ')}
-              </p>
-            </div>
+            <div className="pl-6 space-y-3">
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500">
+                  {isUsingDefaultTemplate ? 'Modelo padrão em uso atualmente:' : 'Prévia do seu modelo personalizado:'}
+                </p>
+                <div className="rounded-md border border-amber-200 bg-white p-3 font-mono text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
+                  {renderTemplatePreview(effectiveTemplate)}
+                </div>
+              </div>
 
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                className="bg-amber-600 text-white hover:bg-amber-700"
-                onClick={onSave}
-                disabled={staleTicketSaving}
-              >
-                {staleTicketSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Salvar configuração'}
-              </Button>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-500">Personalizar mensagem (opcional)</Label>
+                <Textarea
+                  value={staleTicketTemplate}
+                  onChange={(e) => setStaleTicketTemplate(e.target.value)}
+                  placeholder="Deixe em branco para usar o modelo padrão acima"
+                  rows={4}
+                  className="font-mono text-xs"
+                />
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {STALE_TEMPLATE_VARIABLES.map((v) => (
+                    <button
+                      key={v.token}
+                      type="button"
+                      title={v.label}
+                      onClick={() => setStaleTicketTemplate((prev) => prev ? `${prev} ${v.token}` : v.token)}
+                      className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-[10px] text-amber-800 hover:bg-amber-100 transition-colors"
+                    >
+                      {v.token}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
+          </section>
+
+          <div className="flex justify-end border-t border-slate-100 pt-4">
+            <Button
+              type="button"
+              className="bg-amber-600 text-white hover:bg-amber-700"
+              onClick={onSave}
+              disabled={staleTicketSaving}
+            >
+              {staleTicketSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Salvar configuração'}
+            </Button>
           </div>
-        )}
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }
