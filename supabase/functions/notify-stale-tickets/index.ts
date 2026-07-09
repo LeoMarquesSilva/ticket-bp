@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
 
     const daysRaw = await getSetting(admin, SETTINGS_DAYS_KEY);
     const parsedDays = Number.parseInt(daysRaw, 10);
-    const days = Number.isFinite(parsedDays) && parsedDays > 0
+    const days = Number.isFinite(parsedDays) && parsedDays >= 0
       ? parsedDays
       : DEFAULT_DAYS;
 
