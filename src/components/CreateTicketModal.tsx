@@ -27,6 +27,7 @@ interface CreateTicketModalProps {
     assignedToName?: string;
     initialChatMessage?: string;
     sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
+    pendingApprovalFile?: File | null;
   }) => void;
   onOpenTicket?: (ticket: any) => void;
 }
@@ -81,6 +82,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     assignedToName?: string;
     initialChatMessage?: string;
     sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
+    pendingApprovalFile?: File | null;
   }) => {
     // Se houver feedback pendente, não permitir a criação do ticket
     if (hasPendingFeedback) {

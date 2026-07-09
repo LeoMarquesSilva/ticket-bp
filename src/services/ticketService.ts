@@ -1014,6 +1014,26 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
     return UserService.getSupportUsers();
   }
 
+// Faz upload de um único arquivo para o storage do ticket e retorna os metadados de anexo
+static async uploadAttachment(ticketId: string, file: File): Promise<{ name: string; type: string; size: number; url: string }> {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+  const filePath = `tickets/${ticketId}/${fileName}`;
+
+  const { error } = await supabase.storage.from('attachments').upload(filePath, file, {
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) {
+    console.error('Erro ao fazer upload do anexo:', error);
+    throw error;
+  }
+
+  const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
+
+  return { name: file.name, type: file.type, size: file.size, url: publicUrl };
+}
+
 static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
   try {
     console.log('Creating ticket with data:', ticketData);

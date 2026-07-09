@@ -70,6 +70,7 @@ interface CreateTicketData {
   assignedToName?: string;
   initialChatMessage?: string;
   sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
+  pendingApprovalFile?: File | null;
 }
 
 interface CreateTicketForUserData {
@@ -82,6 +83,7 @@ interface CreateTicketForUserData {
   userDepartment?: string;
   initialChatMessage?: string;
   sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
+  pendingApprovalFile?: File | null;
 }
 
 type RealtimeTicketRow = {
@@ -1319,6 +1321,22 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
       // O ticket será adicionado automaticamente via real-time subscription
       setShowCreateForm(false);
       toast.success('Ticket criado com sucesso!');
+
+      if (ticketData.pendingApprovalFile) {
+        try {
+          const attachment = await TicketService.uploadAttachment(newTicket.id, ticketData.pendingApprovalFile);
+          await TicketService.sendChatMessage(
+            newTicket.id,
+            user.id,
+            user.name,
+            '📎 Comprovante do "de acordo" do sócio anexado.',
+            [attachment],
+          );
+        } catch (uploadError) {
+          console.error('Error uploading approval attachment:', uploadError);
+          toast.error('Ticket criado, mas houve um erro ao anexar o comprovante. Anexe manualmente pelo chat.');
+        }
+      }
     }
   } catch (error) {
     console.error('Error creating ticket:', error);

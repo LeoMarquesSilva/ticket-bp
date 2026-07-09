@@ -22,6 +22,16 @@ import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoCon
 import { isInverseTicketFlow, INVERSE_FLOW_CATEGORY_KEY } from '@/utils/inverseTicketFlow';
 import DepartmentUserPicker, { type DepartmentUserPickerUser } from '@/components/DepartmentUserPicker';
 import { UserService } from '@/services/userService';
+import RequisicaoPessoalFields from '@/components/RequisicaoPessoalFields';
+import {
+  buildRequisicaoPessoalChatMessage,
+  buildRequisicaoPessoalDescription,
+  buildRequisicaoPessoalTitle,
+  emptyRequisicaoPessoalForm,
+  isRequisicaoPessoalSelection,
+  validateRequisicaoPessoalForm,
+  type RequisicaoPessoalFormData,
+} from '@/utils/requisicaoPessoalForm';
 
 // Configuração hardcoded como fallback (caso haja erro ao buscar do banco)
 const FALLBACK_CATEGORIES_CONFIG: Record<string, { label: string; subcategories: { value: string; label: string; slaHours: number }[] }> = {
@@ -86,6 +96,7 @@ interface TicketFormProps {
     assignedToName?: string;
     initialChatMessage?: string;
     sharepointTreinamento?: SharepointTreinamentoPayload;
+    pendingApprovalFile?: File | null;
   }) => void;
   onCancel: () => void;
   isStaffUser?: boolean;
@@ -110,11 +121,13 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
+  const [reqForm, setReqForm] = useState<RequisicaoPessoalFormData>(emptyRequisicaoPessoalForm());
   const [juridicoUsers, setJuridicoUsers] = useState<DepartmentUserPickerUser[]>([]);
   const [selectedAttendantId, setSelectedAttendantId] = useState('');
   const [loadingJuridicoUsers, setLoadingJuridicoUsers] = useState(false);
 
   const isDcCategory = isDesenvolvimentoContinuoCategory(category);
+  const isReqPessoalCategory = isRequisicaoPessoalSelection(category, subcategory);
   const isInverseFlow = isStaffUser && isInverseTicketFlow(category, subcategory);
   const isInverseCategory = isStaffUser && category === INVERSE_FLOW_CATEGORY_KEY;
   const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
@@ -152,6 +165,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
     setSubcategory('');
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
+    setReqForm(emptyRequisicaoPessoalForm());
   }, [frenteId]);
 
   // Resetar subcategoria quando a categoria muda
@@ -159,6 +173,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
     setSubcategory('');
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
+    setReqForm(emptyRequisicaoPessoalForm());
     setSelectedAttendantId('');
   }, [category]);
 
@@ -229,6 +244,8 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
         newErrors.subcategory = 'A subcategoria é obrigatória';
       }
       Object.assign(newErrors, validateDesenvolvimentoContinuoForm(dcForm));
+    } else if (isReqPessoalCategory) {
+      Object.assign(newErrors, validateRequisicaoPessoalForm(reqForm));
     } else {
       if (!title.trim()) {
         newErrors.title = 'O título é obrigatório';
@@ -295,6 +312,15 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
             subcategoryLabel,
             dcUsers,
           ),
+        });
+      } else if (isReqPessoalCategory) {
+        await onSubmit({
+          title: buildRequisicaoPessoalTitle(reqForm),
+          description: buildRequisicaoPessoalDescription(reqForm),
+          category,
+          subcategory,
+          initialChatMessage: buildRequisicaoPessoalChatMessage(reqForm),
+          pendingApprovalFile: reqForm.aprovacaoSocio === 'sim' ? reqForm.anexoAprovacao : null,
         });
       } else {
         const attendant = juridicoUsers.find((u) => u.id === selectedAttendantId);
@@ -429,7 +455,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
             </div>
           ) : (
             <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-              {!isDcCategory && (
+              {!isDcCategory && !isReqPessoalCategory && (
                 <>
                   {isInverseFlow && (
                     <div className="space-y-2">
@@ -499,6 +525,14 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
                   users={dcUsers}
                   departments={dcDepartments}
                   loading={dcOptionsLoading}
+                />
+              )}
+
+              {isReqPessoalCategory && (
+                <RequisicaoPessoalFields
+                  data={reqForm}
+                  onChange={setReqForm}
+                  errors={errors}
                 />
               )}
 

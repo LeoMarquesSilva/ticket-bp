@@ -33,6 +33,16 @@ import {
 } from '@/utils/desenvolvimentoContinuoForm';
 import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
 import { isInverseTicketFlow } from '@/utils/inverseTicketFlow';
+import RequisicaoPessoalFields from '@/components/RequisicaoPessoalFields';
+import {
+  buildRequisicaoPessoalChatMessage,
+  buildRequisicaoPessoalDescription,
+  buildRequisicaoPessoalTitle,
+  emptyRequisicaoPessoalForm,
+  isRequisicaoPessoalSelection,
+  validateRequisicaoPessoalForm,
+  type RequisicaoPessoalFormData,
+} from '@/utils/requisicaoPessoalForm';
 
 interface CreateTicketForUserModalProps {
   isOpen: boolean;
@@ -76,8 +86,10 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
+  const [reqForm, setReqForm] = useState<RequisicaoPessoalFormData>(emptyRequisicaoPessoalForm());
 
   const isDcCategory = isDesenvolvimentoContinuoCategory(category);
+  const isReqPessoalCategory = isRequisicaoPessoalSelection(category, subcategory);
   const isInverseFlow = isInverseTicketFlow(category, subcategory);
   const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
     useDesenvolvimentoContinuoOptions(isDcCategory);
@@ -126,6 +138,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setSubcategory('');
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
+    setReqForm(emptyRequisicaoPessoalForm());
   }, [frenteId]);
 
   // Resetar subcategoria quando categoria muda
@@ -133,6 +146,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setSubcategory('');
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
+    setReqForm(emptyRequisicaoPessoalForm());
   }, [category]);
 
   // Categorias filtradas pela frente selecionada
@@ -169,6 +183,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setResolution('');
     setIsAlreadyResolved(false);
     setDcForm(emptyDesenvolvimentoContinuoForm());
+    setReqForm(emptyRequisicaoPessoalForm());
     setSearchTerm('');
     setErrors({});
     setStep('user');
@@ -211,6 +226,8 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
         newErrors.subcategory = 'A subcategoria é obrigatória';
       }
       Object.assign(newErrors, validateDesenvolvimentoContinuoForm(dcForm));
+    } else if (isReqPessoalCategory) {
+      Object.assign(newErrors, validateRequisicaoPessoalForm(reqForm));
     } else {
       if (!title.trim()) {
         newErrors.title = 'O título é obrigatório';
@@ -282,6 +299,10 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
           subcategoryLabel,
           dcUsers,
         );
+      } else if (isReqPessoalCategory) {
+        ticketTitle = buildRequisicaoPessoalTitle(reqForm);
+        ticketDescription = buildRequisicaoPessoalDescription(reqForm);
+        initialChatMessage = buildRequisicaoPessoalChatMessage(reqForm);
       }
 
       const ticketData = {
@@ -301,6 +322,22 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
 
       if (!newTicket) {
         throw new Error('Falha ao criar ticket');
+      }
+
+      if (isReqPessoalCategory && reqForm.aprovacaoSocio === 'sim' && reqForm.anexoAprovacao) {
+        try {
+          const attachment = await TicketService.uploadAttachment(newTicket.id, reqForm.anexoAprovacao);
+          await TicketService.sendChatMessage(
+            newTicket.id,
+            selectedUser.id,
+            selectedUser.name,
+            '📎 Comprovante do "de acordo" do sócio anexado.',
+            [attachment],
+          );
+        } catch (uploadError) {
+          console.error('Erro ao anexar comprovante:', uploadError);
+          toast.error('Ticket criado, mas houve um erro ao anexar o comprovante. Anexe manualmente pelo chat.');
+        }
       }
 
       // 2. Se já foi resolvido, processar imediatamente
@@ -568,7 +605,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-                      {!isDcCategory && (
+                      {!isDcCategory && !isReqPessoalCategory && (
                         <>
                           <div className="space-y-2">
                             <Label htmlFor="title" className="text-[#2C2D2F]">Título do Ticket</Label>
@@ -615,6 +652,14 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                           users={dcUsers}
                           departments={dcDepartments}
                           loading={dcOptionsLoading}
+                        />
+                      )}
+
+                      {isReqPessoalCategory && (
+                        <RequisicaoPessoalFields
+                          data={reqForm}
+                          onChange={setReqForm}
+                          errors={errors}
                         />
                       )}
 

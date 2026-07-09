@@ -1,0 +1,284 @@
+export const REQUISICAO_PESSOAL_CATEGORY_KEY = 'formularios_requisicao_movimentacao';
+export const REQUISICAO_PESSOAL_SUBCATEGORY_KEY = 'requisicao';
+
+export function isRequisicaoPessoalSelection(categoryKey: string, subcategoryKey: string): boolean {
+  return categoryKey === REQUISICAO_PESSOAL_CATEGORY_KEY && subcategoryKey === REQUISICAO_PESSOAL_SUBCATEGORY_KEY;
+}
+
+export type MotivoRequisicao = 'aumento_quadro' | 'reposicao' | '';
+export type MotivoReposicao =
+  | 'desligamento_empregado'
+  | 'desligamento_empregador'
+  | 'promocao'
+  | 'transferencia'
+  | 'afastamento'
+  | '';
+export type FaixaIdade = 'indiferente' | 'ate' | '';
+export type Sexo = 'indiferente' | 'masculino' | 'feminino' | '';
+export type Escolaridade = 'ensino_medio' | 'graduacao' | 'pos_graduacao' | '';
+export type NivelExigencia = 'desejavel' | 'imprescindivel' | 'indiferente' | '';
+
+export interface EquipamentoItem {
+  necessario: 'sim' | 'nao' | '';
+  valor: string;
+}
+
+export interface RequisicaoPessoalFormData {
+  // Motivo da requisição
+  motivo: MotivoRequisicao;
+  justificativaAumentoQuadro: string;
+  motivoReposicao: MotivoReposicao;
+  nomeColaboradorSubstituido: string;
+  cargoColaboradorSubstituido: string;
+  justificativaReposicao: string;
+
+  // Requisitos do candidato/cargo
+  cargo: string;
+  experienciaDesejada: string;
+  atribuicoes: string;
+  perfilCargo: string;
+  faixaIdade: FaixaIdade;
+  idadeAte: string;
+  sexo: Sexo;
+  escolaridade: Escolaridade;
+  cursoEspecial: string;
+  cursoEspecialNivel: NivelExigencia;
+
+  // Remuneração
+  remuneracaoSugerida: string;
+
+  // Necessidade de licenças | equipamentos de TI | suprimentos
+  estacaoTrabalho: EquipamentoItem;
+  notebook: EquipamentoItem;
+  mouseTecladoApoio: EquipamentoItem;
+  licencaMicrosoft: EquipamentoItem;
+  usuarioLegalOne: EquipamentoItem;
+
+  // Aprovação do sócio
+  aprovacaoSocio: 'sim' | 'nao' | '';
+  anexoAprovacao: File | null;
+}
+
+const emptyEquipamento = (): EquipamentoItem => ({ necessario: '', valor: '' });
+
+export function emptyRequisicaoPessoalForm(): RequisicaoPessoalFormData {
+  return {
+    motivo: '',
+    justificativaAumentoQuadro: '',
+    motivoReposicao: '',
+    nomeColaboradorSubstituido: '',
+    cargoColaboradorSubstituido: '',
+    justificativaReposicao: '',
+
+    cargo: '',
+    experienciaDesejada: '',
+    atribuicoes: '',
+    perfilCargo: '',
+    faixaIdade: '',
+    idadeAte: '',
+    sexo: '',
+    escolaridade: '',
+    cursoEspecial: '',
+    cursoEspecialNivel: '',
+
+    remuneracaoSugerida: '',
+
+    estacaoTrabalho: emptyEquipamento(),
+    notebook: emptyEquipamento(),
+    mouseTecladoApoio: emptyEquipamento(),
+    licencaMicrosoft: emptyEquipamento(),
+    usuarioLegalOne: emptyEquipamento(),
+
+    aprovacaoSocio: '',
+    anexoAprovacao: null,
+  };
+}
+
+export const MOTIVO_REPOSICAO_LABELS: Record<Exclude<MotivoReposicao, ''>, string> = {
+  desligamento_empregado: 'Desligamento por iniciativa do empregado',
+  desligamento_empregador: 'Desligamento por iniciativa do empregador',
+  promocao: 'Promoção',
+  transferencia: 'Transferência',
+  afastamento: 'Afastamento',
+};
+
+export const ESCOLARIDADE_LABELS: Record<Exclude<Escolaridade, ''>, string> = {
+  ensino_medio: 'Ensino Médio',
+  graduacao: 'Graduação',
+  pos_graduacao: 'Pós-Graduação',
+};
+
+export const SEXO_LABELS: Record<Exclude<Sexo, ''>, string> = {
+  indiferente: 'Indiferente',
+  masculino: 'Masculino',
+  feminino: 'Feminino',
+};
+
+export const NIVEL_EXIGENCIA_LABELS: Record<Exclude<NivelExigencia, ''>, string> = {
+  desejavel: 'Desejável',
+  imprescindivel: 'Imprescindível',
+  indiferente: 'Indiferente',
+};
+
+export function validateRequisicaoPessoalForm(data: RequisicaoPessoalFormData): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  if (!data.motivo) {
+    errors.motivo = 'Selecione o motivo da requisição';
+  } else if (data.motivo === 'aumento_quadro') {
+    if (!data.justificativaAumentoQuadro.trim()) {
+      errors.justificativaAumentoQuadro = 'Informe a justificativa do aumento de quadro';
+    }
+  } else if (data.motivo === 'reposicao') {
+    if (!data.motivoReposicao) {
+      errors.motivoReposicao = 'Selecione o motivo da reposição';
+    }
+    if (!data.nomeColaboradorSubstituido.trim()) {
+      errors.nomeColaboradorSubstituido = 'Informe o nome do colaborador substituído';
+    }
+    if (!data.cargoColaboradorSubstituido.trim()) {
+      errors.cargoColaboradorSubstituido = 'Informe o cargo do colaborador substituído';
+    }
+    if (!data.justificativaReposicao.trim()) {
+      errors.justificativaReposicao = 'Informe a justificativa da reposição';
+    }
+  }
+
+  if (!data.cargo.trim()) {
+    errors.cargo = 'Informe o cargo da vaga';
+  }
+
+  if (!data.faixaIdade) {
+    errors.faixaIdade = 'Selecione a faixa de idade';
+  } else if (data.faixaIdade === 'ate' && !data.idadeAte.trim()) {
+    errors.idadeAte = 'Informe a idade máxima';
+  }
+
+  if (!data.sexo) {
+    errors.sexo = 'Selecione o sexo';
+  }
+
+  if (!data.escolaridade) {
+    errors.escolaridade = 'Selecione a escolaridade mínima';
+  }
+
+  if (!data.remuneracaoSugerida.trim()) {
+    errors.remuneracaoSugerida = 'Informe a remuneração sugerida';
+  }
+
+  (['estacaoTrabalho', 'notebook', 'mouseTecladoApoio', 'licencaMicrosoft', 'usuarioLegalOne'] as const).forEach((key) => {
+    const item = data[key];
+    if (!item.necessario) {
+      errors[key] = 'Informe se é necessário';
+    } else if (item.necessario === 'sim' && !item.valor.trim()) {
+      errors[`${key}Valor`] = 'Informe o valor estimado';
+    }
+  });
+
+  if (!data.aprovacaoSocio) {
+    errors.aprovacaoSocio = 'Informe se já obteve o "de acordo" do sócio';
+  } else if (data.aprovacaoSocio === 'sim' && !data.anexoAprovacao) {
+    errors.anexoAprovacao = 'Anexe o print/comprovante do "de acordo" do sócio';
+  }
+
+  return errors;
+}
+
+export function buildRequisicaoPessoalTitle(data: RequisicaoPessoalFormData): string {
+  const title = `Requisição de Pessoal — ${data.cargo.trim()}`;
+  return title.length > 120 ? title.slice(0, 117) + '...' : title;
+}
+
+function motivoDescricaoLinha(data: RequisicaoPessoalFormData): string[] {
+  if (data.motivo === 'aumento_quadro') {
+    return [
+      'Motivo: Aumento de Quadro',
+      `Justificativa: ${data.justificativaAumentoQuadro.trim()}`,
+    ];
+  }
+  if (data.motivo === 'reposicao') {
+    return [
+      'Motivo: Reposição',
+      `Tipo de reposição: ${data.motivoReposicao ? MOTIVO_REPOSICAO_LABELS[data.motivoReposicao] : ''}`,
+      `Colaborador substituído: ${data.nomeColaboradorSubstituido.trim()} (${data.cargoColaboradorSubstituido.trim()})`,
+      `Justificativa: ${data.justificativaReposicao.trim()}`,
+    ];
+  }
+  return [];
+}
+
+function idadeDescricao(data: RequisicaoPessoalFormData): string {
+  if (data.faixaIdade === 'ate') return `Até ${data.idadeAte.trim()} anos`;
+  return 'Indiferente';
+}
+
+function equipamentosLinhas(data: RequisicaoPessoalFormData, withEmoji: boolean): string[] {
+  const itens: Array<[string, EquipamentoItem]> = [
+    ['Estação de trabalho | Cadeira', data.estacaoTrabalho],
+    ['Notebook', data.notebook],
+    ['Mouse | Teclado | Apoio', data.mouseTecladoApoio],
+    ['Licença da Microsoft', data.licencaMicrosoft],
+    ['Usuário do Legal One', data.usuarioLegalOne],
+  ];
+  const bullet = withEmoji ? '🔹' : '-';
+  return itens.map(([label, item]) => {
+    if (item.necessario === 'sim') {
+      return `${bullet} ${label}: Sim (valor estimado: ${item.valor.trim()})`;
+    }
+    return `${bullet} ${label}: Não`;
+  });
+}
+
+/** Texto simples armazenado na descrição do ticket. */
+export function buildRequisicaoPessoalDescription(data: RequisicaoPessoalFormData): string {
+  const lines = [
+    ...motivoDescricaoLinha(data),
+    '',
+    `Cargo: ${data.cargo.trim()}`,
+    data.experienciaDesejada.trim() && `Experiência desejada: ${data.experienciaDesejada.trim()}`,
+    data.atribuicoes.trim() && `Atribuições do cargo: ${data.atribuicoes.trim()}`,
+    data.perfilCargo.trim() && `Perfil desejado: ${data.perfilCargo.trim()}`,
+    `Idade: ${idadeDescricao(data)}`,
+    `Sexo: ${data.sexo ? SEXO_LABELS[data.sexo] : ''}`,
+    `Escolaridade: ${data.escolaridade ? ESCOLARIDADE_LABELS[data.escolaridade] : ''}`,
+    data.cursoEspecial.trim() &&
+      `Curso especial: ${data.cursoEspecial.trim()} (${data.cursoEspecialNivel ? NIVEL_EXIGENCIA_LABELS[data.cursoEspecialNivel] : 'Indiferente'})`,
+    '',
+    `Remuneração sugerida: ${data.remuneracaoSugerida.trim()}`,
+    '',
+    'Licenças | Equipamentos de TI | Suprimentos:',
+    ...equipamentosLinhas(data, false),
+    '',
+    `Já obteve o "de acordo" do sócio?: ${data.aprovacaoSocio === 'sim' ? 'Sim (comprovante anexado no chat)' : 'Não'}`,
+  ].filter((line): line is string => Boolean(line || line === ''));
+
+  return lines.join('\n');
+}
+
+/** Mensagem inicial enviada no chat com formatação estruturada. */
+export function buildRequisicaoPessoalChatMessage(data: RequisicaoPessoalFormData): string {
+  const lines = [
+    '📋 **Ficha de Requisição de Pessoal**',
+    '',
+    ...motivoDescricaoLinha(data).map((l) => `📌 **${l}**`),
+    '',
+    `💼 **Cargo:** ${data.cargo.trim()}`,
+    data.experienciaDesejada.trim() && `🎓 **Experiência desejada:** ${data.experienciaDesejada.trim()}`,
+    data.atribuicoes.trim() && `📝 **Atribuições:** ${data.atribuicoes.trim()}`,
+    data.perfilCargo.trim() && `👤 **Perfil desejado:** ${data.perfilCargo.trim()}`,
+    `🔞 **Idade:** ${idadeDescricao(data)}`,
+    `⚧ **Sexo:** ${data.sexo ? SEXO_LABELS[data.sexo] : ''}`,
+    `🏫 **Escolaridade:** ${data.escolaridade ? ESCOLARIDADE_LABELS[data.escolaridade] : ''}`,
+    data.cursoEspecial.trim() &&
+      `📚 **Curso especial:** ${data.cursoEspecial.trim()} (${data.cursoEspecialNivel ? NIVEL_EXIGENCIA_LABELS[data.cursoEspecialNivel] : 'Indiferente'})`,
+    '',
+    `💰 **Remuneração sugerida:** ${data.remuneracaoSugerida.trim()}`,
+    '',
+    '🖥️ **Licenças | Equipamentos de TI | Suprimentos:**',
+    ...equipamentosLinhas(data, true),
+    '',
+    `✅ **Já obteve o "de acordo" do sócio?:** ${data.aprovacaoSocio === 'sim' ? 'Sim — comprovante anexado abaixo' : 'Não'}`,
+  ].filter((line): line is string => Boolean(line || line === ''));
+
+  return lines.join('\n');
+}
