@@ -11,6 +11,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChatContext } from '@/contexts/ChatContext';
 import { toast } from 'sonner';
 import FinishTicketButton from './FinishTicketButton';
+import { usePermissions } from '@/hooks/usePermissions';
+import { canUserFinishTicket } from '@/utils/inverseTicketFlow';
 
 interface ChatModalProps {
   ticket: Ticket;
@@ -21,6 +23,7 @@ interface ChatModalProps {
 
 const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicketFinished = () => {} }) => {
   const { user } = useAuth();
+  const { has } = usePermissions();
   const { setActiveChatId } = useChatContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -664,7 +667,9 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
               )}
               
               {/* Botão de finalizar ticket - mostrado apenas se o ticket estiver ativo */}
-              {isTicketActive && user && (
+              {isTicketActive &&
+                user &&
+                canUserFinishTicket(ticket, user.id, has('finish_ticket'), user.role) && (
                 <FinishTicketButton
                   ticketId={ticket.id}
                   ticketTitle={ticket.title}

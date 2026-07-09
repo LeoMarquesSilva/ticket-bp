@@ -35,11 +35,6 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
   
-  // Se o usuário for do tipo "user", não renderizar o botão
-  if (user?.role === 'user') {
-    return null;
-  }
-
   const handleFinishTicket = async () => {
     try {
       setIsLoading(true);

@@ -25,17 +25,21 @@ const listId = process.env.SHAREPOINT_TREINAMENTOS_LIST_ID;
 
 /** LookupIds confirmados manualmente (prioridade máxima). */
 const MANUAL_OVERRIDES = {
-  'felipe@bismarchipires.com.br': '411',
-  'felipe@bpplaw.com.br': '411',
-  'gabriela.consul@bismarchipires.com.br': '12',
-  'controladoria@bpplaw.com.br': '15',
+  'felipe@bismarchipires.com.br': '15',
+  'felipe@bpplaw.com.br': '15',
+  'juliana.pires@bismarchipires.com.br': '411',
+  'gabriela.consul@bismarchipires.com.br': '92',
+  'gabriela.consul@bpplaw.com.br': '92',
+  'controladoria@bpplaw.com.br': '12',
   'mariaponce@bismarchipires.com.br': '227',
   'renato@bismarchipires.com.br': '40',
   'wagner.armani@bismarchipires.com.br': '199',
 };
 
-/** Lookup compartilhado — só atribuir ao responsável default. */
-const SHARED_DEFAULT_LOOKUP = '15';
+/** LookupId do Felipe — não inferir para outros usuários. */
+const FELIPE_LOOKUP = '15';
+/** LookupId da controladoria (Samuel). */
+const CONTROLADORIA_LOOKUP = '12';
 
 const SKIP_EMAIL = /@(example\.com|gmail\.com)$/i;
 const SKIP_UTI = /@uticomputadores\.com$/i;
@@ -219,9 +223,9 @@ for (const [lookupId, data] of byLookup.entries()) {
   const facCount = data.facilitadores.size;
   const editorRatio = data.editorMatches / data.count;
 
-  if (lookupId === SHARED_DEFAULT_LOOKUP) {
+  if (lookupId === CONTROLADORIA_LOOKUP) {
     const samuel = appUsers.find((u) => norm(u.email) === 'controladoria@bpplaw.com.br');
-    if (samuel) addAssignment(assignments, samuel, lookupId, 90, 'default-controladoria');
+    if (samuel) addAssignment(assignments, samuel, CONTROLADORIA_LOOKUP, 90, 'default-controladoria');
     continue;
   }
 
@@ -242,7 +246,7 @@ for (const [lookupId, data] of byLookup.entries()) {
 for (const [lookupId, data] of byLookup.entries()) {
   const facCount = data.facilitadores.size;
 
-  if (lookupId === SHARED_DEFAULT_LOOKUP) continue;
+  if (lookupId === CONTROLADORIA_LOOKUP) continue;
 
   // Lookup com único facilitador
   if (facCount === 1) {
@@ -281,9 +285,8 @@ for (const user of withGraph) {
     const lookupMeta = byLookup.get(lookupId);
     const facCount = lookupMeta?.facilitadores.size ?? 0;
 
-    if (lookupId === SHARED_DEFAULT_LOOKUP && norm(user.email) !== 'controladoria@bpplaw.com.br') {
-      continue;
-    }
+    const isFelipe = emailVariants(user.email).some((e) => MANUAL_OVERRIDES[e] === FELIPE_LOOKUP);
+    if (lookupId === FELIPE_LOOKUP && !isFelipe) continue;
 
     // Lookups compartilhados com vários facilitadores — não inferir por voto
     if (facCount > 1) continue;

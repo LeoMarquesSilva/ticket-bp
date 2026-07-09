@@ -21,10 +21,12 @@ const siteId = process.env.SHAREPOINT_SITE_ID;
 const accessRequestsListId = 'c383d939-0b4c-4348-b870-c2de3ed332c2';
 
 const MANUAL_OVERRIDES = {
-  'felipe@bismarchipires.com.br': '411',
-  'felipe@bpplaw.com.br': '411',
-  'gabriela.consul@bismarchipires.com.br': '12',
-  'controladoria@bpplaw.com.br': '15',
+  'felipe@bismarchipires.com.br': '15',
+  'felipe@bpplaw.com.br': '15',
+  'juliana.pires@bismarchipires.com.br': '411',
+  'gabriela.consul@bismarchipires.com.br': '92',
+  'gabriela.consul@bpplaw.com.br': '92',
+  'controladoria@bpplaw.com.br': '12',
   'mariaponce@bismarchipires.com.br': '227',
   'renato@bismarchipires.com.br': '40',
   'wagner.armani@bismarchipires.com.br': '199',

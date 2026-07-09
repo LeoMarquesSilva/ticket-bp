@@ -32,6 +32,7 @@ import {
 } from '@/utils/ticketFilterUtils';
 import { matchesUserTicketFilter } from '@/utils/ticketFiltersUtils';
 import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
+import { canUserFinishTicket, isInverseTicketFlow } from '@/utils/inverseTicketFlow';
 
 interface SupportUser {
   id: string;
@@ -65,6 +66,8 @@ interface CreateTicketData {
   description: string;
   category: string;
   subcategory: string;
+  assignedTo?: string;
+  assignedToName?: string;
   initialChatMessage?: string;
   sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
 }
@@ -1228,7 +1231,12 @@ useEffect(() => {
       });
       
       // Atualizar o ticket para "em andamento" se estiver aberto
-      if (selectedTicket.status === 'open' && user.role !== 'user') {
+      const canStartAttendance =
+        user.role !== 'user' ||
+        (isInverseTicketFlow(selectedTicket.category, selectedTicket.subcategory) &&
+          selectedTicket.assignedTo === user.id);
+
+      if (selectedTicket.status === 'open' && canStartAttendance) {
         await handleUpdateTicket(selectedTicket.id, { status: 'in_progress' });
       }
       
@@ -1299,6 +1307,8 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
       createdBy: user.id,
       createdByName: user.name,
       createdByDepartment: user.department,
+      assignedTo: ticketData.assignedTo,
+      assignedToName: ticketData.assignedToName,
       initialChatMessage: ticketData.initialChatMessage,
       sharepointTreinamento: ticketData.sharepointTreinamento,
     });
@@ -1932,7 +1942,16 @@ return (
                     canAssignTicket={has('assign_ticket')}
                     canEditTicketCategory={has('assign_ticket')}
                     canDeleteTicket={has('delete_ticket')}
-                    canFinishTicket={has('finish_ticket')}
+                    canFinishTicket={
+                      selectedTicket
+                        ? canUserFinishTicket(
+                            selectedTicket,
+                            user?.id,
+                            has('finish_ticket'),
+                            user?.role,
+                          )
+                        : false
+                    }
                   />
                 </div>
               )}
@@ -2027,7 +2046,16 @@ return (
                         canAssignTicket={has('assign_ticket')}
                         canEditTicketCategory={has('assign_ticket')}
                         canDeleteTicket={has('delete_ticket')}
-                        canFinishTicket={has('finish_ticket')}
+                        canFinishTicket={
+                      selectedTicket
+                        ? canUserFinishTicket(
+                            selectedTicket,
+                            user?.id,
+                            has('finish_ticket'),
+                            user?.role,
+                          )
+                        : false
+                    }
                       />
                     )}
                   </ResizablePanel>

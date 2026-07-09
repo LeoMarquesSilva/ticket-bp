@@ -45,6 +45,31 @@ function interpolate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "");
 }
 
+async function sendEvolutionText(
+  base: string,
+  instance: string,
+  number: string,
+  text: string,
+): Promise<Response> {
+  const url = `${base}/message/sendText/${encodeURIComponent(instance)}`;
+  const plainRes = await fetch(url, {
+    method: "POST",
+    headers: evoHeaders(),
+    body: JSON.stringify({ number, text }),
+  });
+
+  if (plainRes.ok) return plainRes;
+
+  return fetch(url, {
+    method: "POST",
+    headers: evoHeaders(),
+    body: JSON.stringify({
+      number,
+      textMessage: { text },
+    }),
+  });
+}
+
 function formatDateLocal(raw: string): string {
   if (!raw) return "";
   const dt = new Date(raw);
@@ -124,14 +149,7 @@ async function sendAlertForTicket(
   const text = interpolate(opts.template, vars);
   const number = normalizeSendNumber(opts.recipient);
 
-  const sendRes = await fetch(
-    `${opts.base}/message/sendText/${encodeURIComponent(opts.instance)}`,
-    {
-      method: "POST",
-      headers: evoHeaders(),
-      body: JSON.stringify({ number, text }),
-    },
-  );
+  const sendRes = await sendEvolutionText(opts.base, opts.instance, number, text);
 
   if (sendRes.ok) {
     await admin

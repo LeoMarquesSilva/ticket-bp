@@ -35,6 +35,31 @@ function interpolate(
   return template.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "");
 }
 
+async function sendEvolutionText(
+  base: string,
+  instance: string,
+  number: string,
+  text: string,
+): Promise<Response> {
+  const url = `${base}/message/sendText/${encodeURIComponent(instance)}`;
+  const plainRes = await fetch(url, {
+    method: "POST",
+    headers: evoHeaders(),
+    body: JSON.stringify({ number, text }),
+  });
+
+  if (plainRes.ok) return plainRes;
+
+  return fetch(url, {
+    method: "POST",
+    headers: evoHeaders(),
+    body: JSON.stringify({
+      number,
+      textMessage: { text },
+    }),
+  });
+}
+
 function formatRequestedAtLocal(raw: string): string {
   if (!raw) return "";
   const dt = new Date(raw);
@@ -182,14 +207,7 @@ Deno.serve(async (req) => {
     const text = interpolate(subRow.whatsapp_message_template, vars);
     const number = normalizeSendNumber(subRow.whatsapp_recipient);
 
-    const sendRes = await fetch(
-      `${base}/message/sendText/${encodeURIComponent(instance)}`,
-      {
-        method: "POST",
-        headers: evoHeaders(),
-        body: JSON.stringify({ number, text }),
-      },
-    );
+    const sendRes = await sendEvolutionText(base, instance, number, text);
 
     const sendJson = await sendRes.json().catch(() => ({}));
     if (!sendRes.ok) {

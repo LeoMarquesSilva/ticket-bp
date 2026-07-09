@@ -68,6 +68,9 @@ export interface CreateTicketData {
   createdByName: string;
   createdByDepartment?: string;
   skipFeedbackCheck?: boolean;
+  /** Atribuição manual (fluxo inverso) — pula atribuição automática. */
+  assignedTo?: string;
+  assignedToName?: string;
   /** Mensagem formatada enviada automaticamente no chat ao abrir o ticket. */
   initialChatMessage?: string;
   /** Envio para lista SharePoint (Desenvolvimento Contínuo da Equipe). */
@@ -228,7 +231,7 @@ static async getTickets(userId: string, userRole: string): Promise<Ticket[]> {
         .order('created_at', { ascending: false });
 
       if (userRole === 'user') {
-        query = query.eq('created_by', userId);
+        query = query.or(`created_by.eq.${userId},assigned_to.eq.${userId}`);
       }
 
       const { data, error } = await query;
@@ -1036,60 +1039,62 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
 
     console.log('Database insert data:', dbData); // Log para verificar o mapeamento
 
-    // Verificar atribuição automática baseada em categoria/subcategoria
-    let assignedUser: any = null;
-    
-    try {
-      const defaultAssignedUserId = await CategoryService.getDefaultAssignedUser(
-        ticketData.category,
-        ticketData.subcategory
-      );
-      
-      if (defaultAssignedUserId) {
-        // Buscar dados do usuário atribuído
-        const { data: userData } = await supabase
-          .from(TABLES.USERS)
-          .select('id, name, is_active')
-          .eq('id', defaultAssignedUserId)
-          .eq('is_active', true)
-          .single();
-        
-        if (userData) {
-          assignedUser = { id: userData.id, name: userData.name };
-        }
-      }
-    } catch (error) {
-      console.warn('Erro ao buscar atribuição automática, usando algoritmo padrão:', error);
-    }
+    // Atribuição manual (fluxo inverso) ou automática
+    if (ticketData.assignedTo) {
+      dbData.assigned_to = ticketData.assignedTo;
+      dbData.assigned_to_name = ticketData.assignedToName ?? null;
+      dbData.assigned_at = new Date().toISOString();
+    } else {
+      let assignedUser: { id: string; name: string } | null = null;
 
-    if (!assignedUser) {
       try {
-        const tagId = await CategoryService.getCategoryTagId(ticketData.category);
-        if (tagId) {
-          const tagUser = await UserService.getNextAvailableByTag(tagId);
-          if (tagUser) {
-            assignedUser = { id: tagUser.id, name: tagUser.name };
+        const defaultAssignedUserId = await CategoryService.getDefaultAssignedUser(
+          ticketData.category,
+          ticketData.subcategory
+        );
+
+        if (defaultAssignedUserId) {
+          const { data: userData } = await supabase
+            .from(TABLES.USERS)
+            .select('id, name, is_active')
+            .eq('id', defaultAssignedUserId)
+            .eq('is_active', true)
+            .single();
+
+          if (userData) {
+            assignedUser = { id: userData.id, name: userData.name };
           }
         }
       } catch (error) {
-        console.warn('Erro ao buscar atribuição por frente (tag):', error);
+        console.warn('Erro ao buscar atribuição automática, usando algoritmo padrão:', error);
       }
-    }
 
-    // Se não encontrou atribuição automática, usar algoritmo padrão (próximo advogado disponível)
-    if (!assignedUser) {
-      const availableLawyer = await UserService.getNextAvailableLawyer();
-      if (availableLawyer) {
-        assignedUser = availableLawyer;
+      if (!assignedUser) {
+        try {
+          const tagId = await CategoryService.getCategoryTagId(ticketData.category);
+          if (tagId) {
+            const tagUser = await UserService.getNextAvailableByTag(tagId);
+            if (tagUser) {
+              assignedUser = { id: tagUser.id, name: tagUser.name };
+            }
+          }
+        } catch (error) {
+          console.warn('Erro ao buscar atribuição por frente (tag):', error);
+        }
       }
-    }
-    
-    // Se houver um usuário atribuído, atribuir o ticket a ele, mas manter status como "open"
-    if (assignedUser) {
-      // Não alterar o status aqui, mantê-lo como "open"
-      dbData.assigned_to = assignedUser.id;
-      dbData.assigned_to_name = assignedUser.name;
-      dbData.assigned_at = new Date().toISOString();
+
+      if (!assignedUser) {
+        const availableLawyer = await UserService.getNextAvailableLawyer();
+        if (availableLawyer) {
+          assignedUser = availableLawyer;
+        }
+      }
+
+      if (assignedUser) {
+        dbData.assigned_to = assignedUser.id;
+        dbData.assigned_to_name = assignedUser.name;
+        dbData.assigned_at = new Date().toISOString();
+      }
     }
 
     const { data, error } = await supabase

@@ -15,8 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { AlertCircle, Clock, User, Search, CheckCircle2, MessageSquare, ArrowLeft, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/lib/supabase';
 import { TicketService } from '@/services/ticketService';
+import { UserService } from '@/services/userService';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryService } from '@/services/categoryService';
 import { toast } from 'sonner';
@@ -32,6 +32,7 @@ import {
   type DesenvolvimentoContinuoFormData,
 } from '@/utils/desenvolvimentoContinuoForm';
 import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
+import { isInverseTicketFlow } from '@/utils/inverseTicketFlow';
 
 interface CreateTicketForUserModalProps {
   isOpen: boolean;
@@ -77,6 +78,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
 
   const isDcCategory = isDesenvolvimentoContinuoCategory(category);
+  const isInverseFlow = isInverseTicketFlow(category, subcategory);
   const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
     useDesenvolvimentoContinuoOptions(isDcCategory);
 
@@ -175,15 +177,15 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const loadUsers = async () => {
     setIsLoadingUsers(true);
     try {
-      const { data, error } = await supabase
-        .from('app_c009c0e4f1_users')
-        .select('id, name, email, department')
-        .eq('role', 'user')
-        .order('name');
-
-      if (error) throw error;
-
-      setUsers(data || []);
+      const juridicoUsers = await UserService.getActiveJuridicoUsers();
+      setUsers(
+        juridicoUsers.map((user) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          department: user.department,
+        })),
+      );
     } catch (error) {
       console.error('Erro ao carregar usuários:', error);
       toast.error('Erro ao carregar lista de usuários');
@@ -233,6 +235,11 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
 
     if (!subcategory && category && !isDcCategory) {
       newErrors.subcategory = 'A subcategoria é obrigatória';
+    }
+
+    if (isInverseFlow) {
+      newErrors.subcategory =
+        'Para Auditoria de excludentes, use Novo Ticket e selecione quem vai atender.';
     }
 
     if (isAlreadyResolved && !resolution.trim()) {
@@ -535,7 +542,10 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                         <SelectContent>
-                          {category && categoriesConfig[category]?.subcategories.map((sub) => (
+                          {category &&
+                            categoriesConfig[category]?.subcategories
+                              .filter((sub) => !isInverseTicketFlow(category, sub.value))
+                              .map((sub) => (
                             <SelectItem key={sub.value} value={sub.value}>
                               {sub.label}
                             </SelectItem>

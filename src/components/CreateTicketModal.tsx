@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import TicketForm from '@/components/TicketForm';
 import { TicketService } from '@/services/ticketService';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface CreateTicketModalProps {
   isOpen: boolean;
@@ -22,6 +23,8 @@ interface CreateTicketModalProps {
     description: string;
     category: string;
     subcategory: string;
+    assignedTo?: string;
+    assignedToName?: string;
     initialChatMessage?: string;
     sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
   }) => void;
@@ -35,6 +38,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   onOpenTicket,
 }) => {
   const { user } = useAuth();
+  const { has } = usePermissions();
   const [hasPendingFeedback, setHasPendingFeedback] = useState<boolean>(false);
   const [pendingTickets, setPendingTickets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -73,6 +77,10 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     description: string;
     category: string;
     subcategory: string;
+    assignedTo?: string;
+    assignedToName?: string;
+    initialChatMessage?: string;
+    sharepointTreinamento?: import('@/utils/desenvolvimentoContinuoForm').SharepointTreinamentoPayload;
   }) => {
     // Se houver feedback pendente, não permitir a criação do ticket
     if (hasPendingFeedback) {
@@ -92,6 +100,15 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       minute: '2-digit'
     });
   };
+
+  const isStaffUser = Boolean(
+    user &&
+      user.role !== 'user' &&
+      (has('assign_ticket') ||
+        has('create_ticket_for_user') ||
+        has('view_all_tickets') ||
+        has('view_frente_tickets'))
+  );
 
   const handleClose = () => {
     onClose();
@@ -228,7 +245,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             </div>
           ) : (
             <div className="py-2">
-              <TicketForm onSubmit={handleSubmit} onCancel={handleClose} />
+              <TicketForm onSubmit={handleSubmit} onCancel={handleClose} isStaffUser={isStaffUser} />
             </div>
           )}
         </div>

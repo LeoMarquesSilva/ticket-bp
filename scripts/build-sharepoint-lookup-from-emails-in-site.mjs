@@ -21,13 +21,15 @@ const EMAIL_RE = /[a-z0-9._+-]+@(?:bpplaw\.com\.br|bismarchipires\.com\.br)/gi;
 const SKIP_LOOKUP = new Set(['AuthorLookupId', 'EditorLookupId', 'AppAuthorLookupId', 'AppEditorLookupId']);
 
 const MANUAL = {
-  'felipe@bismarchipires.com.br': '411',
-  'felipe@bpplaw.com.br': '411',
-  'controladoria@bpplaw.com.br': '15',
+  'felipe@bismarchipires.com.br': '15',
+  'felipe@bpplaw.com.br': '15',
+  'juliana.pires@bismarchipires.com.br': '411',
+  'controladoria@bpplaw.com.br': '12',
+  'controladoria@bismarchipires.com.br': '12',
   'vinicius.marques@bismarchipires.com.br': '217',
   'vinicius.marques@bpplaw.com.br': '217',
-  'gabriela.consul@bpplaw.com.br': '12',
-  'gabriela.consul@bismarchipires.com.br': '12',
+  'gabriela.consul@bpplaw.com.br': '92',
+  'gabriela.consul@bismarchipires.com.br': '92',
   'maria.heloiza@bismarchipires.com.br': '227',
   'renato@bismarchipires.com.br': '40',
   'wagner@bismarchipires.com.br': '199',
@@ -35,7 +37,7 @@ const MANUAL = {
   'vinicius.hecksher@bismarchipires.com.br': '159',
 };
 
-/** LookupId genérico da controladoria — não usar para pessoas reais. */
+/** LookupId do Felipe — não minerar para outros e-mails. */
 const SHARED_LOOKUP_IDS = new Set(['15']);
 
 function norm(v) { return String(v ?? '').trim().toLowerCase(); }
@@ -145,10 +147,11 @@ function bestLookup(email) {
     if (MANUAL[v]) return MANUAL[v];
   }
   const votes = emailVotes.get(norm(email));
+  const isFelipe = emailVariants(email).some((e) => MANUAL[e] === '15');
   const pick = (m) => {
     if (!m || m.size === 0) return null;
     const sorted = [...m.entries()]
-      .filter(([lid]) => !SHARED_LOOKUP_IDS.has(lid) || norm(email) === 'controladoria@bpplaw.com.br')
+      .filter(([lid]) => !SHARED_LOOKUP_IDS.has(lid) || isFelipe)
       .sort((a, b) => b[1] - a[1]);
     return sorted[0]?.[0] ?? null;
   };
@@ -159,7 +162,7 @@ function bestLookup(email) {
       if (id) break;
     }
   }
-  if (id && SHARED_LOOKUP_IDS.has(id) && norm(email) !== 'controladoria@bpplaw.com.br') return null;
+  if (id && SHARED_LOOKUP_IDS.has(id) && !isFelipe) return null;
   return id;
 }
 

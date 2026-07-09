@@ -108,6 +108,27 @@ export class UserService {
       throw error;
     }
   }
+
+  /** Usuário elegível para seleção em pickers (ativo e não anonimizado/excluído). */
+  static isSelectableUser(user: Pick<User, 'name' | 'email' | 'isActive'>): boolean {
+    if (user.isActive === false) return false;
+
+    const name = String(user.name ?? '').trim();
+    const email = String(user.email ?? '').trim().toLowerCase();
+
+    if (name.startsWith('Usuário Excluído')) return false;
+    if (email.startsWith('deleted_')) return false;
+
+    return true;
+  }
+
+  /** Usuários jurídicos ativos e selecionáveis (fluxo inverso, transferências, etc.). */
+  static async getActiveJuridicoUsers(): Promise<User[]> {
+    const users = await this.getAllUsers(false);
+    return users
+      .filter((user) => user.role === 'user' && this.isSelectableUser(user))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }
   
   // Buscar usuário por ID (app user id)
   static async getUserById(userId: string): Promise<User | null> {
@@ -443,6 +464,7 @@ static async deleteUser(userId: string): Promise<boolean> {
           name: `Usuário Excluído (${userData.id.substring(0, 8)})`,
           email: `deleted_${userData.id.substring(0, 8)}@example.com`,
           is_online: false,
+          is_active: false,
           role: 'user', // Rebaixar para usuário comum
           updated_at: new Date().toISOString()
         })
