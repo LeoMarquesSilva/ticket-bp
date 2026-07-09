@@ -8,7 +8,7 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import type { EvolutionChatOption } from '@/services/evolutionEdgeService';
 
 const STALE_TEMPLATE_VARIABLES = [
-  '{title}', '{createdByName}', '{categoryLabel}', '{subcategoryLabel}', '{days}', '{createdAtLocal}',
+  '{title}', '{createdByName}', '{assignedToName}', '{categoryLabel}', '{subcategoryLabel}', '{days}', '{createdAtLocal}',
 ];
 
 interface Props {
