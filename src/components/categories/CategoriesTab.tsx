@@ -337,65 +337,67 @@ export default function CategoriesTab({
             <Accordion type="multiple" value={expandedTags} onValueChange={setExpandedTags} className="w-full space-y-4">
               {sortedTagGroups.map(([tagKey, group]) => (
                 <AccordionItem key={tagKey} value={tagKey} className="border rounded-lg px-4">
-                  <AccordionTrigger className="hover:no-underline py-4">
-                    <div className="flex items-center gap-3 w-full">
-                      {group.tag ? (
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full" style={{ backgroundColor: `${group.tag.color}15`, border: `2px solid ${group.tag.color}` }}>
-                          <Tag className="h-5 w-5" style={{ color: group.tag.color }} />
+                  <div className="flex items-center w-full">
+                    <AccordionTrigger className="hover:no-underline py-4">
+                      <div className="flex items-center gap-3 w-full">
+                        {group.tag ? (
+                          <div className="flex items-center justify-center w-10 h-10 rounded-full" style={{ backgroundColor: `${group.tag.color}15`, border: `2px solid ${group.tag.color}` }}>
+                            <Tag className="h-5 w-5" style={{ color: group.tag.color }} />
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-slate-100 border-2 border-slate-300">
+                            <Tag className="h-5 w-5 text-slate-400" />
+                          </div>
+                        )}
+                        <div className="flex-1 text-left">
+                          <div className="flex items-center gap-3">
+                            <span className="font-semibold text-lg">{group.tagLabel}</span>
+                            {group.tag && !group.tag.isActive && (
+                              <Badge variant="secondary" className="text-xs">Frente inativa</Badge>
+                            )}
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-600">
+                              {group.categories.length} {group.categories.length === 1 ? 'categoria' : 'categorias'}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Clique para {expandedTags.includes(tagKey) ? 'minimizar' : 'expandir'} categorias
+                          </p>
                         </div>
-                      ) : (
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-slate-100 border-2 border-slate-300">
-                          <Tag className="h-5 w-5 text-slate-400" />
-                        </div>
+                      </div>
+                    </AccordionTrigger>
+                    <div className="flex items-center gap-1.5 mr-3 shrink-0">
+                      {group.tag && (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className={`shrink-0 h-9 w-9 ${group.tag.isActive ? 'border-amber-500 text-amber-600 hover:bg-amber-50' : 'border-green-500 text-green-600 hover:bg-green-50'}`}
+                          title={group.tag.isActive ? `Inativar frente ${group.tagLabel}` : `Ativar frente ${group.tagLabel}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleFrenteStatus(group.tag!);
+                          }}
+                        >
+                          {group.tag.isActive ? <Power className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                        </Button>
                       )}
-                      <div className="flex-1 text-left">
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold text-lg">{group.tagLabel}</span>
-                          {group.tag && !group.tag.isActive && (
-                            <Badge variant="secondary" className="text-xs">Frente inativa</Badge>
-                          )}
-                          <Badge variant="secondary" className="bg-slate-100 text-slate-600">
-                            {group.categories.length} {group.categories.length === 1 ? 'categoria' : 'categorias'}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-1">
-                          Clique para {expandedTags.includes(tagKey) ? 'minimizar' : 'expandir'} categorias
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 mr-3 shrink-0">
-                        {group.tag && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className={`shrink-0 h-9 w-9 ${group.tag.isActive ? 'border-amber-500 text-amber-600 hover:bg-amber-50' : 'border-green-500 text-green-600 hover:bg-green-50'}`}
-                            title={group.tag.isActive ? `Inativar frente ${group.tagLabel}` : `Ativar frente ${group.tagLabel}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggleFrenteStatus(group.tag!);
-                            }}
-                          >
-                            {group.tag.isActive ? <Power className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                          </Button>
-                        )}
-                        {group.categories.length === 0 && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="shrink-0 h-9 w-9 border-[#F69F19] text-[#F69F19] hover:bg-[#F69F19]/10"
-                            title={`Adicionar categoria em ${group.tagLabel}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onCreateCategoryForFrente(group.tag);
-                            }}
-                          >
-                            <PlusCircle className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                      {group.categories.length === 0 && (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="shrink-0 h-9 w-9 border-[#F69F19] text-[#F69F19] hover:bg-[#F69F19]/10"
+                          title={`Adicionar categoria em ${group.tagLabel}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCreateCategoryForFrente(group.tag);
+                          }}
+                        >
+                          <PlusCircle className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                  </AccordionTrigger>
+                  </div>
                   <AccordionContent className="pb-4">
                     {group.categories.length === 0 ? (
                       <div className="flex flex-col items-center gap-3 py-6">
