@@ -8,6 +8,7 @@ import {
   RequisicaoPessoalFormData,
   EquipamentoItem,
   MOTIVO_REPOSICAO_LABELS,
+  formatCurrencyBRL,
 } from '@/utils/requisicaoPessoalForm';
 
 interface Props {
@@ -189,57 +190,55 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Idade <span className="text-red-500">*</span></Label>
-            <RadioGroup
-              value={data.faixaIdade}
-              onValueChange={(value: RequisicaoPessoalFormData['faixaIdade']) => update({ faixaIdade: value })}
-              className="flex items-center gap-4"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="indiferente" id="rp-idade-indiferente" />
-                <Label htmlFor="rp-idade-indiferente" className="font-normal cursor-pointer">Indiferente</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="ate" id="rp-idade-ate" />
-                <Label htmlFor="rp-idade-ate" className="font-normal cursor-pointer">Até</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={data.idadeAte}
-                  onChange={(e) => update({ idadeAte: e.target.value, faixaIdade: 'ate' })}
-                  className={`h-8 w-20 ${errors.idadeAte ? 'border-[#BD2D29]' : ''}`}
-                  placeholder="anos"
-                />
-              </div>
-            </RadioGroup>
-            {fieldError('faixaIdade')}
-            {fieldError('idadeAte')}
-          </div>
+        <div className="space-y-2">
+          <Label>Idade <span className="text-red-500">*</span></Label>
+          <RadioGroup
+            value={data.faixaIdade}
+            onValueChange={(value: RequisicaoPessoalFormData['faixaIdade']) => update({ faixaIdade: value })}
+            className="flex flex-wrap items-center gap-x-4 gap-y-2"
+          >
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="indiferente" id="rp-idade-indiferente" />
+              <Label htmlFor="rp-idade-indiferente" className="font-normal cursor-pointer">Indiferente</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="ate" id="rp-idade-ate" />
+              <Label htmlFor="rp-idade-ate" className="font-normal cursor-pointer">Até</Label>
+              <Input
+                type="number"
+                min={1}
+                value={data.idadeAte}
+                onChange={(e) => update({ idadeAte: e.target.value, faixaIdade: 'ate' })}
+                className={`h-8 w-20 ${errors.idadeAte ? 'border-[#BD2D29]' : ''}`}
+                placeholder="anos"
+              />
+            </div>
+          </RadioGroup>
+          {fieldError('faixaIdade')}
+          {fieldError('idadeAte')}
+        </div>
 
-          <div className="space-y-2">
-            <Label>Sexo <span className="text-red-500">*</span></Label>
-            <RadioGroup
-              value={data.sexo}
-              onValueChange={(value: RequisicaoPessoalFormData['sexo']) => update({ sexo: value })}
-              className="flex items-center gap-4"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="indiferente" id="rp-sexo-indiferente" />
-                <Label htmlFor="rp-sexo-indiferente" className="font-normal cursor-pointer">Indiferente</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="masculino" id="rp-sexo-masculino" />
-                <Label htmlFor="rp-sexo-masculino" className="font-normal cursor-pointer">Masculino</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="feminino" id="rp-sexo-feminino" />
-                <Label htmlFor="rp-sexo-feminino" className="font-normal cursor-pointer">Feminino</Label>
-              </div>
-            </RadioGroup>
-            {fieldError('sexo')}
-          </div>
+        <div className="space-y-2">
+          <Label>Sexo <span className="text-red-500">*</span></Label>
+          <RadioGroup
+            value={data.sexo}
+            onValueChange={(value: RequisicaoPessoalFormData['sexo']) => update({ sexo: value })}
+            className="flex flex-wrap items-center gap-x-4 gap-y-2"
+          >
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="indiferente" id="rp-sexo-indiferente" />
+              <Label htmlFor="rp-sexo-indiferente" className="font-normal cursor-pointer">Indiferente</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="masculino" id="rp-sexo-masculino" />
+              <Label htmlFor="rp-sexo-masculino" className="font-normal cursor-pointer">Masculino</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="feminino" id="rp-sexo-feminino" />
+              <Label htmlFor="rp-sexo-feminino" className="font-normal cursor-pointer">Feminino</Label>
+            </div>
+          </RadioGroup>
+          {fieldError('sexo')}
         </div>
 
         <div className="space-y-2">
@@ -305,9 +304,10 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
           <Label htmlFor="rp-remuneracao">Remuneração sugerida <span className="text-red-500">*</span></Label>
           <Input
             id="rp-remuneracao"
+            inputMode="numeric"
             value={data.remuneracaoSugerida}
-            onChange={(e) => update({ remuneracaoSugerida: e.target.value })}
-            placeholder="Ex: R$ 3.750,00"
+            onChange={(e) => update({ remuneracaoSugerida: formatCurrencyBRL(e.target.value) })}
+            placeholder="R$ 0,00"
             className={errors.remuneracaoSugerida ? 'border-[#BD2D29]' : ''}
           />
           {fieldError('remuneracaoSugerida')}
@@ -337,9 +337,10 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
               </RadioGroup>
               {item.necessario === 'sim' && (
                 <Input
+                  inputMode="numeric"
                   value={item.valor}
-                  onChange={(e) => updateEquipamento(key, { valor: e.target.value })}
-                  placeholder="Valor R$"
+                  onChange={(e) => updateEquipamento(key, { valor: formatCurrencyBRL(e.target.value) })}
+                  placeholder="R$ 0,00"
                   className={`h-8 w-32 ${errors[`${key}Valor`] ? 'border-[#BD2D29]' : ''}`}
                 />
               )}

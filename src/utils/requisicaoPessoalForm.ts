@@ -5,6 +5,14 @@ export function isRequisicaoPessoalSelection(categoryKey: string, subcategoryKey
   return categoryKey === REQUISICAO_PESSOAL_CATEGORY_KEY && subcategoryKey === REQUISICAO_PESSOAL_SUBCATEGORY_KEY;
 }
 
+/** Aplica máscara de moeda (R$ 1.234,56) a partir dos dígitos digitados, tratando-os como centavos. */
+export function formatCurrencyBRL(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  const cents = parseInt(digits, 10);
+  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
+}
+
 export type MotivoRequisicao = 'aumento_quadro' | 'reposicao' | '';
 export type MotivoReposicao =
   | 'desligamento_empregado'
