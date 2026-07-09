@@ -7,10 +7,12 @@ const SETTINGS_DAYS_KEY = "stale_ticket_whatsapp_days";
 const SETTINGS_TEMPLATE_KEY = "stale_ticket_whatsapp_template";
 const DEFAULT_DAYS = 3;
 const DEFAULT_TEMPLATE =
-  "⚠️ *Ticket sem resposta há {days} dias*\n\n" +
+  "⚠️ *TICKET PARADO — sem resposta há {days} dia(s)*\n\n" +
   "*Título:* {title}\n" +
   "*Solicitante:* {createdByName}\n" +
-  "*Categoria:* {categoryLabel} / {subcategoryLabel}\n" +
+  "*Responsável:* {assignedToName}\n\n" +
+  "*Categoria:* {categoryLabel}\n" +
+  "*Subcategoria:* {subcategoryLabel}\n\n" +
   "*Aberto em:* {createdAtLocal}\n\n" +
   "Por favor, verifique este chamado.";
 
@@ -144,6 +146,7 @@ Deno.serve(async (req) => {
         id: String(ticket.id),
         title: String(ticket.title ?? ""),
         createdByName: String(ticket.created_by_name ?? ""),
+        assignedToName: String(ticket.assigned_to_name ?? "Não atribuído"),
         category: catKey,
         subcategory: subKey,
         categoryLabel,

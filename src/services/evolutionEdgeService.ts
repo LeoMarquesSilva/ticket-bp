@@ -9,6 +9,23 @@ function unwrapFunctionError(data: unknown): void {
 
 export type EvolutionChatOption = { jid: string; name: string };
 
+/** Tenta extrair a mensagem de erro real do corpo da resposta HTTP da Edge Function.
+ * O supabase-js nem sempre popula `data` quando o status é non-2xx, então lemos
+ * o Response bruto disponível em `error.context`. */
+async function extractFunctionErrorMessage(error: unknown): Promise<string | null> {
+  const ctx = (error as { context?: Response } | null)?.context;
+  if (!ctx || typeof ctx.json !== 'function') return null;
+  try {
+    const parsed = await ctx.clone().json();
+    if (parsed && typeof parsed.error === 'string' && parsed.error.length > 0) {
+      return parsed.error;
+    }
+  } catch {
+    // corpo não era JSON válido; ignora e cai no fallback
+  }
+  return null;
+}
+
 /** Admin-only (manage_categories), via Edge Function — não expõe API key ao browser. */
 export async function evolutionAdminInvoke<T = unknown>(
   body: Record<string, unknown>,
@@ -17,6 +34,10 @@ export async function evolutionAdminInvoke<T = unknown>(
     body,
   });
   if (error) {
+    const realMessage = await extractFunctionErrorMessage(error);
+    if (realMessage) {
+      throw new Error(realMessage);
+    }
     const maybeData = data as { error?: unknown; details?: unknown } | null;
     if (maybeData && typeof maybeData.error === 'string' && maybeData.error.length > 0) {
       throw new Error(maybeData.error);
