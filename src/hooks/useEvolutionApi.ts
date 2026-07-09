@@ -230,7 +230,7 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
   const saveStaleTicketSettings = useCallback(async () => {
     const days = staleTicketDays.trim();
     const recipient = staleTicketRecipient.trim();
-    if (!days || Number.parseInt(days, 10) <= 0) {
+    if (!days || Number.parseInt(days, 10) < 0) {
       toast.error('Informe uma quantidade válida de dias.');
       return;
     }
