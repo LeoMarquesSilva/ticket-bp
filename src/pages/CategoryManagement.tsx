@@ -23,6 +23,7 @@ export default function CategoryManagement() {
     if (cat.canAccess) {
       evo.loadInstanceName();
       evo.loadEvolutionInstances();
+      evo.loadStaleTicketSettings();
     }
   }, [cat.canAccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -204,6 +205,15 @@ export default function CategoryManagement() {
             onLoadChats={() => void evo.loadWhatsappChats()}
             filteredWhatsappTagGroups={filteredWhatsappTagGroups}
             onConfigureSubcategory={(s) => { cat.setEditingSubcategory(s); setEditSubcategoryDialogOpen(true); }}
+            staleTicketDays={evo.staleTicketDays}
+            setStaleTicketDays={evo.setStaleTicketDays}
+            staleTicketRecipient={evo.staleTicketRecipient}
+            setStaleTicketRecipient={evo.setStaleTicketRecipient}
+            staleTicketTemplate={evo.staleTicketTemplate}
+            setStaleTicketTemplate={evo.setStaleTicketTemplate}
+            staleTicketLoading={evo.staleTicketLoading}
+            staleTicketSaving={evo.staleTicketSaving}
+            onSaveStaleTicketSettings={() => void evo.saveStaleTicketSettings()}
           />
         </TabsContent>
       </Tabs>

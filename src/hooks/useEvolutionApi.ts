@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { evolutionAdminInvoke, type EvolutionChatOption } from '@/services/evolutionEdgeService';
 import { CategoryService, type Subcategory, type Tag as TagType } from '@/services/categoryService';
+import { IntegrationSettingsService } from '@/services/integrationSettingsService';
 import { toast } from 'sonner';
 
 export function isEvolutionConnected(state: string | null | undefined) {
@@ -29,6 +30,13 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
   const [bulkWhatsappMessageTemplate, setBulkWhatsappMessageTemplate] = useState('');
   const [bulkWhatsappRecipient, setBulkWhatsappRecipient] = useState('');
   const [bulkWhatsappApplying, setBulkWhatsappApplying] = useState(false);
+
+  // Alerta de tickets parados (sem resposta do suporte há N dias)
+  const [staleTicketDays, setStaleTicketDays] = useState('3');
+  const [staleTicketRecipient, setStaleTicketRecipient] = useState('');
+  const [staleTicketTemplate, setStaleTicketTemplate] = useState('');
+  const [staleTicketLoading, setStaleTicketLoading] = useState(false);
+  const [staleTicketSaving, setStaleTicketSaving] = useState(false);
 
   // Load instance name on mount
   const loadInstanceName = useCallback(async () => {
@@ -201,6 +209,50 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
     }
   }, [whatsappFrenteFilter, bulkWhatsappNotifyEnabled, bulkWhatsappMessageTemplate, bulkWhatsappRecipient, loadCategoriesData]);
 
+  const loadStaleTicketSettings = useCallback(async () => {
+    try {
+      setStaleTicketLoading(true);
+      const [days, recipient, template] = await Promise.all([
+        IntegrationSettingsService.getStaleTicketDays(),
+        IntegrationSettingsService.getStaleTicketRecipient(),
+        IntegrationSettingsService.getStaleTicketTemplate(),
+      ]);
+      setStaleTicketDays(days || '3');
+      setStaleTicketRecipient(recipient || '');
+      setStaleTicketTemplate(template || '');
+    } catch (e) {
+      toast.error('Alerta de tickets parados', { description: e instanceof Error ? e.message : 'Erro ao carregar configuração.' });
+    } finally {
+      setStaleTicketLoading(false);
+    }
+  }, []);
+
+  const saveStaleTicketSettings = useCallback(async () => {
+    const days = staleTicketDays.trim();
+    const recipient = staleTicketRecipient.trim();
+    if (!days || Number.parseInt(days, 10) <= 0) {
+      toast.error('Informe uma quantidade válida de dias.');
+      return;
+    }
+    if (!recipient) {
+      toast.error('Informe o grupo/número de destino do alerta.');
+      return;
+    }
+    try {
+      setStaleTicketSaving(true);
+      await Promise.all([
+        IntegrationSettingsService.setStaleTicketDays(days),
+        IntegrationSettingsService.setStaleTicketRecipient(recipient),
+        IntegrationSettingsService.setStaleTicketTemplate(staleTicketTemplate),
+      ]);
+      toast.success('Configuração do alerta de tickets parados salva.');
+    } catch (e) {
+      toast.error('Erro ao salvar configuração', { description: e instanceof Error ? e.message : 'Tente novamente.' });
+    } finally {
+      setStaleTicketSaving(false);
+    }
+  }, [staleTicketDays, staleTicketRecipient, staleTicketTemplate]);
+
   return {
     // Instance
     evolutionInstanceName, setEvolutionInstanceName,
@@ -219,5 +271,11 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
     bulkWhatsappMessageTemplate, setBulkWhatsappMessageTemplate,
     bulkWhatsappRecipient, setBulkWhatsappRecipient,
     bulkWhatsappApplying, applyBulkWhatsapp,
+    // Alerta de tickets parados
+    staleTicketDays, setStaleTicketDays,
+    staleTicketRecipient, setStaleTicketRecipient,
+    staleTicketTemplate, setStaleTicketTemplate,
+    staleTicketLoading, staleTicketSaving,
+    loadStaleTicketSettings, saveStaleTicketSettings,
   };
 }

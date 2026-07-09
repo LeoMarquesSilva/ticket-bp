@@ -1,5 +1,6 @@
 import WhatsAppConnectionCard from './WhatsAppConnectionCard';
 import WhatsAppBulkConfig from './WhatsAppBulkConfig';
+import WhatsAppStaleTicketsCard from './WhatsAppStaleTicketsCard';
 import WhatsAppSubcategoryList from './WhatsAppSubcategoryList';
 import type { Category, Tag as TagType, Subcategory } from '@/services/categoryService';
 import type { EvolutionChatOption } from '@/services/evolutionEdgeService';
@@ -48,6 +49,16 @@ interface Props {
   // List
   filteredWhatsappTagGroups: [string, TagGroup][];
   onConfigureSubcategory: (sub: Subcategory) => void;
+  // Alerta de tickets parados
+  staleTicketDays: string;
+  setStaleTicketDays: (v: string) => void;
+  staleTicketRecipient: string;
+  setStaleTicketRecipient: (v: string) => void;
+  staleTicketTemplate: string;
+  setStaleTicketTemplate: (v: string) => void;
+  staleTicketLoading: boolean;
+  staleTicketSaving: boolean;
+  onSaveStaleTicketSettings: () => void;
 }
 
 export default function WhatsAppTab(props: Props) {
@@ -84,6 +95,20 @@ export default function WhatsAppTab(props: Props) {
         bulkWhatsappApplying={props.bulkWhatsappApplying}
         bulkTargetSubcategories={props.bulkTargetSubcategories}
         onApplyBulk={props.onApplyBulk}
+        whatsappChats={props.whatsappChats}
+        whatsappChatsLoading={props.whatsappChatsLoading}
+        onLoadChats={props.onLoadChats}
+      />
+      <WhatsAppStaleTicketsCard
+        staleTicketDays={props.staleTicketDays}
+        setStaleTicketDays={props.setStaleTicketDays}
+        staleTicketRecipient={props.staleTicketRecipient}
+        setStaleTicketRecipient={props.setStaleTicketRecipient}
+        staleTicketTemplate={props.staleTicketTemplate}
+        setStaleTicketTemplate={props.setStaleTicketTemplate}
+        staleTicketLoading={props.staleTicketLoading}
+        staleTicketSaving={props.staleTicketSaving}
+        onSave={props.onSaveStaleTicketSettings}
         whatsappChats={props.whatsappChats}
         whatsappChatsLoading={props.whatsappChatsLoading}
         onLoadChats={props.onLoadChats}
