@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ListChecks, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { ListChecks, RefreshCw, CheckCircle2, Send } from 'lucide-react';
 import type { Ticket } from '@/services/ticketService';
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   loading: boolean;
   staleTicketDays: string;
   onRefresh: () => void;
+  sendingAlertTicketId: string | null;
+  onSendAlertNow: (ticketId: string) => void;
 }
 
 function daysSince(dateStr: string): number {
@@ -24,14 +26,14 @@ function StatusBadge({ ticket, daysConfigured }: { ticket: Ticket; daysConfigure
   if (ticket.staleWhatsappNotifiedAt) {
     return (
       <Badge variant="outline" className="border-slate-300 text-slate-500 whitespace-nowrap">
-        Alerta já enviado
+        Aviso já enviado
       </Badge>
     );
   }
   if (daysRemaining <= 0) {
     return (
       <Badge className="bg-red-600 hover:bg-red-600 text-white whitespace-nowrap">
-        Dispara no próximo envio
+        Envio automático hoje
       </Badge>
     );
   }
@@ -49,7 +51,9 @@ function StatusBadge({ ticket, daysConfigured }: { ticket: Ticket; daysConfigure
   );
 }
 
-export default function WhatsAppUnansweredTicketsCard({ tickets, loading, staleTicketDays, onRefresh }: Props) {
+export default function WhatsAppUnansweredTicketsCard({
+  tickets, loading, staleTicketDays, onRefresh, sendingAlertTicketId, onSendAlertNow,
+}: Props) {
   const daysConfigured = Number.parseInt(staleTicketDays, 10) || 3;
 
   const sorted = [...tickets].sort((a, b) => {
@@ -69,7 +73,7 @@ export default function WhatsAppUnansweredTicketsCard({ tickets, loading, staleT
             <div>
               <CardTitle>Tickets Sem Resposta</CardTitle>
               <CardDescription>
-                Acompanhe quais tickets estão próximos de disparar o alerta automático.
+                Acompanhe quais tickets estão próximos de receber o aviso automático, ou envie o aviso na hora.
               </CardDescription>
             </div>
           </div>
@@ -93,6 +97,7 @@ export default function WhatsAppUnansweredTicketsCard({ tickets, loading, staleT
           <div className="space-y-2">
             {sorted.map((ticket) => {
               const daysOpen = daysSince(ticket.createdAt);
+              const sendingThis = sendingAlertTicketId === ticket.id;
               return (
                 <div
                   key={ticket.id}
@@ -106,7 +111,20 @@ export default function WhatsAppUnansweredTicketsCard({ tickets, loading, staleT
                       {' · '}{daysOpen === 0 ? 'aberto hoje' : `${daysOpen} dia(s) sem resposta`}
                     </p>
                   </div>
-                  <StatusBadge ticket={ticket} daysConfigured={daysConfigured} />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <StatusBadge ticket={ticket} daysConfigured={daysConfigured} />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                      disabled={sendingThis}
+                      onClick={() => onSendAlertNow(ticket.id)}
+                    >
+                      {sendingThis ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      <span className="ml-1.5">Enviar aviso</span>
+                    </Button>
+                  </div>
                 </div>
               );
             })}

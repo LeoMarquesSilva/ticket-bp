@@ -48,6 +48,25 @@ export async function evolutionAdminInvoke<T = unknown>(
   return data as T;
 }
 
+/** Envia manualmente (sem esperar a rotina diária) o aviso de "ticket parado" para um ticket específico. */
+export async function sendStaleTicketAlertNow(ticketId: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('notify-stale-tickets', {
+    body: { ticketId },
+  });
+  if (error) {
+    const realMessage = await extractFunctionErrorMessage(error);
+    if (realMessage) {
+      throw new Error(realMessage);
+    }
+    const maybeData = data as { error?: unknown } | null;
+    if (maybeData && typeof maybeData.error === 'string' && maybeData.error.length > 0) {
+      throw new Error(maybeData.error);
+    }
+    throw new Error(error.message);
+  }
+  unwrapFunctionError(data);
+}
+
 export async function notifyTicketWhatsApp(ticketId: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke(
     'notify-ticket-whatsapp',

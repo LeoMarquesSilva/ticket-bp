@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { evolutionAdminInvoke, type EvolutionChatOption } from '@/services/evolutionEdgeService';
+import { evolutionAdminInvoke, sendStaleTicketAlertNow, type EvolutionChatOption } from '@/services/evolutionEdgeService';
 import { CategoryService, type Subcategory, type Tag as TagType } from '@/services/categoryService';
 import { IntegrationSettingsService } from '@/services/integrationSettingsService';
 import { TicketService, type Ticket } from '@/services/ticketService';
@@ -40,6 +40,7 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
   const [staleTicketSaving, setStaleTicketSaving] = useState(false);
   const [unansweredTickets, setUnansweredTickets] = useState<Ticket[]>([]);
   const [unansweredTicketsLoading, setUnansweredTicketsLoading] = useState(false);
+  const [sendingAlertTicketId, setSendingAlertTicketId] = useState<string | null>(null);
 
   // Load instance name on mount
   const loadInstanceName = useCallback(async () => {
@@ -268,6 +269,19 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
     }
   }, []);
 
+  const sendStaleAlertNow = useCallback(async (ticketId: string) => {
+    try {
+      setSendingAlertTicketId(ticketId);
+      await sendStaleTicketAlertNow(ticketId);
+      toast.success('Aviso enviado com sucesso.');
+      await loadUnansweredTickets();
+    } catch (e) {
+      toast.error('Erro ao enviar aviso', { description: e instanceof Error ? e.message : 'Tente novamente.' });
+    } finally {
+      setSendingAlertTicketId(null);
+    }
+  }, [loadUnansweredTickets]);
+
   return {
     // Instance
     evolutionInstanceName, setEvolutionInstanceName,
@@ -294,5 +308,6 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
     loadStaleTicketSettings, saveStaleTicketSettings,
     // Acompanhamento de tickets sem resposta
     unansweredTickets, unansweredTicketsLoading, loadUnansweredTickets,
+    sendingAlertTicketId, sendStaleAlertNow,
   };
 }

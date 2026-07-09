@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, handleCors } from "./_shared/cors.ts";
+import {
+  getBearerClient,
+  userHasManageCategories,
+} from "./_shared/evolutionAuth.ts";
 
 const SETTINGS_INSTANCE_KEY = "evolution_instance_name";
 const SETTINGS_RECIPIENT_KEY = "stale_ticket_whatsapp_recipient";
@@ -71,6 +75,76 @@ async function getSetting(
   return data?.value?.trim() ?? "";
 }
 
+/** Envia o alerta de "ticket parado" para um único ticket já carregado do banco. */
+async function sendAlertForTicket(
+  admin: ReturnType<typeof createClient>,
+  ticket: Record<string, unknown>,
+  opts: { template: string; recipient: string; instance: string; base: string; days: number },
+): Promise<{ id: string; ok: boolean; details?: unknown }> {
+  const catKey = String(ticket.category ?? "");
+  const subKey = String(ticket.subcategory ?? "");
+
+  let categoryLabel = catKey;
+  let subcategoryLabel = subKey;
+
+  if (catKey) {
+    const { data: categoryRow } = await admin
+      .from("app_c009c0e4f1_categories")
+      .select("id, label")
+      .eq("key", catKey)
+      .maybeSingle();
+    if (categoryRow?.label) categoryLabel = String(categoryRow.label);
+
+    if (categoryRow && subKey) {
+      const { data: subRow } = await admin
+        .from("app_c009c0e4f1_subcategories")
+        .select("label")
+        .eq("category_id", categoryRow.id)
+        .eq("key", subKey)
+        .maybeSingle();
+      if (subRow?.label) subcategoryLabel = String(subRow.label);
+    }
+  }
+
+  const vars: Record<string, string> = {
+    id: String(ticket.id),
+    title: String(ticket.title ?? ""),
+    createdByName: String(ticket.created_by_name ?? ""),
+    assignedToName: String(ticket.assigned_to_name ?? "Não atribuído"),
+    category: catKey,
+    subcategory: subKey,
+    categoryLabel,
+    subcategoryLabel,
+    priority: String(ticket.priority ?? ""),
+    createdAt: String(ticket.created_at ?? ""),
+    createdAtLocal: formatDateLocal(String(ticket.created_at ?? "")),
+    days: String(opts.days),
+  };
+
+  const text = interpolate(opts.template, vars);
+  const number = normalizeSendNumber(opts.recipient);
+
+  const sendRes = await fetch(
+    `${opts.base}/message/sendText/${encodeURIComponent(opts.instance)}`,
+    {
+      method: "POST",
+      headers: evoHeaders(),
+      body: JSON.stringify({ number, text }),
+    },
+  );
+
+  if (sendRes.ok) {
+    await admin
+      .from("app_c009c0e4f1_tickets")
+      .update({ stale_whatsapp_notified_at: new Date().toISOString() })
+      .eq("id", ticket.id as string);
+    return { id: String(ticket.id), ok: true };
+  }
+
+  const details = await sendRes.json().catch(() => ({}));
+  return { id: String(ticket.id), ok: false, details };
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -79,6 +153,9 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const admin = createClient(supabaseUrl, serviceKey);
+
+    const body = await req.json().catch(() => ({})) as { ticketId?: unknown };
+    const ticketId = typeof body?.ticketId === "string" ? body.ticketId.trim() : "";
 
     const recipient = await getSetting(admin, SETTINGS_RECIPIENT_KEY);
     if (!recipient) {
@@ -105,6 +182,37 @@ Deno.serve(async (req) => {
       return json({ error: "EVOLUTION_BASE_URL ausente" }, 500);
     }
 
+    // Envio manual de um ticket específico (disparado por um admin pela tela, não pelo agendamento automático)
+    if (ticketId) {
+      const { error: authErr, authUserId } = await getBearerClient(req);
+      if (authErr || !authUserId) {
+        return json({ error: authErr ?? "Não autorizado" }, 401);
+      }
+      const allowed = await userHasManageCategories(admin, authUserId);
+      if (!allowed) {
+        return json({ error: "Sem permissão para gerenciar categorias" }, 403);
+      }
+
+      const { data: ticket, error: tErr } = await admin
+        .from("app_c009c0e4f1_tickets")
+        .select("*")
+        .eq("id", ticketId)
+        .maybeSingle();
+      if (tErr || !ticket) {
+        return json({ error: "Ticket não encontrado" }, 404);
+      }
+      if (ticket.status === "resolved") {
+        return json({ error: "Este ticket já foi resolvido" }, 400);
+      }
+
+      const result = await sendAlertForTicket(admin, ticket, { template, recipient, instance, base, days });
+      if (!result.ok) {
+        return json({ error: "Falha ao enviar via Evolution API", details: result.details }, 502);
+      }
+      return json({ ok: true, manual: true, result });
+    }
+
+    // Envio em lote (chamado pelo agendamento automático diário)
     const { data: staleTickets, error: rpcErr } = await admin.rpc(
       "helpdesk_get_stale_tickets",
       { p_days: days },
@@ -117,68 +225,8 @@ Deno.serve(async (req) => {
     const results: Array<{ id: string; ok: boolean; details?: unknown }> = [];
 
     for (const ticket of tickets) {
-      const catKey = String(ticket.category ?? "");
-      const subKey = String(ticket.subcategory ?? "");
-
-      let categoryLabel = catKey;
-      let subcategoryLabel = subKey;
-
-      if (catKey) {
-        const { data: categoryRow } = await admin
-          .from("app_c009c0e4f1_categories")
-          .select("id, label")
-          .eq("key", catKey)
-          .maybeSingle();
-        if (categoryRow?.label) categoryLabel = String(categoryRow.label);
-
-        if (categoryRow && subKey) {
-          const { data: subRow } = await admin
-            .from("app_c009c0e4f1_subcategories")
-            .select("label")
-            .eq("category_id", categoryRow.id)
-            .eq("key", subKey)
-            .maybeSingle();
-          if (subRow?.label) subcategoryLabel = String(subRow.label);
-        }
-      }
-
-      const vars: Record<string, string> = {
-        id: String(ticket.id),
-        title: String(ticket.title ?? ""),
-        createdByName: String(ticket.created_by_name ?? ""),
-        assignedToName: String(ticket.assigned_to_name ?? "Não atribuído"),
-        category: catKey,
-        subcategory: subKey,
-        categoryLabel,
-        subcategoryLabel,
-        priority: String(ticket.priority ?? ""),
-        createdAt: String(ticket.created_at ?? ""),
-        createdAtLocal: formatDateLocal(String(ticket.created_at ?? "")),
-        days: String(days),
-      };
-
-      const text = interpolate(template, vars);
-      const number = normalizeSendNumber(recipient);
-
-      const sendRes = await fetch(
-        `${base}/message/sendText/${encodeURIComponent(instance)}`,
-        {
-          method: "POST",
-          headers: evoHeaders(),
-          body: JSON.stringify({ number, text }),
-        },
-      );
-
-      if (sendRes.ok) {
-        await admin
-          .from("app_c009c0e4f1_tickets")
-          .update({ stale_whatsapp_notified_at: new Date().toISOString() })
-          .eq("id", ticket.id as string);
-        results.push({ id: String(ticket.id), ok: true });
-      } else {
-        const details = await sendRes.json().catch(() => ({}));
-        results.push({ id: String(ticket.id), ok: false, details });
-      }
+      const result = await sendAlertForTicket(admin, ticket, { template, recipient, instance, base, days });
+      results.push(result);
     }
 
     return json({ ok: true, checked: tickets.length, results });

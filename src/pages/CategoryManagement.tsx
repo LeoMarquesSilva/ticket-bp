@@ -218,6 +218,8 @@ export default function CategoryManagement() {
             unansweredTickets={evo.unansweredTickets}
             unansweredTicketsLoading={evo.unansweredTicketsLoading}
             onLoadUnansweredTickets={() => void evo.loadUnansweredTickets()}
+            sendingAlertTicketId={evo.sendingAlertTicketId}
+            onSendAlertNow={(ticketId) => void evo.sendStaleAlertNow(ticketId)}
           />
         </TabsContent>
       </Tabs>

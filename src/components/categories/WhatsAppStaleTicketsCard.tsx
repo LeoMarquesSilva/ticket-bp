@@ -107,6 +107,10 @@ export default function WhatsAppStaleTicketsCard({
               />
               <span>dia(s) sem nenhuma resposta da equipe.</span>
             </div>
+            <p className="pl-6 text-xs text-slate-500">
+              O sistema confere isso automaticamente <strong>uma vez por dia, às 08h (horário de Brasília)</strong>.
+              Se quiser avisar antes disso, use o botão <strong>"Enviar aviso"</strong> na lista de tickets sem resposta, mais abaixo.
+            </p>
           </section>
 
           {/* Passo 2: Para onde enviar */}
@@ -122,7 +126,7 @@ export default function WhatsAppStaleTicketsCard({
                   <Input
                     value={staleTicketRecipient}
                     onChange={(e) => setStaleTicketRecipient(e.target.value)}
-                    placeholder="Número (5511999999999) ou JID de grupo (120363...@g.us)"
+                    placeholder="Número com DDD (ex: 5511999999999) ou selecione um grupo ao lado"
                     className="pl-8"
                   />
                 </div>
@@ -172,16 +176,17 @@ export default function WhatsAppStaleTicketsCard({
                   rows={4}
                   className="font-mono text-xs"
                 />
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                <p className="text-xs text-slate-500">Clique para inserir uma informação na mensagem:</p>
+                <div className="flex flex-wrap gap-1.5">
                   {STALE_TEMPLATE_VARIABLES.map((v) => (
                     <button
                       key={v.token}
                       type="button"
-                      title={v.label}
+                      title={`Insere: ${v.token}`}
                       onClick={() => setStaleTicketTemplate((prev) => prev ? `${prev} ${v.token}` : v.token)}
-                      className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-[10px] text-amber-800 hover:bg-amber-100 transition-colors"
+                      className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800 hover:bg-amber-100 transition-colors"
                     >
-                      {v.token}
+                      + {v.label}
                     </button>
                   ))}
                 </div>

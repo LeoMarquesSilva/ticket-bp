@@ -67,6 +67,8 @@ interface Props {
   unansweredTickets: Ticket[];
   unansweredTicketsLoading: boolean;
   onLoadUnansweredTickets: () => void;
+  sendingAlertTicketId: string | null;
+  onSendAlertNow: (ticketId: string) => void;
 }
 
 export default function WhatsAppTab(props: Props) {
@@ -149,6 +151,8 @@ export default function WhatsAppTab(props: Props) {
             loading={props.unansweredTicketsLoading}
             staleTicketDays={props.staleTicketDays}
             onRefresh={props.onLoadUnansweredTickets}
+            sendingAlertTicketId={props.sendingAlertTicketId}
+            onSendAlertNow={props.onSendAlertNow}
           />
         </div>
       </TabsContent>
