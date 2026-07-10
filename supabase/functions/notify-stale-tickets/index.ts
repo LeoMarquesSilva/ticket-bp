@@ -6,6 +6,7 @@ import {
 } from "./_shared/evolutionAuth.ts";
 
 const SETTINGS_INSTANCE_KEY = "evolution_instance_name";
+const SETTINGS_STALE_INSTANCE_KEY = "stale_ticket_evolution_instance_name";
 const SETTINGS_RECIPIENT_KEY = "stale_ticket_whatsapp_recipient";
 const SETTINGS_DAYS_KEY = "stale_ticket_whatsapp_days";
 const SETTINGS_TEMPLATE_KEY = "stale_ticket_whatsapp_template";
@@ -24,9 +25,11 @@ function evoBase(): string {
   return (Deno.env.get("EVOLUTION_BASE_URL") ?? "").replace(/\/$/, "");
 }
 
+/** A instância dedicada de "tickets parados" tem sua própria API key do Evolution API, diferente da instância padrão usada para os outros avisos de WhatsApp. */
 function evoHeaders(): HeadersInit {
+  const staleKey = (Deno.env.get("STALE_TICKET_EVOLUTION_API_KEY") ?? "").trim();
   return {
-    apikey: Deno.env.get("EVOLUTION_API_KEY") ?? "",
+    apikey: staleKey || (Deno.env.get("EVOLUTION_API_KEY") ?? ""),
     "Content-Type": "application/json",
   };
 }
@@ -189,7 +192,8 @@ Deno.serve(async (req) => {
     const template = (await getSetting(admin, SETTINGS_TEMPLATE_KEY)) ||
       DEFAULT_TEMPLATE;
 
-    const instance = (await getSetting(admin, SETTINGS_INSTANCE_KEY)) ||
+    const instance = (await getSetting(admin, SETTINGS_STALE_INSTANCE_KEY)) ||
+      (await getSetting(admin, SETTINGS_INSTANCE_KEY)) ||
       (Deno.env.get("EVOLUTION_INSTANCE_NAME") ?? "").trim();
     if (!instance) {
       return json({ error: "Instância Evolution não configurada" }, 400);
