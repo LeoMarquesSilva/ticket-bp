@@ -1037,7 +1037,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
           <div className="flex gap-2 items-end">
             {/* Botão de templates de resposta rápida - apenas para atendentes */}
-            {(user?.role === 'support' || user?.role === 'lawyer' || user?.role === 'admin') && !isTicketFinalized(selectedTicket) && (
+            {(user?.role === 'support' || user?.role === 'lawyer' || user?.role === 'admin' || user?.role === 'suporte_administrativo') && !isTicketFinalized(selectedTicket) && (
               <QuickReplyTemplates
                 onSelectTemplate={(message) => {
                   setNewMessage(message);
