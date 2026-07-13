@@ -34,6 +34,7 @@ export const TABLES = {
   DEPARTMENTS: 'app_c009c0e4f1_departments',
   PUSH_SUBSCRIPTIONS: 'app_c009c0e4f1_push_subscriptions',
   INTEGRATION_SETTINGS: 'app_c009c0e4f1_integration_settings',
+  QUICK_REPLY_TEMPLATES: 'app_c009c0e4f1_quick_reply_templates',
 };
 
 // Database types

@@ -1,62 +1,87 @@
+import { supabase, TABLES } from '@/lib/supabase';
+
 // Templates de resposta rápida para o chat de tickets
 export interface QuickReplyTemplate {
   id: string;
   label: string;
   message: string;
-  category?: string; // Opcional: categoria do ticket para templates específicos
+  order: number;
 }
 
-// Templates padrão disponíveis para todos os atendentes
-export const QUICK_REPLY_TEMPLATES: QuickReplyTemplate[] = [
-  {
-    id: 'greeting',
-    label: 'Saudação inicial',
-    message: 'Olá! Recebi sua solicitação e vou verificar para você. Retorno em breve.'
-  },
-  {
-    id: 'checking',
-    label: 'Verificando',
-    message: 'Vou verificar e retorno em breve com as informações solicitadas.'
-  },
-  {
-    id: 'wait',
-    label: 'Aguarde',
-    message: 'Aguarde um momento enquanto verifico sua solicitação.'
-  },
-  {
-    id: 'thank-you',
-    label: 'Agradecimento',
-    message: 'Obrigado pela sua solicitação. Estamos trabalhando para resolver o mais rápido possível.'
-  },
-  {
-    id: 'resolved',
-    label: 'Resolvido',
-    message: 'Sua solicitação foi resolvida! Por favor, confirme se está tudo ok ou se precisa de mais alguma coisa.'
-  },
-  {
-    id: 'info-needed',
-    label: 'Precisa de informações',
-    message: 'Para prosseguir com sua solicitação, preciso de algumas informações adicionais. Poderia me fornecer?'
-  },
-  {
-    id: 'closing',
-    label: 'Encerramento',
-    message: 'Fico à disposição para qualquer outra dúvida. Tenha um ótimo dia!'
-  },
-  {
-    id: 'follow-up',
-    label: 'Acompanhamento',
-    message: 'Estou acompanhando sua solicitação. Assim que tiver novidades, retorno o contato.'
-  }
+export interface QuickReplyTemplateInput {
+  label: string;
+  message: string;
+}
+
+/** Usado apenas se a consulta ao banco falhar (ex.: instabilidade de rede). */
+const FALLBACK_TEMPLATES: QuickReplyTemplate[] = [
+  { id: 'fallback-greeting', label: 'Saudação inicial', message: 'Olá! Recebi sua solicitação e vou verificar para você. Retorno em breve.', order: 1 },
+  { id: 'fallback-checking', label: 'Verificando', message: 'Vou verificar e retorno em breve com as informações solicitadas.', order: 2 },
 ];
 
-// Função para obter templates por categoria (opcional - para futuras expansões)
-export function getTemplatesByCategory(category?: string): QuickReplyTemplate[] {
-  if (!category) {
-    return QUICK_REPLY_TEMPLATES;
+function mapFromDb(row: any): QuickReplyTemplate {
+  return {
+    id: row.id,
+    label: row.label,
+    message: row.message,
+    order: row.order ?? 0,
+  };
+}
+
+export class QuickReplyTemplateService {
+  static async getAll(): Promise<QuickReplyTemplate[]> {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.QUICK_REPLY_TEMPLATES)
+        .select('*')
+        .order('order', { ascending: true });
+      if (error) throw error;
+      return (data || []).map(mapFromDb);
+    } catch (error) {
+      console.error('Erro ao buscar respostas rápidas:', error);
+      return FALLBACK_TEMPLATES;
+    }
   }
-  
-  // Por enquanto, retorna todos os templates
-  // No futuro, pode filtrar templates específicos por categoria
-  return QUICK_REPLY_TEMPLATES;
+
+  static async create(input: QuickReplyTemplateInput): Promise<QuickReplyTemplate> {
+    const { data: lastRow } = await supabase
+      .from(TABLES.QUICK_REPLY_TEMPLATES)
+      .select('order')
+      .order('order', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const order = (lastRow?.order ?? 0) + 1;
+
+    const { data, error } = await supabase
+      .from(TABLES.QUICK_REPLY_TEMPLATES)
+      .insert({ label: input.label, message: input.message, order })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapFromDb(data);
+  }
+
+  static async update(id: string, input: QuickReplyTemplateInput): Promise<QuickReplyTemplate> {
+    const { data, error } = await supabase
+      .from(TABLES.QUICK_REPLY_TEMPLATES)
+      .update({ label: input.label, message: input.message, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapFromDb(data);
+  }
+
+  static async remove(id: string): Promise<void> {
+    const { error } = await supabase.from(TABLES.QUICK_REPLY_TEMPLATES).delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  static async reorder(items: Array<{ id: string; order: number }>): Promise<void> {
+    await Promise.all(
+      items.map(({ id, order }) =>
+        supabase.from(TABLES.QUICK_REPLY_TEMPLATES).update({ order }).eq('id', id),
+      ),
+    );
+  }
 }

@@ -2,21 +2,25 @@ import { useEffect, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PlusCircle, RefreshCw, Tag, MessageCircle, FolderTree } from 'lucide-react';
+import { PlusCircle, RefreshCw, Tag, MessageCircle, FolderTree, MessageSquare } from 'lucide-react';
 import { useCategories } from '@/hooks/useCategories';
 import { useEvolutionApi } from '@/hooks/useEvolutionApi';
+import { useQuickReplyTemplates } from '@/hooks/useQuickReplyTemplates';
 import CategoriesTab from '@/components/categories/CategoriesTab';
 import FrentesTab from '@/components/categories/FrentesTab';
 import WhatsAppTab from '@/components/categories/WhatsAppTab';
+import QuickRepliesTab from '@/components/categories/QuickRepliesTab';
 import CategoryFormDialog from '@/components/categories/CategoryFormDialog';
 import SubcategoryFormDialog from '@/components/categories/SubcategoryFormDialog';
 import FrenteFormDialog from '@/components/categories/FrenteFormDialog';
+import QuickReplyFormDialog from '@/components/categories/QuickReplyFormDialog';
 import DeleteConfirmDialog from '@/components/categories/DeleteConfirmDialog';
 import type { Tag as TagType } from '@/services/categoryService';
 
 export default function CategoryManagement() {
   const cat = useCategories();
   const evo = useEvolutionApi(cat.loadData);
+  const quickReplies = useQuickReplyTemplates();
 
   // Load Evolution data on mount
   useEffect(() => {
@@ -87,7 +91,7 @@ export default function CategoryManagement() {
 
       {/* Tabs */}
       <Tabs defaultValue="categorias" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 h-12">
+        <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="categorias" className="gap-2 text-sm">
             <FolderTree className="h-4 w-4" />
             Categorias
@@ -102,6 +106,10 @@ export default function CategoryManagement() {
             {whatsappActiveCount > 0 && (
               <Badge variant="success" className="ml-1 h-5 min-w-5 px-1.5 text-xs">{whatsappActiveCount}</Badge>
             )}
+          </TabsTrigger>
+          <TabsTrigger value="respostas-rapidas" className="gap-2 text-sm">
+            <MessageSquare className="h-4 w-4" />
+            Respostas Rápidas
           </TabsTrigger>
         </TabsList>
 
@@ -222,6 +230,17 @@ export default function CategoryManagement() {
             onSendAlertNow={(ticketId) => void evo.sendStaleAlertNow(ticketId)}
           />
         </TabsContent>
+
+        <TabsContent value="respostas-rapidas" className="mt-6">
+          <QuickRepliesTab
+            loading={quickReplies.loading}
+            templates={quickReplies.templates}
+            onCreate={quickReplies.openCreateDialog}
+            onEdit={quickReplies.openEditDialog}
+            onDelete={(t) => quickReplies.setPendingDelete(t)}
+            onMove={(t, dir) => void quickReplies.moveTemplate(t, dir)}
+          />
+        </TabsContent>
       </Tabs>
 
       {/* ---- Dialogs ---- */}
@@ -315,7 +334,39 @@ export default function CategoryManagement() {
         />
       )}
 
+      {/* Create Quick Reply */}
+      <QuickReplyFormDialog
+        mode="create"
+        open={quickReplies.createDialogOpen}
+        onOpenChange={quickReplies.setCreateDialogOpen}
+        data={quickReplies.createForm}
+        setData={quickReplies.setCreateForm}
+        loading={quickReplies.createLoading}
+        onSubmit={quickReplies.handleCreate}
+      />
+
+      {/* Edit Quick Reply */}
+      {quickReplies.editingTemplate && (
+        <QuickReplyFormDialog
+          mode="edit"
+          open={!!quickReplies.editingTemplate}
+          onOpenChange={(open) => { if (!open) quickReplies.setEditingTemplate(null); }}
+          data={quickReplies.editForm}
+          setData={quickReplies.setEditForm}
+          loading={quickReplies.editLoading}
+          onSubmit={quickReplies.handleEdit}
+        />
+      )}
+
       {/* Delete Confirmations */}
+      <DeleteConfirmDialog
+        open={!!quickReplies.pendingDelete}
+        onOpenChange={(open) => { if (!open) quickReplies.setPendingDelete(null); }}
+        title="Excluir Resposta Rápida"
+        itemLabel={quickReplies.pendingDelete?.label}
+        onConfirm={() => { void quickReplies.handleDelete(); }}
+        onCancel={() => quickReplies.setPendingDelete(null)}
+      />
       <DeleteConfirmDialog
         open={deleteCategoryDialogOpen}
         onOpenChange={setDeleteCategoryDialogOpen}
