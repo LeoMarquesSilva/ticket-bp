@@ -30,6 +30,7 @@ export type FaixaIdade = 'indiferente' | 'ate' | '';
 export type Sexo = 'indiferente' | 'masculino' | 'feminino' | '';
 export type Escolaridade = 'ensino_medio' | 'graduacao' | 'pos_graduacao' | '';
 export type NivelExigencia = 'desejavel' | 'imprescindivel' | 'indiferente' | '';
+export type ModeloTrabalho = 'presencial' | 'hibrido' | 'remoto' | 'estagio' | '';
 
 export interface EquipamentoItem {
   necessario: 'sim' | 'nao' | '';
@@ -70,7 +71,16 @@ export interface RequisicaoPessoalFormData {
   // Aprovação do sócio
   aprovacaoSocio: 'sim' | 'nao' | '';
   anexoAprovacao: File | null;
+
+  // Processo seletivo externo
+  abrirProcessoSeletivo: 'sim' | 'nao' | '';
+  tituloVaga: string;
+  principaisAtividades: string;
+  modeloTrabalho: ModeloTrabalho;
+  prazoCandidatura: string;
 }
+
+export type RequisicaoPessoalFichaData = Omit<RequisicaoPessoalFormData, 'anexoAprovacao'>;
 
 const emptyEquipamento = (): EquipamentoItem => ({ necessario: '', valor: '' });
 
@@ -104,6 +114,12 @@ export function emptyRequisicaoPessoalForm(): RequisicaoPessoalFormData {
 
     aprovacaoSocio: '',
     anexoAprovacao: null,
+
+    abrirProcessoSeletivo: '',
+    tituloVaga: '',
+    principaisAtividades: '',
+    modeloTrabalho: '',
+    prazoCandidatura: '',
   };
 }
 
@@ -131,6 +147,13 @@ export const NIVEL_EXIGENCIA_LABELS: Record<Exclude<NivelExigencia, ''>, string>
   desejavel: 'Desejável',
   imprescindivel: 'Imprescindível',
   indiferente: 'Indiferente',
+};
+
+export const MODELO_TRABALHO_LABELS: Record<Exclude<ModeloTrabalho, ''>, string> = {
+  presencial: 'Presencial',
+  hibrido: 'Híbrido',
+  remoto: 'Remoto',
+  estagio: 'Estágio',
 };
 
 export function validateRequisicaoPessoalForm(data: RequisicaoPessoalFormData): Record<string, string> {
@@ -185,6 +208,23 @@ export function validateRequisicaoPessoalForm(data: RequisicaoPessoalFormData): 
     errors.anexoAprovacao = 'Anexe o print/comprovante do "de acordo" do sócio';
   }
 
+  if (!data.abrirProcessoSeletivo) {
+    errors.abrirProcessoSeletivo = 'Informe se precisa abrir processo seletivo';
+  } else if (data.abrirProcessoSeletivo === 'sim') {
+    if (!data.tituloVaga.trim()) {
+      errors.tituloVaga = 'Informe o título da vaga';
+    }
+    if (!data.principaisAtividades.trim()) {
+      errors.principaisAtividades = 'Informe as principais atividades';
+    }
+    if (!data.modeloTrabalho) {
+      errors.modeloTrabalho = 'Selecione o modelo de trabalho';
+    }
+    if (!data.prazoCandidatura.trim()) {
+      errors.prazoCandidatura = 'Informe o prazo para candidatura';
+    }
+  }
+
   return errors;
 }
 
@@ -201,7 +241,7 @@ export function buildRequisicaoPessoalTitle(data: RequisicaoPessoalFormData): st
   return title.length > 120 ? title.slice(0, 117) + '...' : title;
 }
 
-export function motivoDescricaoLinha(data: RequisicaoPessoalFormData): string[] {
+export function motivoDescricaoLinha(data: RequisicaoPessoalFichaData): string[] {
   if (data.motivo === 'aumento_quadro') {
     return [
       'Motivo: Aumento de Quadro',
@@ -219,9 +259,16 @@ export function motivoDescricaoLinha(data: RequisicaoPessoalFormData): string[] 
   return [];
 }
 
-export function idadeDescricao(data: RequisicaoPessoalFormData): string {
+export function idadeDescricao(data: RequisicaoPessoalFichaData): string {
   if (data.faixaIdade === 'ate') return `Até ${data.idadeAte.trim()} anos`;
   return 'Indiferente';
+}
+
+export function formatDateBR(raw: string): string {
+  if (!raw) return '';
+  const [year, month, day] = raw.split('-');
+  if (!year || !month || !day) return raw;
+  return `${day}/${month}/${year}`;
 }
 
 /** Texto simples armazenado na descrição do ticket. */
@@ -249,6 +296,14 @@ export function buildRequisicaoPessoalDescription(
     `Remuneração sugerida: ${data.remuneracaoSugerida.trim()}`,
     '',
     `Já obteve o "de acordo" do sócio?: ${data.aprovacaoSocio === 'sim' ? 'Sim (comprovante anexado no chat)' : 'Não'}`,
+    '',
+    `Precisa abrir processo seletivo?: ${data.abrirProcessoSeletivo === 'sim' ? 'Sim' : 'Não'}`,
+    data.abrirProcessoSeletivo === 'sim' && '',
+    data.abrirProcessoSeletivo === 'sim' && 'Dados para divulgação da vaga:',
+    data.abrirProcessoSeletivo === 'sim' && `Título da vaga: ${data.tituloVaga.trim()}`,
+    data.abrirProcessoSeletivo === 'sim' && `Principais atividades: ${data.principaisAtividades.trim()}`,
+    data.abrirProcessoSeletivo === 'sim' && `Modelo de trabalho: ${data.modeloTrabalho ? MODELO_TRABALHO_LABELS[data.modeloTrabalho] : ''}`,
+    data.abrirProcessoSeletivo === 'sim' && `Prazo para candidatura: ${formatDateBR(data.prazoCandidatura)}`,
   ].filter((line): line is string => Boolean(line || line === ''));
 
   return lines.join('\n');
@@ -271,7 +326,7 @@ export interface RequisicaoPessoalFichaCardAttachment {
   kind: 'requisicao_pessoal_ficha';
   version: 1;
   requester: RequisicaoPessoalRequester;
-  data: Omit<RequisicaoPessoalFormData, 'anexoAprovacao'>;
+  data: RequisicaoPessoalFichaData;
   approvalAttachment: RequisicaoPessoalApprovalAttachment | null;
 }
 

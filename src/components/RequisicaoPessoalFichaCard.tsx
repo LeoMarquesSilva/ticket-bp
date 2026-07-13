@@ -21,8 +21,10 @@ import {
   ESCOLARIDADE_LABELS,
   SEXO_LABELS,
   NIVEL_EXIGENCIA_LABELS,
+  MODELO_TRABALHO_LABELS,
   motivoDescricaoLinha,
   idadeDescricao,
+  formatDateBR,
 } from '@/utils/requisicaoPessoalForm';
 
 interface Props {
@@ -168,6 +170,36 @@ const RequisicaoPessoalFichaCard: React.FC<Props> = ({ payload, tone, onPreviewI
                     <FileText className="h-4 w-4" /> {approvalAttachment.name}
                   </a>
                 )
+              )}
+            </Section>
+
+            <Section title="Processo seletivo">
+              <div className="flex items-center gap-2 mb-2">
+                {data.abrirProcessoSeletivo === 'sim' ? (
+                  <Badge className="bg-blue-100 text-blue-700 border-blue-200">
+                    Abrir divulgação externa
+                  </Badge>
+                ) : data.abrirProcessoSeletivo === 'nao' ? (
+                  <Badge className="bg-slate-100 text-slate-600 border-slate-200">
+                    Não precisa abrir processo seletivo
+                  </Badge>
+                ) : (
+                  <Badge className="bg-slate-100 text-slate-600 border-slate-200">
+                    Processo seletivo não informado
+                  </Badge>
+                )}
+              </div>
+
+              {data.abrirProcessoSeletivo === 'sim' && (
+                <>
+                  <Field label="Título da vaga" value={data.tituloVaga.trim()} />
+                  <Field label="Principais atividades" value={data.principaisAtividades.trim()} />
+                  <Field
+                    label="Modelo"
+                    value={data.modeloTrabalho ? MODELO_TRABALHO_LABELS[data.modeloTrabalho] : ''}
+                  />
+                  <Field label="Prazo" value={formatDateBR(data.prazoCandidatura)} />
+                </>
               )}
             </Section>
           </div>

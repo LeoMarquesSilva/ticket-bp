@@ -6,6 +6,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { AlertCircle, Paperclip, X } from 'lucide-react';
 import {
   RequisicaoPessoalFormData,
+  MODELO_TRABALHO_LABELS,
   MOTIVO_REPOSICAO_LABELS,
   formatCurrencyBRL,
 } from '@/utils/requisicaoPessoalForm';
@@ -359,6 +360,90 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
               />
             )}
             {fieldError('anexoAprovacao')}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-[#8B5CF6]/15 pt-4 space-y-3">
+        <Label>Precisa abrir processo seletivo? <span className="text-red-500">*</span></Label>
+        <RadioGroup
+          value={data.abrirProcessoSeletivo}
+          onValueChange={(value: 'sim' | 'nao') =>
+            update({
+              abrirProcessoSeletivo: value,
+              tituloVaga: value === 'nao' ? '' : data.tituloVaga,
+              principaisAtividades: value === 'nao' ? '' : data.principaisAtividades,
+              modeloTrabalho: value === 'nao' ? '' : data.modeloTrabalho,
+              prazoCandidatura: value === 'nao' ? '' : data.prazoCandidatura,
+            })
+          }
+          className="flex gap-6"
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="sim" id="rp-processo-sim" />
+            <Label htmlFor="rp-processo-sim" className="font-normal cursor-pointer">Sim</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="nao" id="rp-processo-nao" />
+            <Label htmlFor="rp-processo-nao" className="font-normal cursor-pointer">Não</Label>
+          </div>
+        </RadioGroup>
+        {fieldError('abrirProcessoSeletivo')}
+
+        {data.abrirProcessoSeletivo === 'sim' && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="space-y-2">
+              <Label htmlFor="rp-titulo-vaga">Título da vaga <span className="text-red-500">*</span></Label>
+              <Input
+                id="rp-titulo-vaga"
+                value={data.tituloVaga}
+                onChange={(e) => update({ tituloVaga: e.target.value })}
+                placeholder="Ex: Advogado(a) Pleno – Contencioso Cível"
+                className={errors.tituloVaga ? 'border-[#BD2D29]' : ''}
+              />
+              {fieldError('tituloVaga')}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rp-principais-atividades">Principais atividades <span className="text-red-500">*</span></Label>
+              <Textarea
+                id="rp-principais-atividades"
+                value={data.principaisAtividades}
+                onChange={(e) => update({ principaisAtividades: e.target.value })}
+                rows={3}
+                className={errors.principaisAtividades ? 'border-[#BD2D29]' : ''}
+              />
+              {fieldError('principaisAtividades')}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Modelo de trabalho <span className="text-red-500">*</span></Label>
+              <RadioGroup
+                value={data.modeloTrabalho}
+                onValueChange={(value: RequisicaoPessoalFormData['modeloTrabalho']) => update({ modeloTrabalho: value })}
+                className="flex flex-wrap gap-4"
+              >
+                {(Object.entries(MODELO_TRABALHO_LABELS) as [Exclude<RequisicaoPessoalFormData['modeloTrabalho'], ''>, string][]).map(([value, label]) => (
+                  <div key={value} className="flex items-center space-x-2">
+                    <RadioGroupItem value={value} id={`rp-modelo-${value}`} />
+                    <Label htmlFor={`rp-modelo-${value}`} className="font-normal cursor-pointer">{label}</Label>
+                  </div>
+                ))}
+              </RadioGroup>
+              {fieldError('modeloTrabalho')}
+            </div>
+
+            <div className="space-y-2 max-w-xs">
+              <Label htmlFor="rp-prazo-candidatura">Prazo para candidatura <span className="text-red-500">*</span></Label>
+              <Input
+                id="rp-prazo-candidatura"
+                type="date"
+                value={data.prazoCandidatura}
+                onChange={(e) => update({ prazoCandidatura: e.target.value })}
+                className={errors.prazoCandidatura ? 'border-[#BD2D29]' : ''}
+              />
+              {fieldError('prazoCandidatura')}
+            </div>
           </div>
         )}
       </div>
