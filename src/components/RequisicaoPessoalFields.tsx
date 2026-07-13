@@ -6,7 +6,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { AlertCircle, Paperclip, X } from 'lucide-react';
 import {
   RequisicaoPessoalFormData,
-  EquipamentoItem,
   MOTIVO_REPOSICAO_LABELS,
   formatCurrencyBRL,
 } from '@/utils/requisicaoPessoalForm';
@@ -16,14 +15,6 @@ interface Props {
   onChange: (data: RequisicaoPessoalFormData) => void;
   errors: Record<string, string>;
 }
-
-const EQUIPAMENTOS: Array<{ key: keyof Pick<RequisicaoPessoalFormData, 'estacaoTrabalho' | 'notebook' | 'mouseTecladoApoio' | 'licencaMicrosoft' | 'usuarioLegalOne'>; label: string }> = [
-  { key: 'estacaoTrabalho', label: 'Estação de trabalho | Cadeira' },
-  { key: 'notebook', label: 'Notebook' },
-  { key: 'mouseTecladoApoio', label: 'Mouse | Teclado | Apoio' },
-  { key: 'licencaMicrosoft', label: 'Licença da Microsoft' },
-  { key: 'usuarioLegalOne', label: 'Usuário do Legal One' },
-];
 
 /** Input com máscara de moeda (estilo caixa/PDV): os dígitos digitados entram como centavos, sempre lidos da esquerda para a direita a partir do valor completo já digitado — por isso não precisa gerenciar posição de cursor. */
 const CurrencyInput: React.FC<{
@@ -46,11 +37,6 @@ const CurrencyInput: React.FC<{
 const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) => {
   const update = (patch: Partial<RequisicaoPessoalFormData>) => {
     onChange({ ...data, ...patch });
-  };
-
-  const updateEquipamento = (key: keyof RequisicaoPessoalFormData, patch: Partial<EquipamentoItem>) => {
-    const current = data[key] as EquipamentoItem;
-    onChange({ ...data, [key]: { ...current, ...patch } });
   };
 
   const fieldError = (key: string) =>
@@ -329,42 +315,6 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
           />
           {fieldError('remuneracaoSugerida')}
         </div>
-      </div>
-
-      <div className="border-t border-[#8B5CF6]/15 pt-4 space-y-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Licenças | Equipamentos de TI | Suprimentos</p>
-        {EQUIPAMENTOS.map(({ key, label }) => {
-          const item = data[key] as EquipamentoItem;
-          return (
-            <div key={key} className="flex flex-wrap items-center gap-3 rounded-md bg-white/60 border border-[#8B5CF6]/10 p-2.5">
-              <span className="flex-1 min-w-[180px] text-sm text-[#2C2D2F]">{label}</span>
-              <RadioGroup
-                value={item.necessario}
-                onValueChange={(value: 'sim' | 'nao') => updateEquipamento(key, { necessario: value, valor: value === 'nao' ? '' : item.valor })}
-                className="flex items-center gap-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="sim" id={`rp-${key}-sim`} />
-                  <Label htmlFor={`rp-${key}-sim`} className="font-normal cursor-pointer text-sm">Sim</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="nao" id={`rp-${key}-nao`} />
-                  <Label htmlFor={`rp-${key}-nao`} className="font-normal cursor-pointer text-sm">Não</Label>
-                </div>
-              </RadioGroup>
-              {item.necessario === 'sim' && (
-                <CurrencyInput
-                  value={item.valor}
-                  onValueChange={(value) => updateEquipamento(key, { valor: value })}
-                  placeholder="R$ 0,00"
-                  className={`h-8 w-32 ${errors[`${key}Valor`] ? 'border-[#BD2D29]' : ''}`}
-                />
-              )}
-              {fieldError(key)}
-              {fieldError(`${key}Valor`)}
-            </div>
-          );
-        })}
       </div>
 
       <div className="border-t border-[#8B5CF6]/15 pt-4 space-y-2">

@@ -179,15 +179,6 @@ export function validateRequisicaoPessoalForm(data: RequisicaoPessoalFormData): 
     errors.remuneracaoSugerida = 'Informe a remuneração sugerida';
   }
 
-  (['estacaoTrabalho', 'notebook', 'mouseTecladoApoio', 'licencaMicrosoft', 'usuarioLegalOne'] as const).forEach((key) => {
-    const item = data[key];
-    if (!item.necessario) {
-      errors[key] = 'Informe se é necessário';
-    } else if (item.necessario === 'sim' && !item.valor.trim()) {
-      errors[`${key}Valor`] = 'Informe o valor estimado';
-    }
-  });
-
   if (!data.aprovacaoSocio) {
     errors.aprovacaoSocio = 'Informe se já obteve o "de acordo" do sócio';
   } else if (data.aprovacaoSocio === 'sim' && !data.anexoAprovacao) {
@@ -233,29 +224,6 @@ export function idadeDescricao(data: RequisicaoPessoalFormData): string {
   return 'Indiferente';
 }
 
-/** Itens de equipamento/licença marcados como necessários, com o valor estimado (para renderização em grid). */
-export function equipamentosSolicitados(data: RequisicaoPessoalFormData): Array<{ label: string; valor: string }> {
-  const itens: Array<[string, EquipamentoItem]> = [
-    ['Estação de trabalho | Cadeira', data.estacaoTrabalho],
-    ['Notebook', data.notebook],
-    ['Mouse | Teclado | Apoio', data.mouseTecladoApoio],
-    ['Licença da Microsoft', data.licencaMicrosoft],
-    ['Usuário do Legal One', data.usuarioLegalOne],
-  ];
-  return itens
-    .filter(([, item]) => item.necessario === 'sim')
-    .map(([label, item]) => ({ label, valor: item.valor.trim() }));
-}
-
-/** Lista apenas os itens marcados como necessários (evita ruído de "Não" repetido). */
-function equipamentosLinhas(data: RequisicaoPessoalFormData, bullet: string): string[] {
-  const solicitados = equipamentosSolicitados(data);
-  if (solicitados.length === 0) {
-    return ['Nenhum equipamento ou licença adicional solicitado.'];
-  }
-  return solicitados.map(({ label, valor }) => `${bullet} ${label} (valor estimado: ${valor})`);
-}
-
 /** Texto simples armazenado na descrição do ticket. */
 export function buildRequisicaoPessoalDescription(
   data: RequisicaoPessoalFormData,
@@ -279,9 +247,6 @@ export function buildRequisicaoPessoalDescription(
       `Curso especial: ${data.cursoEspecial.trim()} (${data.cursoEspecialNivel ? NIVEL_EXIGENCIA_LABELS[data.cursoEspecialNivel] : 'Indiferente'})`,
     '',
     `Remuneração sugerida: ${data.remuneracaoSugerida.trim()}`,
-    '',
-    'Licenças | Equipamentos de TI | Suprimentos:',
-    ...equipamentosLinhas(data, '-'),
     '',
     `Já obteve o "de acordo" do sócio?: ${data.aprovacaoSocio === 'sim' ? 'Sim (comprovante anexado no chat)' : 'Não'}`,
   ].filter((line): line is string => Boolean(line || line === ''));

@@ -23,7 +23,6 @@ import {
   NIVEL_EXIGENCIA_LABELS,
   motivoDescricaoLinha,
   idadeDescricao,
-  equipamentosSolicitados,
 } from '@/utils/requisicaoPessoalForm';
 
 interface Props {
@@ -56,7 +55,6 @@ const RequisicaoPessoalFichaCard: React.FC<Props> = ({ payload, tone, onPreviewI
   const { data, requester, approvalAttachment } = payload;
 
   const motivoLabel = data.motivo === 'aumento_quadro' ? 'Aumento de Quadro' : data.motivo === 'reposicao' ? 'Reposição' : '—';
-  const equipamentos = equipamentosSolicitados(data);
   const isApprovalImage = approvalAttachment?.type?.startsWith('image/');
 
   return (
@@ -129,16 +127,6 @@ const RequisicaoPessoalFichaCard: React.FC<Props> = ({ payload, tone, onPreviewI
 
             <Section title="Remuneração">
               <Field label="Sugerida" value={data.remuneracaoSugerida.trim()} />
-            </Section>
-
-            <Section title="Licenças | Equipamentos de TI | Suprimentos">
-              {equipamentos.length === 0 ? (
-                <p className="text-sm text-slate-500">Nenhum equipamento ou licença adicional solicitado.</p>
-              ) : (
-                equipamentos.map((item, idx) => (
-                  <Field key={idx} label={item.label} value={`Valor estimado: ${item.valor}`} />
-                ))
-              )}
             </Section>
 
             <Section title="Aprovação">
