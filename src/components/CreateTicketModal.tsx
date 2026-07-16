@@ -111,15 +111,6 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     });
   };
 
-  const isStaffUser = Boolean(
-    user &&
-      user.role !== 'user' &&
-      (has('assign_ticket') ||
-        has('create_ticket_for_user') ||
-        has('view_all_tickets') ||
-        has('view_frente_tickets'))
-  );
-
   const handleClose = () => {
     onClose();
   };
@@ -255,7 +246,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             </div>
           ) : (
             <div className="py-2">
-              <TicketForm onSubmit={handleSubmit} onCancel={handleClose} isStaffUser={isStaffUser} />
+              <TicketForm onSubmit={handleSubmit} onCancel={handleClose} />
             </div>
           )}
         </div>

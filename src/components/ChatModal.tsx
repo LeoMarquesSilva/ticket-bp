@@ -12,7 +12,7 @@ import { useChatContext } from '@/contexts/ChatContext';
 import { toast } from 'sonner';
 import FinishTicketButton from './FinishTicketButton';
 import { usePermissions } from '@/hooks/usePermissions';
-import { canUserFinishTicket } from '@/utils/inverseTicketFlow';
+import { canUserFinishTicket } from '@/utils/npsExemptTickets';
 
 interface ChatModalProps {
   ticket: Ticket;
@@ -669,7 +669,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
               {/* Botão de finalizar ticket - mostrado apenas se o ticket estiver ativo */}
               {isTicketActive &&
                 user &&
-                canUserFinishTicket(ticket, user.id, has('finish_ticket'), user.role) && (
+                canUserFinishTicket(user.id, has('finish_ticket'), user.role) && (
                 <FinishTicketButton
                   ticketId={ticket.id}
                   ticketTitle={ticket.title}

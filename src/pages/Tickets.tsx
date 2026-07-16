@@ -36,7 +36,7 @@ import {
 } from '@/utils/ticketFilterUtils';
 import { matchesUserTicketFilter } from '@/utils/ticketFiltersUtils';
 import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
-import { canUserFinishTicket, isInverseTicketFlow } from '@/utils/inverseTicketFlow';
+import { canUserFinishTicket } from '@/utils/npsExemptTickets';
 
 interface SupportUser {
   id: string;
@@ -1241,12 +1241,7 @@ useEffect(() => {
       });
       
       // Atualizar o ticket para "em andamento" se estiver aberto
-      const canStartAttendance =
-        user.role !== 'user' ||
-        (isInverseTicketFlow(selectedTicket.category, selectedTicket.subcategory) &&
-          selectedTicket.assignedTo === user.id);
-
-      if (selectedTicket.status === 'open' && canStartAttendance) {
+      if (selectedTicket.status === 'open' && user.role !== 'user') {
         await handleUpdateTicket(selectedTicket.id, { status: 'in_progress' });
       }
       
@@ -1977,12 +1972,7 @@ return (
                     canDeleteTicket={has('delete_ticket')}
                     canFinishTicket={
                       selectedTicket
-                        ? canUserFinishTicket(
-                            selectedTicket,
-                            user?.id,
-                            has('finish_ticket'),
-                            user?.role,
-                          )
+                        ? canUserFinishTicket(user?.id, has('finish_ticket'), user?.role)
                         : false
                     }
                   />
@@ -2081,12 +2071,7 @@ return (
                         canDeleteTicket={has('delete_ticket')}
                         canFinishTicket={
                       selectedTicket
-                        ? canUserFinishTicket(
-                            selectedTicket,
-                            user?.id,
-                            has('finish_ticket'),
-                            user?.role,
-                          )
+                        ? canUserFinishTicket(user?.id, has('finish_ticket'), user?.role)
                         : false
                     }
                       />

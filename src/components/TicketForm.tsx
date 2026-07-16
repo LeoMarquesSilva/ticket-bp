@@ -19,9 +19,6 @@ import {
   type SharepointTreinamentoPayload,
 } from '@/utils/desenvolvimentoContinuoForm';
 import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
-import { isInverseTicketFlow, INVERSE_FLOW_CATEGORY_KEY } from '@/utils/inverseTicketFlow';
-import DepartmentUserPicker, { type DepartmentUserPickerUser } from '@/components/DepartmentUserPicker';
-import { UserService } from '@/services/userService';
 import RequisicaoPessoalFields from '@/components/RequisicaoPessoalFields';
 import {
   buildRequisicaoPessoalDescription,
@@ -93,15 +90,12 @@ interface TicketFormProps {
     description: string;
     category: string;
     subcategory: string;
-    assignedTo?: string;
-    assignedToName?: string;
     initialChatMessage?: string;
     sharepointTreinamento?: SharepointTreinamentoPayload;
     pendingApprovalFile?: File | null;
     reqPessoalCard?: { data: RequisicaoPessoalFormData; requester: RequisicaoPessoalRequester };
   }) => void;
   onCancel: () => void;
-  isStaffUser?: boolean;
   initialData?: {
     title?: string;
     description?: string;
@@ -110,7 +104,7 @@ interface TicketFormProps {
   };
 }
 
-const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser = false, initialData = {} }) => {
+const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData = {} }) => {
   const { user } = useAuth();
   const [title, setTitle] = useState(initialData.title || '');
   const [description, setDescription] = useState(initialData.description || '');
@@ -125,14 +119,9 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
   const [reqForm, setReqForm] = useState<RequisicaoPessoalFormData>(emptyRequisicaoPessoalForm());
-  const [juridicoUsers, setJuridicoUsers] = useState<DepartmentUserPickerUser[]>([]);
-  const [selectedAttendantId, setSelectedAttendantId] = useState('');
-  const [loadingJuridicoUsers, setLoadingJuridicoUsers] = useState(false);
 
   const isDcCategory = isDesenvolvimentoContinuoCategory(category);
   const isReqPessoalCategory = isRequisicaoPessoalSelection(category, subcategory);
-  const isInverseFlow = isStaffUser && isInverseTicketFlow(category, subcategory);
-  const isInverseCategory = isStaffUser && category === INVERSE_FLOW_CATEGORY_KEY;
   const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
     useDesenvolvimentoContinuoOptions(isDcCategory);
 
@@ -177,43 +166,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
     setReqForm(emptyRequisicaoPessoalForm());
-    setSelectedAttendantId('');
   }, [category]);
-
-  // Carregar usuários jurídicos quando categoria inversa for selecionada
-  useEffect(() => {
-    if (!isInverseCategory) {
-      setJuridicoUsers([]);
-      setSelectedAttendantId('');
-      return;
-    }
-
-    const loadJuridicoUsers = async () => {
-      setLoadingJuridicoUsers(true);
-      try {
-        const juridicoOnly = await UserService.getActiveJuridicoUsers();
-        setJuridicoUsers(
-          juridicoOnly.map((user) => ({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            department: user.department,
-            avatarUrl: user.avatarUrl,
-          })),
-        );
-        setSelectedAttendantId((current) =>
-          current && juridicoOnly.some((user) => user.id === current) ? current : '',
-        );
-      } catch (error) {
-        console.error('Erro ao carregar usuários jurídicos:', error);
-        setJuridicoUsers([]);
-      } finally {
-        setLoadingJuridicoUsers(false);
-      }
-    };
-
-    loadJuridicoUsers();
-  }, [isInverseCategory]);
 
   // Categorias filtradas pela frente selecionada
   const categoriesByFrente = frenteId === ''
@@ -275,10 +228,6 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
       newErrors.subcategory = 'A subcategoria é obrigatória';
     }
 
-    if (isInverseFlow && !selectedAttendantId) {
-      newErrors.attendant = 'Selecione quem vai atender';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -327,16 +276,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
           reqPessoalCard: { data: reqForm, requester },
         });
       } else {
-        const attendant = juridicoUsers.find((u) => u.id === selectedAttendantId);
-        await onSubmit({
-          title,
-          description,
-          category,
-          subcategory,
-          ...(isInverseFlow && attendant
-            ? { assignedTo: attendant.id, assignedToName: attendant.name }
-            : {}),
-        });
+        await onSubmit({ title, description, category, subcategory });
       }
     } catch (error) {
       console.error('Error submitting ticket:', error);
@@ -441,49 +381,18 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, isStaffUser
                   {errors.subcategory}
                 </p>
               )}
-              {isInverseCategory && !subcategory && (
-                <p className="text-xs text-slate-500 mt-1">
-                  Para abrir chamado inverso, selecione a subcategoria{' '}
-                  <strong>Auditoria de Excludentes/Envio de Evidência</strong>.
-                </p>
-              )}
             </div>
           </div>
 
           {/* 3º passo: campos da solicitação - só após escolher categoria e subcategoria */}
           {!category || !subcategory ? (
             <div className="text-center py-8 px-4 text-sm text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
-              {isInverseCategory
-                ? 'Selecione a subcategoria "Auditoria de Excludentes/Envio de Evidência" para escolher quem vai atender.'
-                : 'Selecione a categoria e a subcategoria para preencher os demais campos.'}
+              Selecione a categoria e a subcategoria para preencher os demais campos.
             </div>
           ) : (
             <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
               {!isDcCategory && !isReqPessoalCategory && (
                 <>
-                  {isInverseFlow && (
-                    <div className="space-y-2">
-                      <Label htmlFor="attendant" className="text-[#2C2D2F] font-medium">
-                        Quem vai atender <span className="text-red-500">*</span>
-                      </Label>
-                      <DepartmentUserPicker
-                        value={selectedAttendantId || undefined}
-                        onChange={setSelectedAttendantId}
-                        users={juridicoUsers}
-                        loading={loadingJuridicoUsers}
-                        disabled={loadingJuridicoUsers}
-                        placeholder="Selecione o jurídico que vai atender"
-                        className={errors.attendant ? 'border-[#BD2D29]' : ''}
-                      />
-                      {errors.attendant && (
-                        <p className="text-[#BD2D29] text-xs flex items-center mt-1">
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                          {errors.attendant}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
                   <div className="space-y-2">
                     <Label htmlFor="title" className="text-[#2C2D2F] font-medium">Título</Label>
                     <Input

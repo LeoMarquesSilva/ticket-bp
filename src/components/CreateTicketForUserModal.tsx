@@ -32,7 +32,6 @@ import {
   type DesenvolvimentoContinuoFormData,
 } from '@/utils/desenvolvimentoContinuoForm';
 import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
-import { isInverseTicketFlow } from '@/utils/inverseTicketFlow';
 import RequisicaoPessoalFields from '@/components/RequisicaoPessoalFields';
 import {
   buildRequisicaoPessoalCardMessageText,
@@ -91,7 +90,6 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
 
   const isDcCategory = isDesenvolvimentoContinuoCategory(category);
   const isReqPessoalCategory = isRequisicaoPessoalSelection(category, subcategory);
-  const isInverseFlow = isInverseTicketFlow(category, subcategory);
   const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
     useDesenvolvimentoContinuoOptions(isDcCategory);
 
@@ -253,11 +251,6 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
 
     if (!subcategory && category && !isDcCategory) {
       newErrors.subcategory = 'A subcategoria é obrigatória';
-    }
-
-    if (isInverseFlow) {
-      newErrors.subcategory =
-        'Para Auditoria de excludentes, use Novo Ticket e selecione quem vai atender.';
     }
 
     if (isAlreadyResolved && !resolution.trim()) {
@@ -585,9 +578,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                         </SelectTrigger>
                         <SelectContent>
                           {category &&
-                            categoriesConfig[category]?.subcategories
-                              .filter((sub) => !isInverseTicketFlow(category, sub.value))
-                              .map((sub) => (
+                            categoriesConfig[category]?.subcategories.map((sub) => (
                             <SelectItem key={sub.value} value={sub.value}>
                               {sub.label}
                             </SelectItem>

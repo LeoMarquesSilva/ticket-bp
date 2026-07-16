@@ -9,6 +9,7 @@ import { notifyTicketWhatsApp } from './evolutionEdgeService';
 import { submitSharepointTreinamento } from './sharepointTreinamentosService';
 import type { SharepointTreinamentoPayload } from '@/utils/desenvolvimentoContinuoForm';
 import { FrenteAccessService } from './frenteAccessService';
+import { isNpsExemptTicket } from '@/utils/npsExemptTickets';
 
 export interface Ticket {
   id: string;
@@ -489,14 +490,15 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
 
       const { data: currentTicket } = await supabase
         .from(TABLES.TICKETS)
-        .select('status, feedback_submitted_at, title')
+        .select('status, feedback_submitted_at, title, category, subcategory')
         .eq('id', ticketId)
         .single();
 
       const isNewlyResolved =
         currentTicket?.status !== 'resolved' && !currentTicket?.feedback_submitted_at;
+      const npsExempt = isNpsExemptTicket(currentTicket?.category, currentTicket?.subcategory);
 
-      if (isNewlyResolved && finalizedBy?.userId && finalizedBy?.userName) {
+      if (isNewlyResolved && !npsExempt && finalizedBy?.userId && finalizedBy?.userName) {
         await this.sendChatMessage(
           ticketId,
           finalizedBy.userId,
@@ -625,19 +627,19 @@ static async hasUnsubmittedFeedback(userId: string): Promise<boolean> {
     
     const { data, error } = await supabase
       .from(TABLES.TICKETS)
-      .select('id')
+      .select('id, category, subcategory')
       .eq('created_by', userId)
       .eq('status', 'resolved')
-      .is('feedback_submitted_at', null)
-      .limit(1);
+      .is('feedback_submitted_at', null);
 
     if (error) {
       console.error('Erro ao verificar feedback pendente:', error);
       throw error;
     }
 
-    // Se encontrarmos pelo menos um ticket, significa que há feedback pendente
-    return data && data.length > 0;
+    // Tickets isentos de NPS não contam como feedback pendente
+    const pending = (data ?? []).filter((t) => !isNpsExemptTicket(t.category, t.subcategory));
+    return pending.length > 0;
   } catch (error) {
     console.error('Erro em hasUnsubmittedFeedback:', error);
     // Em caso de erro, permitir a criação do ticket para não bloquear o usuário
@@ -645,17 +647,18 @@ static async hasUnsubmittedFeedback(userId: string): Promise<boolean> {
   }
 }
 
-// Obter tickets abertos sem nenhuma resposta do suporte (para acompanhar o alerta de tickets parados)
+// Obter tickets abertos para acompanhar o alerta de inatividade.
 static async getUnansweredTickets(): Promise<Ticket[]> {
   try {
     const { data, error } = await supabase.rpc('helpdesk_get_unanswered_tickets');
 
     if (error) {
-      console.error('Erro ao buscar tickets sem resposta:', error);
+      console.error('Erro ao buscar tickets sem interação:', error);
       throw error;
     }
 
-    return (data || []).map(mapFromDatabase);
+    const tickets = (data || []).map(mapFromDatabase);
+    return enrichTicketsWithAvatars(tickets);
   } catch (error) {
     console.error('Erro em getUnansweredTickets:', error);
     throw error;
@@ -680,8 +683,10 @@ static async getUserTicketsWithPendingFeedback(userId: string): Promise<Ticket[]
       throw error;
     }
 
-    // Map database fields to frontend fields
-    const tickets = data ? data.map(mapFromDatabase) : [];
+    // Map database fields to frontend fields, excluindo tickets isentos de NPS
+    const tickets = data
+      ? data.map(mapFromDatabase).filter((t) => !isNpsExemptTicket(t.category, t.subcategory))
+      : [];
     return tickets;
   } catch (error) {
     console.error('Erro em getUserTicketsWithPendingFeedback:', error);
@@ -696,7 +701,7 @@ static async checkTicketNeedsFeedback(ticketId: string): Promise<boolean> {
     
     const { data, error } = await supabase
       .from(TABLES.TICKETS)
-      .select('status, feedback_submitted_at')
+      .select('status, feedback_submitted_at, category, subcategory')
       .eq('id', ticketId)
       .single();
 
@@ -705,8 +710,10 @@ static async checkTicketNeedsFeedback(ticketId: string): Promise<boolean> {
       throw error;
     }
 
-    // O ticket precisa de feedback se estiver resolvido e não tiver feedback enviado
-    const needsFeedback = data && data.status === 'resolved' && !data.feedback_submitted_at;
+    // O ticket precisa de feedback se estiver resolvido, não tiver feedback enviado e não for isento de NPS
+    const needsFeedback =
+      data && data.status === 'resolved' && !data.feedback_submitted_at &&
+      !isNpsExemptTicket(data.category, data.subcategory);
     console.log('Ticket precisa de feedback:', needsFeedback, 'Status:', data?.status, 'Feedback enviado:', !!data?.feedback_submitted_at);
     return needsFeedback;
   } catch (error) {

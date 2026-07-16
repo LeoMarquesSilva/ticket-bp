@@ -1,6 +1,7 @@
 import { supabase, TABLES } from '@/lib/supabase';
 import { CategoryService } from './categoryService';
 import { FrenteAccessService } from './frenteAccessService';
+import { isNpsExemptTicket } from '@/utils/npsExemptTickets';
 
 // Interface para os dados de estatísticas
 export interface DashboardStats {
@@ -798,7 +799,8 @@ async function processFeedbackFromTickets(tickets: any[]) {
 /** Tickets resolvidos aguardando feedback do solicitante - agrupados por usuário */
 async function processPendingFeedbackFromTickets(tickets: any[]): Promise<DashboardStats['pendingFeedback']> {
   const pending = tickets.filter(
-    (t) => t.status === 'resolved' && t.feedback_submitted_at == null
+    (t) => t.status === 'resolved' && t.feedback_submitted_at == null &&
+      !isNpsExemptTicket(t.category, t.subcategory)
   );
 
   const byUser = new Map<

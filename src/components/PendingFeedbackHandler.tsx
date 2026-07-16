@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, ArrowRight } from 'lucide-react';
 import { Ticket } from '@/types';
+import { isNpsExemptTicket } from '@/utils/npsExemptTickets';
 
 interface PendingFeedbackHandlerProps {
   tickets: Ticket[];
@@ -22,7 +23,8 @@ const PendingFeedbackHandler: React.FC<PendingFeedbackHandlerProps> = ({
       ticket &&
       ticket.status === 'resolved' &&
       !ticket.feedbackSubmittedAt &&
-      (!currentUserId || ticket.createdBy === currentUserId)
+      (!currentUserId || ticket.createdBy === currentUserId) &&
+      !isNpsExemptTicket(ticket.category, ticket.subcategory)
   );
 
   const handleOpenFirstTicket = () => {
