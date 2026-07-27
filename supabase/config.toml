@@ -9,5 +9,8 @@ verify_jwt = true
 [functions.sharepoint-treinamentos]
 verify_jwt = true
 
+[functions.orquestrai-treinamento]
+verify_jwt = true
+
 [functions.notify-stale-tickets]
 verify_jwt = true

@@ -34,6 +34,7 @@ import RequisicaoPessoalFichaCard from '@/components/RequisicaoPessoalFichaCard'
 import { RequisicaoPessoalFichaCardAttachment } from '@/utils/requisicaoPessoalForm';
 import PlanoSaudeFichaCard from '@/components/PlanoSaudeFichaCard';
 import { PlanoSaudeFichaCardAttachment } from '@/utils/planoSaudeForm';
+import SendToOrquestraiButton from '@/components/SendToOrquestraiButton';
 import { getAttachmentDownloadUrl } from '@/utils/attachmentDownload';
 import {
   FormattedChatMessage,
@@ -566,16 +567,16 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white border border-[#F69F19]/25 shadow-sm ring-1 ring-[#F69F19]/10">
                 <MessageCircle className="h-4 w-4 text-[#F69F19]" strokeWidth={2} />
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="font-bold text-[#2C2D2F] text-base truncate">
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="font-bold text-[#2C2D2F] text-base truncate min-w-0">
                     {selectedTicket.title}
                   </h2>
                   <Badge variant="secondary" className={`${getStatusColor(selectedTicket.status)} shrink-0 text-[10px] font-medium px-2 py-0`}>
                     {getStatusLabel(selectedTicket.status)}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
+                <div className="flex items-center gap-2 sm:gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
                   {assignedUserName && (
                     <div className="flex items-center gap-1.5 shrink-0">
                       <UserAvatar
@@ -594,13 +595,21 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   >
                     Ver detalhes
                   </button>
+                  <SendToOrquestraiButton
+                    ticket={selectedTicket}
+                    user={user}
+                    subcategoryLabel={getSubcategoryLabel(
+                      selectedTicket.category || '',
+                      selectedTicket.subcategory || '',
+                    )}
+                  />
                 </div>
               </div>
             </div>
           </div>
 
           {/* Lado direito: ações */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 relative z-10 bg-[#F6F6F6]">
             <Button
               variant="outline"
               size="sm"
