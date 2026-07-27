@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Button } from '@/components/ui/button';
 import { AlertCircle, Paperclip, X } from 'lucide-react';
 import {
   RequisicaoPessoalFormData,
@@ -10,12 +11,68 @@ import {
   MOTIVO_REPOSICAO_LABELS,
   formatCurrencyBRL,
 } from '@/utils/requisicaoPessoalForm';
+import { DatePickerBr } from '@/components/ui/date-picker-br';
 
 interface Props {
   data: RequisicaoPessoalFormData;
   onChange: (data: RequisicaoPessoalFormData) => void;
   errors: Record<string, string>;
 }
+
+const AnexoAprovacaoField: React.FC<{
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+  error?: string;
+}> = ({ file, onFileChange, error }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+      <Label>Anexar print/comprovante do "de acordo" <span className="text-red-500">*</span></Label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,.pdf"
+        className="sr-only"
+        onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+      />
+      {file ? (
+        <div className="flex items-center gap-2 rounded-md border border-[#8B5CF6]/20 bg-white px-3 py-2 text-sm text-[#2C2D2F] w-fit">
+          <Paperclip className="h-4 w-4 text-slate-400 shrink-0" />
+          <span className="truncate max-w-[220px]">{file.name}</span>
+          <button
+            type="button"
+            onClick={() => {
+              onFileChange(null);
+              if (inputRef.current) inputRef.current.value = '';
+            }}
+            className="text-slate-400 hover:text-[#BD2D29] transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => inputRef.current?.click()}
+          className={`w-full justify-start gap-2 font-normal text-slate-600 ${
+            error ? 'border-[#BD2D29]' : 'border-slate-300'
+          }`}
+        >
+          <Paperclip className="h-4 w-4 text-slate-400" />
+          Escolher arquivo
+        </Button>
+      )}
+      {error ? (
+        <p className="text-[#BD2D29] text-xs flex items-center mt-1">
+          <AlertCircle className="h-3 w-3 mr-1" />
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+};
 
 /** Input com máscara de moeda (estilo caixa/PDV): os dígitos digitados entram como centavos, sempre lidos da esquerda para a direita a partir do valor completo já digitado — por isso não precisa gerenciar posição de cursor. */
 const CurrencyInput: React.FC<{
@@ -337,30 +394,11 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
         {fieldError('aprovacaoSocio')}
 
         {data.aprovacaoSocio === 'sim' && (
-          <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-            <Label>Anexar print/comprovante do "de acordo" <span className="text-red-500">*</span></Label>
-            {data.anexoAprovacao ? (
-              <div className="flex items-center gap-2 rounded-md border border-[#8B5CF6]/20 bg-white px-3 py-2 text-sm text-[#2C2D2F] w-fit">
-                <Paperclip className="h-4 w-4 text-slate-400 shrink-0" />
-                <span className="truncate max-w-[220px]">{data.anexoAprovacao.name}</span>
-                <button
-                  type="button"
-                  onClick={() => update({ anexoAprovacao: null })}
-                  className="text-slate-400 hover:text-[#BD2D29] transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <Input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={(e) => update({ anexoAprovacao: e.target.files?.[0] ?? null })}
-                className={errors.anexoAprovacao ? 'border-[#BD2D29]' : ''}
-              />
-            )}
-            {fieldError('anexoAprovacao')}
-          </div>
+          <AnexoAprovacaoField
+            file={data.anexoAprovacao}
+            onFileChange={(file) => update({ anexoAprovacao: file })}
+            error={errors.anexoAprovacao}
+          />
         )}
       </div>
 
@@ -435,11 +473,12 @@ const RequisicaoPessoalFields: React.FC<Props> = ({ data, onChange, errors }) =>
 
             <div className="space-y-2 max-w-xs">
               <Label htmlFor="rp-prazo-candidatura">Prazo para candidatura <span className="text-red-500">*</span></Label>
-              <Input
+              <DatePickerBr
                 id="rp-prazo-candidatura"
-                type="date"
                 value={data.prazoCandidatura}
-                onChange={(e) => update({ prazoCandidatura: e.target.value })}
+                onChange={(value) => update({ prazoCandidatura: value })}
+                placeholder="DD/MM/AAAA"
+                label="Prazo para candidatura"
                 className={errors.prazoCandidatura ? 'border-[#BD2D29]' : ''}
               />
               {fieldError('prazoCandidatura')}

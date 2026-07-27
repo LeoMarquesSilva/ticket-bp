@@ -29,6 +29,16 @@ import {
   type RequisicaoPessoalFormData,
   type RequisicaoPessoalRequester,
 } from '@/utils/requisicaoPessoalForm';
+import PlanoSaudeFields from '@/components/PlanoSaudeFields';
+import {
+  buildPlanoSaudeDescription,
+  buildPlanoSaudeTitle,
+  emptyPlanoSaudeForm,
+  isPlanoSaudeSelection,
+  validatePlanoSaudeForm,
+  type PlanoSaudeFormData,
+  type PlanoSaudeRequester,
+} from '@/utils/planoSaudeForm';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Configuração hardcoded como fallback (caso haja erro ao buscar do banco)
@@ -94,6 +104,7 @@ interface TicketFormProps {
     sharepointTreinamento?: SharepointTreinamentoPayload;
     pendingApprovalFile?: File | null;
     reqPessoalCard?: { data: RequisicaoPessoalFormData; requester: RequisicaoPessoalRequester };
+    planoSaudeCard?: { data: PlanoSaudeFormData; requester: PlanoSaudeRequester };
   }) => void;
   onCancel: () => void;
   initialData?: {
@@ -119,9 +130,11 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
   const [reqForm, setReqForm] = useState<RequisicaoPessoalFormData>(emptyRequisicaoPessoalForm());
+  const [planoSaudeForm, setPlanoSaudeForm] = useState<PlanoSaudeFormData>(emptyPlanoSaudeForm());
 
   const isDcCategory = isDesenvolvimentoContinuoCategory(category);
   const isReqPessoalCategory = isRequisicaoPessoalSelection(category, subcategory);
+  const isPlanoSaudeCategory = isPlanoSaudeSelection(category, subcategory);
   const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
     useDesenvolvimentoContinuoOptions(isDcCategory);
 
@@ -158,6 +171,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
     setReqForm(emptyRequisicaoPessoalForm());
+    setPlanoSaudeForm(emptyPlanoSaudeForm());
   }, [frenteId]);
 
   // Resetar subcategoria quando a categoria muda
@@ -166,6 +180,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
     setReqForm(emptyRequisicaoPessoalForm());
+    setPlanoSaudeForm(emptyPlanoSaudeForm());
   }, [category]);
 
   // Categorias filtradas pela frente selecionada
@@ -202,6 +217,8 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
       Object.assign(newErrors, validateDesenvolvimentoContinuoForm(dcForm));
     } else if (isReqPessoalCategory) {
       Object.assign(newErrors, validateRequisicaoPessoalForm(reqForm));
+    } else if (isPlanoSaudeCategory) {
+      Object.assign(newErrors, validatePlanoSaudeForm(planoSaudeForm));
     } else {
       if (!title.trim()) {
         newErrors.title = 'O título é obrigatório';
@@ -274,6 +291,15 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
           subcategory,
           pendingApprovalFile: reqForm.aprovacaoSocio === 'sim' ? reqForm.anexoAprovacao : null,
           reqPessoalCard: { data: reqForm, requester },
+        });
+      } else if (isPlanoSaudeCategory) {
+        const requester = { name: user?.name ?? '', department: user?.department };
+        await onSubmit({
+          title: buildPlanoSaudeTitle(planoSaudeForm),
+          description: buildPlanoSaudeDescription(planoSaudeForm, requester),
+          category,
+          subcategory,
+          planoSaudeCard: { data: planoSaudeForm, requester },
         });
       } else {
         await onSubmit({ title, description, category, subcategory });
@@ -391,7 +417,7 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
             </div>
           ) : (
             <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-              {!isDcCategory && !isReqPessoalCategory && (
+              {!isDcCategory && !isReqPessoalCategory && !isPlanoSaudeCategory && (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="title" className="text-[#2C2D2F] font-medium">Título</Label>
@@ -445,6 +471,14 @@ const TicketForm: React.FC<TicketFormProps> = ({ onSubmit, onCancel, initialData
                 <RequisicaoPessoalFields
                   data={reqForm}
                   onChange={setReqForm}
+                  errors={errors}
+                />
+              )}
+
+              {isPlanoSaudeCategory && (
+                <PlanoSaudeFields
+                  data={planoSaudeForm}
+                  onChange={setPlanoSaudeForm}
                   errors={errors}
                 />
               )}

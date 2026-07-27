@@ -120,6 +120,7 @@ const DesenvolvimentoContinuoFields: React.FC<Props> = ({
             value={data.dataRealizacao}
             onChange={(value) => update({ dataRealizacao: value })}
             placeholder="Selecione a data"
+            label="Data da realização"
             disabled={loading}
             className={errors.dataRealizacao ? 'border-[#BD2D29]' : ''}
           />

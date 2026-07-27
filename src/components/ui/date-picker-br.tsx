@@ -16,6 +16,8 @@ interface DatePickerBrProps {
   disabled?: boolean;
   className?: string;
   id?: string;
+  /** Rótulo exibido no cabeçalho do calendário */
+  label?: string;
 }
 
 export function DatePickerBr({
@@ -25,6 +27,7 @@ export function DatePickerBr({
   disabled = false,
   className,
   id,
+  label = 'Data',
 }: DatePickerBrProps) {
   const [open, setOpen] = React.useState(false);
   const selected = parseDateBr(value);
@@ -93,7 +96,7 @@ export function DatePickerBr({
         sideOffset={6}
       >
         <div className="border-b border-slate-100 bg-gradient-to-r from-[#F69F19]/5 to-[#DE5532]/5 px-4 py-2.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Data da realização</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
           <p className="text-sm font-semibold text-[#2C2D2F]">
             {selected
               ? format(selected, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })

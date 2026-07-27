@@ -11,6 +11,11 @@ import {
   buildRequisicaoPessoalCardMessageText,
   buildRequisicaoPessoalFichaCardAttachment,
 } from '@/utils/requisicaoPessoalForm';
+import {
+  buildPlanoSaudeCardMessageText,
+  buildPlanoSaudeFichaCardAttachment,
+  uploadPlanoSaudeFiles,
+} from '@/utils/planoSaudeForm';
 import { notifyTicketWhatsApp } from '@/services/evolutionEdgeService';
 import { UserService } from '@/services/userService';
 import TicketHeader from '@/components/TicketHeader';
@@ -78,6 +83,10 @@ interface CreateTicketData {
   reqPessoalCard?: {
     data: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalFormData;
     requester: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalRequester;
+  };
+  planoSaudeCard?: {
+    data: import('@/utils/planoSaudeForm').PlanoSaudeFormData;
+    requester: import('@/utils/planoSaudeForm').PlanoSaudeRequester;
   };
 }
 
@@ -1345,6 +1354,25 @@ const handleCreateTicket = async (ticketData: CreateTicketData) => {
         } catch (uploadError) {
           console.error('Error building requisicao pessoal ficha card:', uploadError);
           toast.error('Ticket criado, mas houve um erro ao montar a ficha no chat.');
+        }
+      }
+
+      if (ticketData.planoSaudeCard) {
+        try {
+          const fichaData = await uploadPlanoSaudeFiles(
+            ticketData.planoSaudeCard.data,
+            (file) => TicketService.uploadAttachment(newTicket.id, file),
+          );
+          await TicketService.sendChatMessage(
+            newTicket.id,
+            user.id,
+            user.name,
+            buildPlanoSaudeCardMessageText(ticketData.planoSaudeCard.data),
+            [buildPlanoSaudeFichaCardAttachment(fichaData, ticketData.planoSaudeCard.requester)],
+          );
+        } catch (uploadError) {
+          console.error('Error building plano saude ficha card:', uploadError);
+          toast.error('Ticket criado, mas houve um erro ao montar a ficha do plano de saúde no chat.');
         }
       }
     }

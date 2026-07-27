@@ -32,6 +32,8 @@ import { usePasteImage } from '@/hooks/usePasteImage';
 import PastedImagePreview from '@/components/PastedImagePreview';
 import RequisicaoPessoalFichaCard from '@/components/RequisicaoPessoalFichaCard';
 import { RequisicaoPessoalFichaCardAttachment } from '@/utils/requisicaoPessoalForm';
+import PlanoSaudeFichaCard from '@/components/PlanoSaudeFichaCard';
+import { PlanoSaudeFichaCardAttachment } from '@/utils/planoSaudeForm';
 import {
   FormattedChatMessage,
   applyWrap,
@@ -919,13 +921,27 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         const fichaCard = message.attachments?.find(
                           (a: any) => a?.kind === 'requisicao_pessoal_ficha'
                         ) as RequisicaoPessoalFichaCardAttachment | undefined;
+                        const planoSaudeCard = message.attachments?.find(
+                          (a: any) => a?.kind === 'plano_saude_ficha'
+                        ) as PlanoSaudeFichaCardAttachment | undefined;
                         const fileAttachments = message.attachments?.filter(
-                          (a: any) => a?.kind !== 'requisicao_pessoal_ficha'
+                          (a: any) =>
+                            a?.kind !== 'requisicao_pessoal_ficha' &&
+                            a?.kind !== 'plano_saude_ficha'
                         );
                         if (fichaCard) {
                           return (
                             <RequisicaoPessoalFichaCard
                               payload={fichaCard}
+                              tone={isOwnMessage ? 'own' : 'other'}
+                              onPreviewImage={setShowImagePreview}
+                            />
+                          );
+                        }
+                        if (planoSaudeCard) {
+                          return (
+                            <PlanoSaudeFichaCard
+                              payload={planoSaudeCard}
                               tone={isOwnMessage ? 'own' : 'other'}
                               onPreviewImage={setShowImagePreview}
                             />

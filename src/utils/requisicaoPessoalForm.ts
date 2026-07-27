@@ -222,6 +222,8 @@ export function validateRequisicaoPessoalForm(data: RequisicaoPessoalFormData): 
     }
     if (!data.prazoCandidatura.trim()) {
       errors.prazoCandidatura = 'Informe o prazo para candidatura';
+    } else if (!isValidDateBR(data.prazoCandidatura)) {
+      errors.prazoCandidatura = 'Use o formato DD/MM/AAAA';
     }
   }
 
@@ -264,8 +266,27 @@ export function idadeDescricao(data: RequisicaoPessoalFichaData): string {
   return 'Indiferente';
 }
 
+export function formatDateInputBR(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+export function isValidDateBR(value: string): boolean {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+  if (!match) return false;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || year < 1900 || year > 2100) return false;
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
 export function formatDateBR(raw: string): string {
   if (!raw) return '';
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw.trim())) return raw.trim();
   const [year, month, day] = raw.split('-');
   if (!year || !month || !day) return raw;
   return `${day}/${month}/${year}`;

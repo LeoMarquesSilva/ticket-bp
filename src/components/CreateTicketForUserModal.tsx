@@ -43,6 +43,18 @@ import {
   validateRequisicaoPessoalForm,
   type RequisicaoPessoalFormData,
 } from '@/utils/requisicaoPessoalForm';
+import PlanoSaudeFields from '@/components/PlanoSaudeFields';
+import {
+  buildPlanoSaudeCardMessageText,
+  buildPlanoSaudeDescription,
+  buildPlanoSaudeFichaCardAttachment,
+  buildPlanoSaudeTitle,
+  emptyPlanoSaudeForm,
+  isPlanoSaudeSelection,
+  uploadPlanoSaudeFiles,
+  validatePlanoSaudeForm,
+  type PlanoSaudeFormData,
+} from '@/utils/planoSaudeForm';
 
 interface CreateTicketForUserModalProps {
   isOpen: boolean;
@@ -87,9 +99,11 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [dcForm, setDcForm] = useState<DesenvolvimentoContinuoFormData>(emptyDesenvolvimentoContinuoForm());
   const [reqForm, setReqForm] = useState<RequisicaoPessoalFormData>(emptyRequisicaoPessoalForm());
+  const [planoSaudeForm, setPlanoSaudeForm] = useState<PlanoSaudeFormData>(emptyPlanoSaudeForm());
 
   const isDcCategory = isDesenvolvimentoContinuoCategory(category);
   const isReqPessoalCategory = isRequisicaoPessoalSelection(category, subcategory);
+  const isPlanoSaudeCategory = isPlanoSaudeSelection(category, subcategory);
   const { users: dcUsers, departments: dcDepartments, loading: dcOptionsLoading } =
     useDesenvolvimentoContinuoOptions(isDcCategory);
 
@@ -138,6 +152,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
     setReqForm(emptyRequisicaoPessoalForm());
+    setPlanoSaudeForm(emptyPlanoSaudeForm());
   }, [frenteId]);
 
   // Resetar subcategoria quando categoria muda
@@ -146,6 +161,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setSlaHours(null);
     setDcForm(emptyDesenvolvimentoContinuoForm());
     setReqForm(emptyRequisicaoPessoalForm());
+    setPlanoSaudeForm(emptyPlanoSaudeForm());
   }, [category]);
 
   // Categorias filtradas pela frente selecionada
@@ -183,6 +199,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
     setIsAlreadyResolved(false);
     setDcForm(emptyDesenvolvimentoContinuoForm());
     setReqForm(emptyRequisicaoPessoalForm());
+    setPlanoSaudeForm(emptyPlanoSaudeForm());
     setSearchTerm('');
     setErrors({});
     setStep('user');
@@ -227,6 +244,8 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
       Object.assign(newErrors, validateDesenvolvimentoContinuoForm(dcForm));
     } else if (isReqPessoalCategory) {
       Object.assign(newErrors, validateRequisicaoPessoalForm(reqForm));
+    } else if (isPlanoSaudeCategory) {
+      Object.assign(newErrors, validatePlanoSaudeForm(planoSaudeForm));
     } else {
       if (!title.trim()) {
         newErrors.title = 'O título é obrigatório';
@@ -297,6 +316,10 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
         const requester = { name: selectedUser.name, department: selectedUser.department };
         ticketTitle = buildRequisicaoPessoalTitle(reqForm);
         ticketDescription = buildRequisicaoPessoalDescription(reqForm, requester);
+      } else if (isPlanoSaudeCategory) {
+        const requester = { name: selectedUser.name, department: selectedUser.department };
+        ticketTitle = buildPlanoSaudeTitle(planoSaudeForm);
+        ticketDescription = buildPlanoSaudeDescription(planoSaudeForm, requester);
       }
 
       const ticketData = {
@@ -335,6 +358,26 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
         } catch (uploadError) {
           console.error('Erro ao montar ficha no chat:', uploadError);
           toast.error('Ticket criado, mas houve um erro ao montar a ficha no chat.');
+        }
+      }
+
+      if (isPlanoSaudeCategory) {
+        try {
+          const requester = { name: selectedUser.name, department: selectedUser.department };
+          const fichaData = await uploadPlanoSaudeFiles(
+            planoSaudeForm,
+            (file) => TicketService.uploadAttachment(newTicket.id, file),
+          );
+          await TicketService.sendChatMessage(
+            newTicket.id,
+            selectedUser.id,
+            selectedUser.name,
+            buildPlanoSaudeCardMessageText(planoSaudeForm),
+            [buildPlanoSaudeFichaCardAttachment(fichaData, requester)],
+          );
+        } catch (uploadError) {
+          console.error('Erro ao montar ficha do plano de saúde no chat:', uploadError);
+          toast.error('Ticket criado, mas houve um erro ao montar a ficha do plano de saúde no chat.');
         }
       }
 
@@ -601,7 +644,7 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-                      {!isDcCategory && !isReqPessoalCategory && (
+                      {!isDcCategory && !isReqPessoalCategory && !isPlanoSaudeCategory && (
                         <>
                           <div className="space-y-2">
                             <Label htmlFor="title" className="text-[#2C2D2F]">Título do Ticket</Label>
@@ -655,6 +698,14 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
                         <RequisicaoPessoalFields
                           data={reqForm}
                           onChange={setReqForm}
+                          errors={errors}
+                        />
+                      )}
+
+                      {isPlanoSaudeCategory && (
+                        <PlanoSaudeFields
+                          data={planoSaudeForm}
+                          onChange={setPlanoSaudeForm}
                           errors={errors}
                         />
                       )}

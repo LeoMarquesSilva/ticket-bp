@@ -32,6 +32,10 @@ interface CreateTicketModalProps {
       data: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalFormData;
       requester: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalRequester;
     };
+    planoSaudeCard?: {
+      data: import('@/utils/planoSaudeForm').PlanoSaudeFormData;
+      requester: import('@/utils/planoSaudeForm').PlanoSaudeRequester;
+    };
   }) => void;
   onOpenTicket?: (ticket: any) => void;
 }
@@ -90,6 +94,10 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     reqPessoalCard?: {
       data: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalFormData;
       requester: import('@/utils/requisicaoPessoalForm').RequisicaoPessoalRequester;
+    };
+    planoSaudeCard?: {
+      data: import('@/utils/planoSaudeForm').PlanoSaudeFormData;
+      requester: import('@/utils/planoSaudeForm').PlanoSaudeRequester;
     };
   }) => {
     // Se houver feedback pendente, não permitir a criação do ticket
