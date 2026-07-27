@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PlusCircle, RefreshCw, Tag, MessageCircle, FolderTree, MessageSquare } from 'lucide-react';
+import { Plus, RefreshCw, Tag, MessageCircle, FolderTree, MessageSquare, Settings2 } from 'lucide-react';
 import { useCategories } from '@/hooks/useCategories';
 import { useEvolutionApi } from '@/hooks/useEvolutionApi';
 import { useQuickReplyTemplates } from '@/hooks/useQuickReplyTemplates';
@@ -64,54 +64,57 @@ export default function CategoryManagement() {
   if (!cat.canAccess) return null;
 
   return (
-    <div className="space-y-6 py-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="mx-auto w-full max-w-[1480px] space-y-5 py-5 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="relative rounded-2xl overflow-hidden bg-[#2C2D2F] shadow-lg border border-slate-800">
-        <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[#F69F19]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
-        <div className="absolute bottom-0 left-0 w-[200px] h-[200px] bg-[#DE5532]/10 rounded-full blur-2xl translate-y-1/3 -translate-x-1/4" />
-        <div className="relative z-10 p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Gerenciamento de Categorias</h1>
-            <p className="text-slate-400 max-w-xl">
-              Gerencie categorias, subcategorias, frentes de atuação e notificações WhatsApp do sistema.
-            </p>
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#2C2D2F] text-white">
+              <Settings2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold text-[#2C2D2F]">Estrutura de atendimento</h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                Organize frentes, categorias, respostas e automações de WhatsApp em um só lugar.
+              </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={cat.loadData} disabled={cat.loading} className="bg-white/5 text-white border-white/20 hover:bg-white/10" size="sm">
-              <RefreshCw className={`h-4 w-4 mr-2 ${cat.loading ? 'animate-spin' : ''}`} />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={cat.loadData} disabled={cat.loading} size="sm" title="Atualizar dados">
+              <RefreshCw className={`h-4 w-4 ${cat.loading ? 'animate-spin' : ''}`} />
               Atualizar
             </Button>
-            <Button className="bg-[#F69F19] hover:bg-[#e08e12] text-white border-0" size="sm" onClick={() => setCreateCategoryDialogOpen(true)}>
-              <PlusCircle className="h-4 w-4 mr-2" />
-              Nova Categoria
+            <Button className="bg-[#2C2D2F] text-white hover:bg-black" size="sm" onClick={() => setCreateCategoryDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Nova categoria
             </Button>
           </div>
-        </div>
-      </div>
+      </header>
 
       {/* Tabs */}
       <Tabs defaultValue="categorias" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-12">
-          <TabsTrigger value="categorias" className="gap-2 text-sm">
+        <div className="overflow-x-auto border-b border-slate-200">
+        <TabsList className="h-11 w-max min-w-full justify-start rounded-none bg-transparent p-0">
+          <TabsTrigger value="categorias" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
             <FolderTree className="h-4 w-4" />
             Categorias
           </TabsTrigger>
-          <TabsTrigger value="frentes" className="gap-2 text-sm">
+          <TabsTrigger value="frentes" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
             <Tag className="h-4 w-4" />
             Frentes de Atuação
           </TabsTrigger>
-          <TabsTrigger value="whatsapp" className="gap-2 text-sm">
+          <TabsTrigger value="whatsapp" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
             <MessageCircle className="h-4 w-4" />
             WhatsApp
             {whatsappActiveCount > 0 && (
               <Badge variant="success" className="ml-1 h-5 min-w-5 px-1.5 text-xs">{whatsappActiveCount}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="respostas-rapidas" className="gap-2 text-sm">
+          <TabsTrigger value="respostas-rapidas" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
             <MessageSquare className="h-4 w-4" />
             Respostas Rápidas
           </TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="categorias" className="mt-6">
           <CategoriesTab

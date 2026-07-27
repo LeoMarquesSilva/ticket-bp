@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { Braces, LayoutTemplate } from 'lucide-react';
 
 export const whatsappTemplateVariables = [
   { token: '{title}', label: 'Titulo' },
@@ -37,38 +38,42 @@ interface Props {
 
 export default function WhatsAppTemplateBuilder({ disabled, onInsertVariable, onApplyQuickTemplate }: Props) {
   return (
-    <div className="space-y-2 rounded-md border border-slate-200 bg-white/60 p-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-slate-600">Variáveis rápidas:</span>
+    <div className="space-y-3 border-t border-slate-200 pt-3">
+      <div className="flex items-start gap-3">
+        <Braces className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+        <div className="flex flex-wrap gap-1.5">
         {whatsappTemplateVariables.map((item) => (
           <Button
             key={item.token}
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="h-7 rounded border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 hover:border-[#DE5532]/40 hover:bg-[#DE5532]/5 hover:text-[#BD2D29]"
             disabled={disabled}
             onClick={() => onInsertVariable(item.token)}
           >
-            {item.label}
+            {item.label} <span className="ml-1 font-mono text-[10px] text-slate-400">{item.token}</span>
           </Button>
         ))}
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-slate-600">Modelos rápidos:</span>
+      <div className="flex items-start gap-3">
+        <LayoutTemplate className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+        <div className="flex flex-wrap gap-1.5">
         {quickTemplateOptions.map((option) => (
           <Button
             key={option.id}
             type="button"
             variant="secondary"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="h-7 rounded px-2 text-xs"
             disabled={disabled}
             onClick={() => onApplyQuickTemplate(option.template)}
           >
             {option.label}
           </Button>
         ))}
+        </div>
       </div>
     </div>
   );

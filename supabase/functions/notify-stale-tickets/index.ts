@@ -11,8 +11,9 @@ const SETTINGS_RECIPIENT_KEY = "stale_ticket_whatsapp_recipient";
 const SETTINGS_DAYS_KEY = "stale_ticket_whatsapp_days";
 const SETTINGS_TEMPLATE_KEY = "stale_ticket_whatsapp_template";
 const DEFAULT_DAYS = 3;
+const REPEAT_INTERVAL_HOURS = 24;
 const DEFAULT_TEMPLATE =
-  "⚠️ *TICKET PARADO — sem resposta há {days} dia(s)*\n\n" +
+  "⚠️ *TICKET PARADO — sem interação há {days} dia(s)*\n\n" +
   "*Título:* {title}\n" +
   "*Solicitante:* {createdByName}\n" +
   "*Responsável:* {assignedToName}\n\n" +
@@ -251,7 +252,12 @@ Deno.serve(async (req) => {
       results.push(result);
     }
 
-    return json({ ok: true, checked: tickets.length, results });
+    return json({
+      ok: true,
+      checked: tickets.length,
+      repeatIntervalHours: REPEAT_INTERVAL_HOURS,
+      results,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ error: msg }, 500);

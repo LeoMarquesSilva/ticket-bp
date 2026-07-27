@@ -32,7 +32,7 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
   const [bulkWhatsappRecipient, setBulkWhatsappRecipient] = useState('');
   const [bulkWhatsappApplying, setBulkWhatsappApplying] = useState(false);
 
-  // Alerta de tickets parados (sem resposta do suporte há N dias)
+  // Alerta de tickets parados (sem interação há N dias)
   const [staleTicketDays, setStaleTicketDays] = useState('3');
   const [staleTicketRecipient, setStaleTicketRecipient] = useState('');
   const [staleTicketTemplate, setStaleTicketTemplate] = useState('');
@@ -263,7 +263,7 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
       const tickets = await TicketService.getUnansweredTickets();
       setUnansweredTickets(tickets);
     } catch (e) {
-      toast.error('Tickets sem resposta', { description: e instanceof Error ? e.message : 'Erro ao carregar a lista.' });
+      toast.error('Tickets sem interação', { description: e instanceof Error ? e.message : 'Erro ao carregar a lista.' });
     } finally {
       setUnansweredTicketsLoading(false);
     }
@@ -306,7 +306,7 @@ export function useEvolutionApi(loadCategoriesData: () => Promise<void>) {
     staleTicketTemplate, setStaleTicketTemplate,
     staleTicketLoading, staleTicketSaving,
     loadStaleTicketSettings, saveStaleTicketSettings,
-    // Acompanhamento de tickets sem resposta
+    // Acompanhamento de tickets sem interação
     unansweredTickets, unansweredTicketsLoading, loadUnansweredTickets,
     sendingAlertTicketId, sendStaleAlertNow,
   };

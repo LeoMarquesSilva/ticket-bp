@@ -43,7 +43,10 @@ export default function FrentesTab({ loading, tags, onCreateFrente, onEditFrente
                   key={tag.id}
                   className="flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:shadow-sm transition-shadow"
                 >
-                  <div className="w-5 h-5 rounded-full shrink-0 ring-2 ring-offset-1" style={{ backgroundColor: tag.color, ringColor: tag.color }} />
+                  <div
+                    className="h-5 w-5 shrink-0 rounded-full border-2 border-white shadow-[0_0_0_1px_currentColor]"
+                    style={{ backgroundColor: tag.color, color: tag.color }}
+                  />
                   <div className="flex-1 min-w-0">
                     <span className="font-medium text-[#2C2D2F] block truncate">{tag.label}</span>
                     <span className="text-xs text-slate-400">{tag.key}</span>

@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ListChecks, RefreshCw, CheckCircle2, Send } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { CheckCircle2, ListChecks, RefreshCw, RotateCcw, Send, UserRound } from 'lucide-react';
 import type { Ticket } from '@/services/ticketService';
 
 interface Props {
@@ -19,34 +20,71 @@ function daysSince(dateStr: string): number {
   return Math.floor((Date.now() - createdMs) / (24 * 60 * 60 * 1000));
 }
 
+function getInitials(name?: string): string {
+  if (!name?.trim()) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function Person({
+  label,
+  name,
+  avatarUrl,
+}: {
+  label: string;
+  name?: string;
+  avatarUrl?: string;
+}) {
+  const displayName = name?.trim() || 'Não atribuído';
+
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <Avatar className="h-9 w-9 shrink-0 rounded-md">
+        {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />}
+        <AvatarFallback className="rounded-md bg-slate-200 text-xs font-semibold text-slate-600">
+          {name ? getInitials(name) : <UserRound className="h-4 w-4" />}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium text-slate-400">{label}</p>
+        <p className="truncate text-sm font-medium text-slate-700">{displayName}</p>
+      </div>
+    </div>
+  );
+}
+
 function StatusBadge({ ticket, daysConfigured }: { ticket: Ticket; daysConfigured: number }) {
   const daysOpen = daysSince(ticket.createdAt);
-  const daysRemaining = daysConfigured - daysOpen;
 
   if (ticket.staleWhatsappNotifiedAt) {
+    const hoursSinceNotice = Math.floor(
+      (Date.now() - new Date(ticket.staleWhatsappNotifiedAt).getTime()) / (60 * 60 * 1000),
+    );
+    if (hoursSinceNotice >= 24) {
+      return (
+        <Badge variant="outline" className="rounded border-amber-300 bg-amber-50 text-amber-800 whitespace-nowrap">
+          <RotateCcw className="mr-1 h-3 w-3" />
+          Reenvio no próximo ciclo
+        </Badge>
+      );
+    }
     return (
-      <Badge variant="outline" className="border-slate-300 text-slate-500 whitespace-nowrap">
-        Aviso já enviado
+      <Badge variant="outline" className="rounded border-emerald-200 bg-emerald-50 text-emerald-700 whitespace-nowrap">
+        Avisado nas últimas 24h
       </Badge>
     );
   }
-  if (daysRemaining <= 0) {
+  if (daysOpen >= daysConfigured) {
     return (
-      <Badge className="bg-red-600 hover:bg-red-600 text-white whitespace-nowrap">
-        Envio automático hoje
-      </Badge>
-    );
-  }
-  if (daysRemaining === 1) {
-    return (
-      <Badge className="bg-amber-500 hover:bg-amber-500 text-white whitespace-nowrap">
-        Falta 1 dia
+      <Badge className="rounded bg-[#BD2D29] text-white hover:bg-[#BD2D29] whitespace-nowrap">
+        Elegível para alerta
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="border-amber-200 text-amber-700 whitespace-nowrap">
-      Faltam {daysRemaining} dias
+    <Badge variant="outline" className="rounded border-slate-300 text-slate-600 whitespace-nowrap">
+      Em acompanhamento
     </Badge>
   );
 }
@@ -55,77 +93,88 @@ export default function WhatsAppUnansweredTicketsCard({
   tickets, loading, staleTicketDays, onRefresh, sendingAlertTicketId, onSendAlertNow,
 }: Props) {
   const daysConfigured = Number.parseInt(staleTicketDays, 10) || 3;
-
-  const sorted = [...tickets].sort((a, b) => {
-    const remA = daysConfigured - daysSince(a.createdAt);
-    const remB = daysConfigured - daysSince(b.createdAt);
-    return remA - remB;
-  });
+  const sorted = [...tickets].sort((a, b) => daysSince(b.createdAt) - daysSince(a.createdAt));
 
   return (
-    <Card className="border-slate-200">
-      <CardHeader>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-slate-100 p-2 text-slate-600">
-              <ListChecks className="h-5 w-5" />
-            </div>
+    <Card className="overflow-hidden border-slate-200 shadow-none">
+      <CardHeader className="border-b border-slate-200 bg-slate-50/70">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <ListChecks className="mt-0.5 h-5 w-5 text-[#DE5532]" />
             <div>
-              <CardTitle>Tickets Sem Resposta</CardTitle>
-              <CardDescription>
-                Acompanhe quais tickets estão próximos de receber o aviso automático, ou envie o aviso na hora.
+              <CardTitle className="text-lg">Monitor de tickets abertos</CardTitle>
+              <CardDescription className="mt-1">
+                Acompanhe o tempo aberto, as pessoas envolvidas e o próximo aviso.
               </CardDescription>
             </div>
           </div>
           <Button type="button" size="sm" variant="outline" onClick={onRefresh} disabled={loading}>
-            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            <span className="ml-1.5">Atualizar</span>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+
+      <CardContent className="p-0">
         {loading ? (
-          <div className="flex items-center justify-center py-8">
+          <div className="flex items-center justify-center py-12">
             <RefreshCw className="h-5 w-5 animate-spin text-slate-400" />
           </div>
         ) : sorted.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-slate-500">
-            <CheckCircle2 className="h-6 w-6 text-green-500" />
-            Nenhum ticket sem resposta no momento.
+          <div className="flex flex-col items-center gap-2 py-12 text-center text-sm text-slate-500">
+            <CheckCircle2 className="h-7 w-7 text-emerald-500" />
+            Nenhum ticket sem interação no momento.
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="divide-y divide-slate-200">
             {sorted.map((ticket) => {
               const daysOpen = daysSince(ticket.createdAt);
               const sendingThis = sendingAlertTicketId === ticket.id;
+
               return (
-                <div
+                <article
                   key={ticket.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 p-3 hover:bg-slate-50 transition-colors"
+                  className="grid gap-4 px-5 py-5 transition-colors hover:bg-slate-50/70 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[#2C2D2F]">{ticket.title}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      {ticket.createdByName}
-                      {ticket.assignedToName ? ` · Responsável: ${ticket.assignedToName}` : ' · Não atribuído'}
-                      {' · '}{daysOpen === 0 ? 'aberto hoje' : `${daysOpen} dia(s) sem resposta`}
-                    </p>
+                  <div className="min-w-0">
+                    <h3 className="text-wrap-pretty text-sm font-semibold leading-5 text-[#2C2D2F]">
+                      {ticket.title}
+                    </h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-5">
+                      <Person
+                        label="Solicitante"
+                        name={ticket.createdByName}
+                        avatarUrl={ticket.createdByAvatarUrl}
+                      />
+                      <Person
+                        label="Responsável"
+                        name={ticket.assignedToName}
+                        avatarUrl={ticket.assignedToAvatarUrl}
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+
+                  <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4 lg:flex-nowrap lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+                    <div className="flex min-w-[96px] items-baseline gap-1.5">
+                      <span className="text-3xl font-semibold tabular-nums text-[#BD2D29]">{daysOpen}</span>
+                      <span className="text-xs font-medium leading-4 text-slate-500">
+                        {daysOpen === 1 ? 'dia' : 'dias'}<br />aberto
+                      </span>
+                    </div>
                     <StatusBadge ticket={ticket} daysConfigured={daysConfigured} />
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                      className="border-slate-300 text-slate-700 hover:border-[#DE5532]/40 hover:bg-[#DE5532]/5 hover:text-[#BD2D29]"
                       disabled={sendingThis}
                       onClick={() => onSendAlertNow(ticket.id)}
                     >
                       {sendingThis ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      <span className="ml-1.5">Enviar aviso</span>
+                      Enviar aviso
                     </Button>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
