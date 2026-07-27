@@ -20,6 +20,7 @@ import {
   formatDateBR,
   vinculoDependenteLabel,
 } from '@/utils/planoSaudeForm';
+import { getAttachmentDownloadUrl } from '@/utils/attachmentDownload';
 
 interface Props {
   payload: PlanoSaudeFichaCardAttachment;
@@ -79,9 +80,10 @@ function AttachmentLink({
 
   return (
     <a
-      href={attachment.url}
+      href={getAttachmentDownloadUrl(attachment.url, attachment.name)}
       target="_blank"
       rel="noopener noreferrer"
+      download={attachment.name}
       className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-[#F69F19] hover:text-[#DE5532] hover:underline"
     >
       <FileText className="h-4 w-4" /> {label}: {attachment.name}

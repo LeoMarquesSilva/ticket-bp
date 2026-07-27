@@ -16,6 +16,7 @@ import {
   buildPlanoSaudeFichaCardAttachment,
   uploadPlanoSaudeFiles,
 } from '@/utils/planoSaudeForm';
+import { getAttachmentDownloadUrl } from '@/utils/attachmentDownload';
 import { notifyTicketWhatsApp } from '@/services/evolutionEdgeService';
 import { UserService } from '@/services/userService';
 import TicketHeader from '@/components/TicketHeader';
@@ -69,6 +70,18 @@ interface UploadingFile {
   url: string | null;
   error: string | null;
 }
+
+type ChatAttachmentMeta = {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+};
+
+type ImagePreviewState = {
+  url: string;
+  name?: string;
+};
 
 interface CreateTicketData {
   title: string;
@@ -185,8 +198,25 @@ const Tickets = () => {
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>({});
-  const [showImagePreview, setShowImagePreview] = useState<string | null>(null);
+  const [showImagePreview, setShowImagePreview] = useState<ImagePreviewState | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const uploadingFilesRef = useRef<UploadingFile[]>([]);
+
+  useEffect(() => {
+    uploadingFilesRef.current = uploadingFiles;
+  }, [uploadingFiles]);
+
+  const openImagePreview = (preview: string | { url: string; name?: string } | null) => {
+    if (!preview) {
+      setShowImagePreview(null);
+      return;
+    }
+    if (typeof preview === 'string') {
+      setShowImagePreview({ url: preview });
+      return;
+    }
+    setShowImagePreview(preview);
+  };
   const [connectionStatus, setConnectionStatus] = useState<string>('connecting');
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
   const { setActiveChatId } = useChatContext();
@@ -1209,18 +1239,28 @@ useEffect(() => {
   };
 
   // Enviar mensagem
-  const sendMessage = async () => {
-    if (!selectedTicket?.id || !user?.id || (!newMessage.trim() && uploadingFiles.length === 0)) return;
-    
-    const tempMessageId = `temp-${Date.now()}`;
-    const attachments = uploadingFiles
-      .filter(file => file.progress === 100 && file.url)
-      .map(file => ({
+  const sendMessage = async (extraAttachments: ChatAttachmentMeta[] = []) => {
+    if (!selectedTicket?.id || !user?.id) return;
+
+    const readyFromState = uploadingFilesRef.current
+      .filter((file) => file.progress === 100 && file.url && !file.error)
+      .map((file) => ({
         name: file.name,
         type: file.type,
         size: file.size,
-        url: file.url
+        url: file.url as string,
       }));
+
+    const attachmentsMap = new Map<string, ChatAttachmentMeta>();
+    [...readyFromState, ...extraAttachments].forEach((att) => {
+      if (att?.url) attachmentsMap.set(att.url, att);
+    });
+    const attachments = Array.from(attachmentsMap.values());
+
+    if (!newMessage.trim() && attachments.length === 0) return;
+    
+    const tempMessageId = `temp-${Date.now()}`;
+    const messageText = newMessage.trim();
     
     // Adicionar mensagem temporária ao estado
     const tempMessage = {
@@ -1228,7 +1268,7 @@ useEffect(() => {
       ticketId: selectedTicket.id,
       userId: user.id,
       userName: user.name,
-      message: newMessage.trim(),
+      message: messageText,
       attachments,
       createdAt: new Date().toISOString(),
       read: false,
@@ -1236,6 +1276,8 @@ useEffect(() => {
     };
     
     setChatMessages(prev => [...prev, tempMessage]);
+    setNewMessage('');
+    setUploadingFiles([]);
     
     try {
       setSending(true);
@@ -1245,7 +1287,7 @@ useEffect(() => {
         ticketId: selectedTicket.id,
         userId: user.id,
         userName: user.name,
-        message: newMessage.trim(),
+        message: messageText,
         attachments
       });
       
@@ -1262,16 +1304,14 @@ useEffect(() => {
           )
         );
       }
-      
-      setNewMessage('');
-      setUploadingFiles([]);
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Erro ao enviar mensagem');
+      setNewMessage(messageText);
       
       // Remover a mensagem temporária em caso de erro
       setChatMessages(prevMessages => 
-        prevMessages.filter(msg => !msg.isTemp)
+        prevMessages.filter(msg => msg.id !== tempMessageId)
       );
     } finally {
       setSending(false);
@@ -1485,20 +1525,22 @@ const handleDeleteTicket = async (ticketId: string) => {
 };
 
 // Função para upload de arquivos - VERSÃO DEFINITIVA com 300MB
-const handleFileUpload = async (files: FileList) => {
-  if (!files || files.length === 0 || !selectedTicket?.id) return;
+const handleFileUpload = async (files: FileList | File[]): Promise<ChatAttachmentMeta[]> => {
+  if (!files || files.length === 0 || !selectedTicket?.id) return [];
   
   // Verificar se o ticket está finalizado
   if (isTicketFinalized(selectedTicket)) {
     toast.error('Este ticket está finalizado e não pode receber novos anexos');
-    return;
+    return [];
   }
   
   // Limite aumentado para 300MB
   const MAX_FILE_SIZE = 300 * 1024 * 1024; // 300MB em bytes
+  const fileArray = Array.from(files);
+  const uploaded: ChatAttachmentMeta[] = [];
   
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+  for (let i = 0; i < fileArray.length; i++) {
+    const file = fileArray[i];
     
     if (file.size > MAX_FILE_SIZE) {
       toast.error(`O arquivo ${file.name} excede o limite de 300MB (atual: ${(file.size / 1024 / 1024).toFixed(1)}MB)`);
@@ -1506,7 +1548,7 @@ const handleFileUpload = async (files: FileList) => {
     }
     
     // Adicionar arquivo à lista de uploads com progresso 0
-    const fileId = `${Date.now()}-${i}`;
+    const fileId = `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`;
     const newFile: UploadingFile = {
       id: fileId,
       file: file,
@@ -1518,77 +1560,59 @@ const handleFileUpload = async (files: FileList) => {
       error: null
     };
     
-    setUploadingFiles(prev => [...prev, newFile]);
+    setUploadingFiles(prev => {
+      const next = [...prev, newFile];
+      uploadingFilesRef.current = next;
+      return next;
+    });
     
     try {
-      
-      // Atualizar progresso para simular início do upload
-      setUploadingFiles(prev => 
-        prev.map(f => f.id === fileId ? { ...f, progress: 10 } : f)
-      );
-      
-      // Criar nome único para o arquivo
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-      const filePath = `tickets/${selectedTicket.id}/${fileName}`;
-      
-      
-      // Simular progresso antes do upload
-      setUploadingFiles(prev => 
-        prev.map(f => f.id === fileId ? { ...f, progress: 30 } : f)
-      );
-      
-      // Upload para o Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('attachments')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-      
-      if (error) {
-        console.error('❌ Erro detalhado do Supabase:', error);
-        throw error;
-      }
-      
-      // Simular progresso após upload
-      setUploadingFiles(prev => 
-        prev.map(f => f.id === fileId ? { ...f, progress: 70 } : f)
-      );
-      
-      // Obter URL pública do arquivo
-      const { data: { publicUrl } } = supabase.storage
-        .from('attachments')
-        .getPublicUrl(filePath);
-      
-      // Atualizar arquivo na lista com URL e progresso completo
-      setUploadingFiles(prev => 
-        prev.map(f => f.id === fileId ? { 
-          ...f, 
-          url: publicUrl, 
-          progress: 100 
-        } : f)
-      );
-    } catch (error) {
+      setUploadingFiles(prev => {
+        const next = prev.map(f => f.id === fileId ? { ...f, progress: 30 } : f);
+        uploadingFilesRef.current = next;
+        return next;
+      });
+
+      const attachment = await TicketService.uploadAttachment(selectedTicket.id, file);
+
+      setUploadingFiles(prev => {
+        const next = prev.map(f => f.id === fileId ? {
+          ...f,
+          url: attachment.url,
+          progress: 100
+        } : f);
+        uploadingFilesRef.current = next;
+        return next;
+      });
+
+      uploaded.push(attachment);
+    } catch (error: any) {
       console.error('❌ Erro ao fazer upload:', error);
       
-      // Atualizar arquivo na lista com erro
-      setUploadingFiles(prev => 
-        prev.map(f => f.id === fileId ? { 
-          ...f, 
-          error: `Erro: ${error.message || 'Desconhecido'}`, 
-          progress: 0 
-        } : f)
-      );
+      setUploadingFiles(prev => {
+        const next = prev.map(f => f.id === fileId ? {
+          ...f,
+          error: `Erro: ${error?.message || 'Desconhecido'}`,
+          progress: 0
+        } : f);
+        uploadingFilesRef.current = next;
+        return next;
+      });
       
-      toast.error(`Erro ao fazer upload de ${file.name}: ${error.message || 'Erro desconhecido'}`);
+      toast.error(`Erro ao fazer upload de ${file.name}: ${error?.message || 'Erro desconhecido'}`);
     }
   }
+
+  return uploaded;
 };
 
 // Função para remover arquivo da lista de uploads
 const removeUploadingFile = (fileId: string) => {
-  setUploadingFiles(prev => prev.filter(f => f.id !== fileId));
+  setUploadingFiles(prev => {
+    const next = prev.filter(f => f.id !== fileId);
+    uploadingFilesRef.current = next;
+    return next;
+  });
 };
 
 // Função para verificar se um ticket está finalizado
@@ -1990,7 +2014,7 @@ return (
                     isTicketFinalized={isTicketFinalized}
                     messagesEndRef={messagesEndRef}
                     markMessagesAsRead={markMessagesAsRead}
-                    setShowImagePreview={setShowImagePreview}
+                    setShowImagePreview={openImagePreview}
                     typingUsers={typingUsers}
                     handleTyping={handleTyping}
                     supportUsers={supportUsers}
@@ -2089,7 +2113,7 @@ return (
                         isTicketFinalized={isTicketFinalized}
                         messagesEndRef={messagesEndRef}
                         markMessagesAsRead={markMessagesAsRead}
-                        setShowImagePreview={setShowImagePreview}
+                        setShowImagePreview={openImagePreview}
                         typingUsers={typingUsers}
                         handleTyping={handleTyping}
                         supportUsers={supportUsers}
@@ -2118,17 +2142,27 @@ return (
         className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4"
         onClick={() => setShowImagePreview(null)}
       >
-        <Button
-          variant="secondary"
-          size="sm"
-          className="fixed top-4 right-4 z-[101] bg-white/90 hover:bg-white shadow-lg"
-          onClick={() => setShowImagePreview(null)}
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="fixed top-4 right-4 z-[101] flex items-center gap-2">
+          <a
+            href={getAttachmentDownloadUrl(showImagePreview.url, showImagePreview.name)}
+            download={showImagePreview.name || true}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex h-9 items-center rounded-md bg-white/90 px-3 text-sm font-medium shadow-lg hover:bg-white"
+          >
+            Baixar
+          </a>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="bg-white/90 hover:bg-white shadow-lg"
+            onClick={() => setShowImagePreview(null)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
         <img
-          src={showImagePreview}
-          alt="Preview"
+          src={showImagePreview.url}
+          alt={showImagePreview.name || 'Preview'}
           onClick={(e) => e.stopPropagation()}
           className="max-w-full max-h-[90vh] object-contain rounded-lg"
         />

@@ -34,6 +34,7 @@ import RequisicaoPessoalFichaCard from '@/components/RequisicaoPessoalFichaCard'
 import { RequisicaoPessoalFichaCardAttachment } from '@/utils/requisicaoPessoalForm';
 import PlanoSaudeFichaCard from '@/components/PlanoSaudeFichaCard';
 import { PlanoSaudeFichaCardAttachment } from '@/utils/planoSaudeForm';
+import { getAttachmentDownloadUrl } from '@/utils/attachmentDownload';
 import {
   FormattedChatMessage,
   applyWrap,
@@ -58,9 +59,9 @@ interface TicketChatPanelProps {
   newMessage: string;
   setNewMessage: (message: string) => void;
   uploadingFiles: any[];
-  handleFileUpload: (files: FileList) => void;
+  handleFileUpload: (files: FileList | File[]) => Promise<Array<{ name: string; type: string; size: number; url: string }>>;
   removeUploadingFile: (fileId: string) => void;
-  sendMessage: () => void;
+  sendMessage: (extraAttachments?: Array<{ name: string; type: string; size: number; url: string }>) => void | Promise<void>;
   handleKeyPress: (e: React.KeyboardEvent) => void;
   closeChat: () => void;
   handleDeleteTicket?: (ticketId: string) => void;
@@ -68,7 +69,7 @@ interface TicketChatPanelProps {
   isTicketFinalized: (ticket: Ticket) => boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   markMessagesAsRead: (ticketId: string) => void;
-  setShowImagePreview: (url: string | null) => void;
+  setShowImagePreview: (preview: string | { url: string; name?: string } | null) => void;
   typingUsers: Record<string, string>;
   handleTyping: () => void;
   supportUsers?: any[];
@@ -222,23 +223,29 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     return cleanup;
   }, [selectedTicket.id]);
 
-  const handlePastedImagesUpload = async () => {
-    if (!selectedTicket?.id || pastedImages.length === 0) return;
-    
-    try {
-      const dataTransfer = new DataTransfer();
-      pastedImages.forEach((file) => {
-        dataTransfer.items.add(file);
-      });
-      handleFileUpload(dataTransfer.files);
-    } catch (error) {
-      console.error('Erro ao processar imagens:', error);
-      setImageError('Erro ao processar imagens coladas');
-    }
-  };
-
   const removePastedImage = (index: number) => {
     setPastedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const flushComposerAndSend = async () => {
+    if (sending) return;
+
+    let extras: Array<{ name: string; type: string; size: number; url: string }> = [];
+    if (pastedImages.length > 0) {
+      const imagesToUpload = [...pastedImages];
+      setPastedImages([]);
+      setImageError(null);
+      try {
+        extras = await handleFileUpload(imagesToUpload);
+      } catch (error) {
+        console.error('Erro ao processar imagens:', error);
+        setImageError('Erro ao processar imagens coladas');
+        return;
+      }
+    }
+
+    await sendMessage(extras);
+    setTimeout(() => focusInput(), 50);
   };
 
   const handleLocalKeyPress = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -269,13 +276,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
     e.preventDefault();
     e.stopPropagation();
-    if (pastedImages.length > 0) {
-      await handlePastedImagesUpload();
-    }
-    sendMessage();
-    setPastedImages([]);
-    setImageError(null);
-    setTimeout(() => focusInput(), 100);
+    await flushComposerAndSend();
   };
 
   useEffect(() => {
@@ -438,6 +439,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       <div className="flex flex-wrap gap-2 mt-2">
         {attachments.map((attachment, index) => {
           const isImage = attachment.type?.startsWith('image/');
+          const downloadUrl = getAttachmentDownloadUrl(attachment.url, attachment.name);
           
           return (
             <div 
@@ -448,7 +450,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    setShowImagePreview(attachment.url);
+                    setShowImagePreview({ url: attachment.url, name: attachment.name });
                   }}
                   className="flex items-center text-xs font-medium text-[#F69F19] hover:text-[#DE5532] hover:underline"
                 >
@@ -459,9 +461,10 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 </button>
               ) : (
                 <a 
-                  href={attachment.url} 
+                  href={downloadUrl}
                   target="_blank" 
                   rel="noopener noreferrer"
+                  download={attachment.name}
                   onClick={(e) => e.stopPropagation()}
                   className="flex items-center text-xs font-medium text-[#F69F19] hover:text-[#DE5532] hover:underline"
                 >
@@ -1226,7 +1229,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         e.target.value = '';
                       }
                     }}
-                    accept="image/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.xml,.zip,.rar,.csv"
                   />
                   <Paperclip className="h-5 w-5 text-slate-400 transition-colors hover:text-[#F69F19]" />
                 </label>
@@ -1235,13 +1238,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             
             <Button
               onClick={async () => {
-                if (pastedImages.length > 0) {
-                  await handlePastedImagesUpload();
-                }
-                sendMessage();
-                setPastedImages([]);
-                setImageError(null);
-                setTimeout(() => focusInput(), 50);
+                await flushComposerAndSend();
               }}
               disabled={(!newMessage.trim() && uploadingFiles.length === 0 && pastedImages.length === 0) || sending || uploadingFiles.some(f => f.progress < 100 && !f.error)}
               className="h-[50px] w-[50px] rounded-lg shadow-md border-0 transition-transform active:scale-95"

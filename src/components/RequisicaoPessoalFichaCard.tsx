@@ -26,6 +26,7 @@ import {
   idadeDescricao,
   formatDateBR,
 } from '@/utils/requisicaoPessoalForm';
+import { getAttachmentDownloadUrl } from '@/utils/attachmentDownload';
 
 interface Props {
   payload: RequisicaoPessoalFichaCardAttachment;
@@ -162,9 +163,10 @@ const RequisicaoPessoalFichaCard: React.FC<Props> = ({ payload, tone, onPreviewI
                   </button>
                 ) : (
                   <a
-                    href={approvalAttachment.url}
+                    href={getAttachmentDownloadUrl(approvalAttachment.url, approvalAttachment.name)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    download={approvalAttachment.name}
                     className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-[#F69F19] hover:text-[#DE5532] hover:underline"
                   >
                     <FileText className="h-4 w-4" /> {approvalAttachment.name}

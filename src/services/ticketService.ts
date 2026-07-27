@@ -1023,13 +1023,18 @@ static async getUnreadMessageCounts(userId: string): Promise<Record<string, numb
 
 // Faz upload de um único arquivo para o storage do ticket e retorna os metadados de anexo
 static async uploadAttachment(ticketId: string, file: File): Promise<{ name: string; type: string; size: number; url: string }> {
-  const fileExt = file.name.split('.').pop();
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+  const fileExt = file.name.includes('.') ? file.name.split('.').pop() : 'bin';
+  const safeExt = (fileExt || 'bin').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'bin';
+  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${safeExt}`;
   const filePath = `tickets/${ticketId}/${fileName}`;
 
   const { error } = await supabase.storage.from('attachments').upload(filePath, file, {
     cacheControl: '3600',
     upsert: false,
+    contentType: file.type || undefined,
+    metadata: {
+      originalName: file.name,
+    },
   });
   if (error) {
     console.error('Erro ao fazer upload do anexo:', error);
