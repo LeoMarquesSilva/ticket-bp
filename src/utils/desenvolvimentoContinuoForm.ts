@@ -2,7 +2,8 @@ export const DESENVOLVIMENTO_CONTINUO_CATEGORY_KEY = 'desenvolvimento_continuo_e
 
 export interface DesenvolvimentoContinuoFormData {
   responsavelUserId: string;
-  facilitadorUserId: string;
+  /** Um ou mais facilitadores do treinamento/workshop */
+  facilitadorUserIds: string[];
   tema: string;
   /** Sempre no formato DD/MM/AAAA */
   dataRealizacao: string;
@@ -15,7 +16,7 @@ export interface DesenvolvimentoContinuoFormData {
 export function emptyDesenvolvimentoContinuoForm(): DesenvolvimentoContinuoFormData {
   return {
     responsavelUserId: '',
-    facilitadorUserId: '',
+    facilitadorUserIds: [],
     tema: '',
     dataRealizacao: '',
     duracaoMinutos: '',
@@ -67,11 +68,25 @@ function resolveUserName(
   return users.find((u) => u.id === userId)?.name?.trim() ?? '';
 }
 
+function resolveUserNames(
+  userIds: string[],
+  users: Array<{ id: string; name: string }>,
+): string {
+  return userIds
+    .map((id) => resolveUserName(id, users))
+    .filter(Boolean)
+    .join(', ');
+}
+
 function resolveUserEmail(
   userId: string,
   users: Array<{ id: string; email: string }>,
 ): string {
   return users.find((u) => u.id === userId)?.email?.trim() ?? '';
+}
+
+function facilitadorLabel(count: number): string {
+  return count === 1 ? 'Facilitador' : 'Facilitadores';
 }
 
 export function isDesenvolvimentoContinuoCategory(categoryKey: string): boolean {
@@ -95,8 +110,8 @@ export function validateDesenvolvimentoContinuoForm(
   if (!data.responsavelUserId) {
     errors.responsavelUserId = 'Selecione o responsável (gerente da área)';
   }
-  if (!data.facilitadorUserId) {
-    errors.facilitadorUserId = 'Selecione o facilitador';
+  if (!data.facilitadorUserIds.length) {
+    errors.facilitadorUserIds = 'Selecione ao menos um facilitador';
   }
   if (!data.tema.trim()) {
     errors.tema = 'Informe o tema';
@@ -145,12 +160,12 @@ export function buildDesenvolvimentoContinuoDescription(
   users: Array<{ id: string; name: string }>,
 ): string {
   const responsavel = resolveUserName(data.responsavelUserId, users);
-  const facilitador = resolveUserName(data.facilitadorUserId, users);
+  const facilitadores = resolveUserNames(data.facilitadorUserIds, users);
 
   const lines = [
     `Tipo: ${subcategoryLabel}`,
     `Responsável (Gerente da área): ${responsavel}`,
-    `Facilitador: ${facilitador}`,
+    `${facilitadorLabel(data.facilitadorUserIds.length)}: ${facilitadores}`,
     `Tema: ${data.tema.trim()}`,
     `Data da realização: ${data.dataRealizacao.trim()}`,
     `Duração: ${data.duracaoMinutos.trim()} minutos`,
@@ -173,13 +188,13 @@ export function buildDesenvolvimentoContinuoChatMessage(
   users: Array<{ id: string; name: string }>,
 ): string {
   const responsavel = resolveUserName(data.responsavelUserId, users);
-  const facilitador = resolveUserName(data.facilitadorUserId, users);
+  const facilitadores = resolveUserNames(data.facilitadorUserIds, users);
 
   const lines = [
     `📋 **${categoryLabel} — ${subcategoryLabel}**`,
     '',
     `👤 **Responsável (Gerente da área):** ${responsavel}`,
-    `🎯 **Facilitador:** ${facilitador}`,
+    `🎯 **${facilitadorLabel(data.facilitadorUserIds.length)}:** ${facilitadores}`,
     `📌 **Tema:** ${data.tema.trim()}`,
     `📅 **Data da realização:** ${data.dataRealizacao.trim()}`,
     `⏱️ **Duração:** ${data.duracaoMinutos.trim()} minutos`,
@@ -214,7 +229,7 @@ export function buildSharepointTreinamentoPayload(
 ): SharepointTreinamentoPayload {
   return {
     tema: data.tema.trim(),
-    facilitador: resolveUserName(data.facilitadorUserId, users),
+    facilitador: resolveUserNames(data.facilitadorUserIds, users),
     responsavelEmail: resolveUserEmail(data.responsavelUserId, users),
     responsavelName: resolveUserName(data.responsavelUserId, users),
     dataRealizacao: data.dataRealizacao.trim(),

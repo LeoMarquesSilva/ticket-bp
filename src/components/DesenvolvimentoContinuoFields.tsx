@@ -87,18 +87,19 @@ const DesenvolvimentoContinuoFields: React.FC<Props> = ({
         </div>
 
         <div className="space-y-2">
-          <Label>Facilitador <span className="text-red-500">*</span></Label>
+          <Label>Facilitadores <span className="text-red-500">*</span></Label>
           <UserAssigneePicker
-            value={data.facilitadorUserId || undefined}
-            onChange={(userId) => update({ facilitadorUserId: userId ?? '' })}
+            multiple
+            value={data.facilitadorUserIds}
+            onChange={(userIds) => update({ facilitadorUserIds: userIds })}
             users={users}
             getRoleLabel={getRoleLabel}
-            noneLabel="Selecione o facilitador"
+            noneLabel="Selecione os facilitadores"
             allowNone={false}
             disabled={loading}
-            className={errors.facilitadorUserId ? 'border-[#BD2D29]' : ''}
+            className={errors.facilitadorUserIds ? 'border-[#BD2D29]' : ''}
           />
-          {fieldError('facilitadorUserId')}
+          {fieldError('facilitadorUserIds')}
         </div>
 
         <div className="space-y-2 md:col-span-2">
