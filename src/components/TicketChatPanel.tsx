@@ -43,6 +43,7 @@ import {
   applyNumberedLines,
   applyLinkTemplate,
 } from '@/lib/chatMessageFormatting';
+import { isEvidenciaFatalAuditTicket } from '@/utils/evidenciaFatal';
 
 // Interface para dados de feedback
 interface TicketFeedbackData {
@@ -703,6 +704,10 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <FinishTicketButton
                 ticketId={selectedTicket.id}
                 ticketTitle={selectedTicket.title}
+                ticketDescription={selectedTicket.description}
+                category={selectedTicket.category}
+                subcategory={selectedTicket.subcategory}
+                evidenciaEnviada={selectedTicket.evidenciaEnviada}
                 isSupport={true}
                 onTicketFinished={() => {
                   handleUpdateTicket(selectedTicket.id, { status: 'resolved' });
@@ -745,6 +750,24 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   <Badge className={`${getStatusColor(selectedTicket.status)} border text-xs font-medium shadow-sm`}>
                     {getStatusLabel(selectedTicket.status)}
                   </Badge>
+                  {isEvidenciaFatalAuditTicket(
+                    selectedTicket.category,
+                    selectedTicket.subcategory,
+                  ) &&
+                    (selectedTicket.evidenciaEnviada === true ||
+                      selectedTicket.evidenciaEnviada === false) && (
+                    <Badge
+                      className={
+                        selectedTicket.evidenciaEnviada
+                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-medium shadow-sm'
+                          : 'border border-rose-200 bg-rose-50 text-rose-800 text-xs font-medium shadow-sm'
+                      }
+                    >
+                      {selectedTicket.evidenciaEnviada
+                        ? 'Evidência ok — mantém excludente'
+                        : 'Sem evidência — inclui no FATAL'}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>

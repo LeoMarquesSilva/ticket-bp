@@ -64,6 +64,10 @@ export interface Ticket {
   notFulfilledReason?: string;
   comment?: string;
   needsFeedback?: boolean;
+  /** Auditoria SIOE FATAL (não é NPS). */
+  evidenciaEnviada?: boolean | null;
+  evidenciaDecididoEm?: string | null;
+  evidenciaDecididoPor?: string | null;
 }
 
 export interface ChatMessage {

@@ -673,6 +673,10 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
                 <FinishTicketButton
                   ticketId={ticket.id}
                   ticketTitle={ticket.title}
+                  ticketDescription={ticket.description}
+                  category={ticket.category}
+                  subcategory={ticket.subcategory}
+                  evidenciaEnviada={ticket.evidenciaEnviada}
                   isSupport={user.role === 'support' || user.role === 'admin'}
                   onTicketFinished={onTicketFinished}
                 />

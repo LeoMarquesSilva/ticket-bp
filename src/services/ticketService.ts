@@ -44,6 +44,12 @@ export interface Ticket {
   attachments?: any[];
   updatedAt: string;
   staleWhatsappNotifiedAt?: string;
+  /** Auditoria SIOE FATAL — não misturar com NPS/feedback. */
+  evidenciaEnviada?: boolean | null;
+  evidenciaDecididoEm?: string | null;
+  evidenciaDecididoPor?: string | null;
+  evidenciaSioeNotificadoEm?: string | null;
+  evidenciaSioeErro?: string | null;
 }
 
 export interface ChatMessage {
@@ -101,6 +107,11 @@ export interface UpdateTicketData {
   serviceScore?: number;
   comment?: string;
   feedbackSubmittedAt?: string;
+  evidenciaEnviada?: boolean | null;
+  evidenciaDecididoEm?: string | null;
+  evidenciaDecididoPor?: string | null;
+  evidenciaSioeNotificadoEm?: string | null;
+  evidenciaSioeErro?: string | null;
 }
 
 export interface TicketFeedbackData {
@@ -144,6 +155,14 @@ const mapToDatabase = (data: any) => {
   if (data.serviceScore !== undefined) mapped.service_score = data.serviceScore;
   if (data.comment !== undefined) mapped.comment = data.comment;
   if (data.feedbackSubmittedAt !== undefined) mapped.feedback_submitted_at = data.feedbackSubmittedAt;
+
+  if (data.evidenciaEnviada !== undefined) mapped.evidencia_enviada = data.evidenciaEnviada;
+  if (data.evidenciaDecididoEm !== undefined) mapped.evidencia_decidido_em = data.evidenciaDecididoEm;
+  if (data.evidenciaDecididoPor !== undefined) mapped.evidencia_decidido_por = data.evidenciaDecididoPor;
+  if (data.evidenciaSioeNotificadoEm !== undefined) {
+    mapped.evidencia_sioe_notificado_em = data.evidenciaSioeNotificadoEm;
+  }
+  if (data.evidenciaSioeErro !== undefined) mapped.evidencia_sioe_erro = data.evidenciaSioeErro;
   
   return mapped;
 };
@@ -179,6 +198,11 @@ const mapFromDatabase = (data: any): Ticket => {
     createdAt: data.created_at,
     updatedAt: data.updated_at,
     staleWhatsappNotifiedAt: data.stale_whatsapp_notified_at,
+    evidenciaEnviada: data.evidencia_enviada ?? null,
+    evidenciaDecididoEm: data.evidencia_decidido_em ?? null,
+    evidenciaDecididoPor: data.evidencia_decidido_por ?? null,
+    evidenciaSioeNotificadoEm: data.evidencia_sioe_notificado_em ?? null,
+    evidenciaSioeErro: data.evidencia_sioe_erro ?? null,
   };
 };
 
@@ -483,14 +507,17 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
   // Finalizar um ticket (marcar como resolvido)
   static async finishTicket(
     ticketId: string,
-    finalizedBy?: { userId: string; userName: string }
+    finalizedBy?: { userId: string; userName: string },
+    options?: { evidenciaEnviada?: boolean },
   ): Promise<Ticket> {
     try {
       console.log('Finalizando ticket:', ticketId);
 
       const { data: currentTicket } = await supabase
         .from(TABLES.TICKETS)
-        .select('status, feedback_submitted_at, title, category, subcategory')
+        .select(
+          'status, feedback_submitted_at, title, category, subcategory, evidencia_enviada',
+        )
         .eq('id', ticketId)
         .single();
 
@@ -507,7 +534,22 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
         );
       }
 
-      return await this.updateTicket(ticketId, { status: 'resolved' });
+      const updates: UpdateTicketData = { status: 'resolved' };
+
+      // Decisão de auditoria FATAL (SIOE) — só nesta subcategoria; não misturar com NPS.
+      if (npsExempt && typeof options?.evidenciaEnviada === 'boolean') {
+        const alreadyDecided = currentTicket?.evidencia_enviada !== null
+          && currentTicket?.evidencia_enviada !== undefined;
+        if (!alreadyDecided) {
+          updates.evidenciaEnviada = options.evidenciaEnviada;
+          updates.evidenciaDecididoEm = new Date().toISOString();
+          if (finalizedBy?.userId) {
+            updates.evidenciaDecididoPor = finalizedBy.userId;
+          }
+        }
+      }
+
+      return await this.updateTicket(ticketId, updates);
     } catch (error) {
       console.error('Error in finishTicket:', error);
       throw error;
