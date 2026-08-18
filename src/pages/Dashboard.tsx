@@ -1227,6 +1227,7 @@ const Dashboard = () => {
                               <div className="flex items-center gap-2">
                                 <UserAvatar
                                   name={feedback.createdByName || 'Não informado'}
+                                  userId={feedback.createdBy}
                                   avatarUrl={feedback.createdByAvatarUrl}
                                   size="sm"
                                   className="h-7 w-7 shrink-0"
@@ -1239,6 +1240,7 @@ const Dashboard = () => {
                               <div className="flex items-center gap-2">
                                 <UserAvatar
                                   name={feedback.assignedToName || 'Não atribuído'}
+                                  userId={feedback.assignedTo}
                                   avatarUrl={feedback.assignedToAvatarUrl}
                                   size="sm"
                                   className="h-7 w-7 shrink-0"
@@ -1411,6 +1413,7 @@ const Dashboard = () => {
                               <div className="flex items-center gap-3">
                                 <UserAvatar
                                   name={entry.userName}
+                                  userId={entry.userId}
                                   avatarUrl={entry.avatarUrl}
                                   size="md"
                                   className="shrink-0"
@@ -1606,6 +1609,7 @@ const Dashboard = () => {
                     <div className="flex items-center gap-1 min-w-0">
                       <UserAvatar
                         name={chatTicket.assignedToName}
+                        userId={chatTicket.assignedTo}
                         avatarUrl={chatTicket.assignedToAvatarUrl}
                         size="sm"
                         className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
@@ -1674,6 +1678,7 @@ const Dashboard = () => {
                         <div className="flex flex-col items-center mt-1 shrink-0">
                           <UserAvatar
                             name={message.userName}
+                            userId={message.userId}
                             avatarUrl={message.avatarUrl}
                             size="md"
                             className={`h-8 w-8 ${styles.avatarBg}`}

@@ -103,6 +103,7 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <UserAvatar
               name={ticket.createdByName}
+              userId={ticket.createdBy}
               avatarUrl={ticket.createdByAvatarUrl}
               size={compact ? 'sm' : 'md'}
               className="shrink-0 border-2 border-white shadow-sm"
@@ -144,6 +145,7 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
               <div className="flex items-center gap-2 min-w-0">
                 <UserAvatar
                   name={ticket.assignedToName}
+                  userId={ticket.assignedTo}
                   avatarUrl={ticket.assignedToAvatarUrl}
                   size="sm"
                   className="h-6 w-6 shrink-0 border border-white"

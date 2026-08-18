@@ -121,6 +121,7 @@ export default function DepartmentUserPicker({
               ) : selectedUser ? (
                 <UserMention
                   name={selectedUser.name}
+                  userId={selectedUser.id}
                   avatarUrl={selectedUser.avatarUrl}
                   subtitle={normalizeDepartment(selectedUser.department)}
                   size="sm"
@@ -186,6 +187,7 @@ export default function DepartmentUserPicker({
                         />
                         <UserMention
                           name={user.name}
+                          userId={user.id}
                           avatarUrl={user.avatarUrl}
                           subtitle={area}
                           size="sm"

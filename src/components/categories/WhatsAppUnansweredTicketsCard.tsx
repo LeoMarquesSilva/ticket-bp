@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { CheckCircle2, ListChecks, RefreshCw, RotateCcw, Send, UserRound } from 'lucide-react';
+import { useOfficialPhoto } from '@/contexts/OfficialPhotosContext';
+import { officialPhotoSrc } from '@/services/officialPhotosService';
 import type { Ticket } from '@/services/ticketService';
 
 interface Props {
@@ -30,18 +32,22 @@ function getInitials(name?: string): string {
 function Person({
   label,
   name,
+  userId,
   avatarUrl,
 }: {
   label: string;
   name?: string;
+  userId?: string;
   avatarUrl?: string;
 }) {
+  const official = useOfficialPhoto(userId);
+  const src = officialPhotoSrc(official) ?? avatarUrl;
   const displayName = name?.trim() || 'Não atribuído';
 
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       <Avatar className="h-9 w-9 shrink-0 rounded-md">
-        {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />}
+        {src && <AvatarImage src={src} alt={displayName} className="object-cover" />}
         <AvatarFallback className="rounded-md bg-slate-200 text-xs font-semibold text-slate-600">
           {name ? getInitials(name) : <UserRound className="h-4 w-4" />}
         </AvatarFallback>
@@ -144,11 +150,13 @@ export default function WhatsAppUnansweredTicketsCard({
                       <Person
                         label="Solicitante"
                         name={ticket.createdByName}
+                        userId={ticket.createdBy}
                         avatarUrl={ticket.createdByAvatarUrl}
                       />
                       <Person
                         label="Responsável"
                         name={ticket.assignedToName}
+                        userId={ticket.assignedTo}
                         avatarUrl={ticket.assignedToAvatarUrl}
                       />
                     </div>

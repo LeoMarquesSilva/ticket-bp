@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 
 interface UserMentionProps {
   name: string;
+  userId?: string | null;
   avatarUrl?: string | null;
   subtitle?: string;
   size?: 'sm' | 'md';
@@ -13,6 +14,7 @@ interface UserMentionProps {
 
 const UserMention: React.FC<UserMentionProps> = ({
   name,
+  userId,
   avatarUrl,
   subtitle,
   size = 'sm',
@@ -20,7 +22,7 @@ const UserMention: React.FC<UserMentionProps> = ({
   nameClassName,
 }) => (
   <span className={cn('inline-flex items-center gap-2 min-w-0', className)}>
-    <UserAvatar name={name} avatarUrl={avatarUrl} size={size} className="shrink-0" />
+    <UserAvatar name={name} userId={userId} avatarUrl={avatarUrl} size={size} className="shrink-0" />
     <span className="min-w-0 flex flex-col">
       <span className={cn('truncate text-sm leading-tight', nameClassName)}>{name}</span>
       {subtitle ? <span className="truncate text-xs text-slate-500">{subtitle}</span> : null}

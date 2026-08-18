@@ -1,9 +1,12 @@
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useOfficialPhoto } from '@/contexts/OfficialPhotosContext';
+import { officialPhotoSrc } from '@/services/officialPhotosService';
 import { AvatarService } from '@/services/avatarService';
 
 interface UserAvatarProps {
   name?: string;
+  userId?: string | null;
   avatarUrl?: string | null;
   className?: string;
   fallbackClassName?: string;
@@ -18,11 +21,17 @@ const sizeClasses = {
 
 const UserAvatar: React.FC<UserAvatarProps> = ({
   name,
+  userId,
   avatarUrl,
   className = '',
   fallbackClassName = 'bg-[#F69F19]/20 text-[#2C2D2F]',
   size = 'md',
 }) => {
+  const official = useOfficialPhoto(userId);
+  const officialSrc = officialPhotoSrc(official);
+  const fallbackSrc = AvatarService.isValidAvatarUrl(avatarUrl) ? avatarUrl! : undefined;
+  const src = officialSrc ?? fallbackSrc;
+
   const initials = name
     ? name
         .split(' ')
@@ -32,11 +41,9 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
         .slice(0, 2) || '?'
     : '?';
 
-  const hasValidAvatar = AvatarService.isValidAvatarUrl(avatarUrl);
-
   return (
     <Avatar className={`${sizeClasses[size]} ${className}`}>
-      {hasValidAvatar && <AvatarImage src={avatarUrl!} alt={name} />}
+      {src && <AvatarImage src={src} alt={name} className="object-cover object-center" />}
       <AvatarFallback className={fallbackClassName}>{initials}</AvatarFallback>
     </Avatar>
   );

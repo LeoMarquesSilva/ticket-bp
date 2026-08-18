@@ -10,6 +10,8 @@ import { User, Lock, Mail, Calendar, Shield, Key, LayoutGrid, List, Users, Image
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import UserAvatar from '@/components/UserAvatar';
 import AvatarCropModal from '@/components/AvatarCropModal';
+import { useOfficialPhoto } from '@/contexts/OfficialPhotosContext';
+import { officialPhotoSrc } from '@/services/officialPhotosService';
 import { UserService } from '@/services/userService';
 import { AvatarService } from '@/services/avatarService';
 import { toast } from 'sonner';
@@ -24,6 +26,8 @@ import { supabase, TABLES } from '@/lib/supabase';
 
 const Profile: React.FC = () => {
   const { user, refreshUserProfile } = useAuth();
+  const officialPhoto = useOfficialPhoto(user?.id);
+  const hasOfficialPhoto = Boolean(officialPhotoSrc(officialPhoto));
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [viewPreference, setViewPreference] = useState<'list' | 'board' | 'users'>('list');
   const [savingPreference, setSavingPreference] = useState(false);
@@ -269,6 +273,7 @@ const Profile: React.FC = () => {
               <div className="flex flex-col sm:flex-row items-start gap-4">
                 <UserAvatar
                   name={user.name}
+                  userId={user.id}
                   avatarUrl={user.avatarUrl}
                   size="lg"
                   className="shrink-0"
@@ -332,7 +337,9 @@ const Profile: React.FC = () => {
                     />
                   </div>
                   <p className="text-xs text-slate-500">
-                    Cole o link (WordPress) e clique em Salvar URL, ou envie uma imagem (máx. 20 MB)
+                    {hasOfficialPhoto
+                      ? 'A foto oficial vem do ORQESTRAI e tem prioridade no sistema. O envio local só aparece se a foto oficial não estiver disponível.'
+                      : 'Cole o link (WordPress) e clique em Salvar URL, ou envie uma imagem (máx. 20 MB). Se houver foto oficial no ORQESTRAI, ela terá prioridade.'}
                   </p>
                 </div>
               </div>

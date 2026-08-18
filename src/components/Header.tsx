@@ -211,6 +211,7 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
                 <div className="absolute inset-0 bg-responsum-gradient opacity-20 animate-pulse-slow"></div>
                 <UserAvatar
                   name={user?.name}
+                  userId={user?.id}
                   avatarUrl={user?.avatarUrl}
                   size="md"
                   className="h-9 w-9 border-2 border-responsum-primary/30"
@@ -240,6 +241,7 @@ export function Header({ pendingTickets = 0, unreadMessages = 0, onPendingTicket
                 <div className="flex items-start gap-3">
                   <UserAvatar
                     name={user?.name}
+                    userId={user?.id}
                     avatarUrl={user?.avatarUrl}
                     size="lg"
                     className="h-10 w-10 border-2 border-responsum-primary/30 flex-shrink-0"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { OfficialPhotosProvider } from '@/contexts/OfficialPhotosContext';
 import { ChatProvider } from '@/contexts/ChatContext';
 import { Toaster } from '@/components/ui/sonner';
 import Layout from '@/components/Layout';
@@ -225,8 +226,9 @@ const App = () => {
 
   return (
     <AuthProvider>
-      <ChatProvider>
-        <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <OfficialPhotosProvider>
+        <ChatProvider>
+          <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
           {/* Adicione o FontLoader aqui */}
           <ConnectionStatus />
           {/*
@@ -253,8 +255,9 @@ const App = () => {
               },
             }}
           />
-        </Router>
-      </ChatProvider>
+          </Router>
+        </ChatProvider>
+      </OfficialPhotosProvider>
     </AuthProvider>
   );
 };

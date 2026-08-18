@@ -79,6 +79,7 @@ export interface DashboardStats {
     comment?: string;
     resolvedAt?: string;
     ticketUrl: string;
+    assignedTo?: string;
     assignedToName: string;
     assignedToRole?: string;
     assignedToAvatarUrl?: string;
@@ -780,6 +781,7 @@ async function processFeedbackFromTickets(tickets: any[]) {
       comment: ticket.comment || null, 
       resolvedAt: ticket.resolved_at,
       ticketUrl: `/tickets/${ticket.id}`,
+      assignedTo: ticket.assigned_to,
       assignedToName: ticket.assigned_to_name || (assignedUser ? assignedUser.name : 'Não atribuído'),
       assignedToRole: assignedUser ? assignedUser.role : undefined,
       assignedToAvatarUrl: assignedUser?.avatarUrl,

@@ -473,6 +473,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                                 <div className="relative">
                                   <UserAvatar
                                     name={user.name}
+                                    userId={user.id}
                                     avatarUrl={user.avatarUrl}
                                     size="md"
                                     className="h-8 w-8 shrink-0"
@@ -719,6 +720,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                                 <div className="relative">
                                   <UserAvatar
                                     name={user.name}
+                                    userId={user.id}
                                     avatarUrl={user.avatarUrl}
                                     size="md"
                                     className="h-8 w-8 shrink-0"

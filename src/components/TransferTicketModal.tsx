@@ -326,6 +326,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
                     >
                       <UserAvatar
                         name={u.name}
+                        userId={u.id}
                         avatarUrl={u.avatarUrl}
                         size="md"
                         fallbackClassName="text-xs bg-[#F69F19]/20 text-[#2C2D2F]"

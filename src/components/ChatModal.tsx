@@ -743,6 +743,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
                           >
                             <UserAvatar
                               name={message.userName}
+                              userId={message.userId}
                               avatarUrl={message.avatarUrl}
                               size="md"
                               className="h-8 w-8 flex-shrink-0"

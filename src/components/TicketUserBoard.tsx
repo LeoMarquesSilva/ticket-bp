@@ -161,6 +161,7 @@ const TicketUserBoard: React.FC<TicketUserBoardProps> = ({
                     <div className="flex items-center gap-3 overflow-hidden">
                       <UserAvatar
                         name={supportUser.name}
+                        userId={supportUser.id}
                         avatarUrl={supportUser.avatarUrl}
                         size="md"
                         className="h-9 w-9 shrink-0 border-2 border-white shadow-sm"

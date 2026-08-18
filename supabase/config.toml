@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.sioe-evidencia-callback]
 verify_jwt = true
+
+[functions.official-photos]
+verify_jwt = true

@@ -121,6 +121,7 @@ const TicketCard: React.FC<TicketCardProps> = ({
           <div className="space-y-2">
             <UserMention
               name={ticket.createdByName}
+              userId={ticket.createdBy}
               avatarUrl={ticket.createdByAvatarUrl}
               subtitle={ticket.createdByDepartment}
               size="sm"
@@ -132,6 +133,7 @@ const TicketCard: React.FC<TicketCardProps> = ({
                 <span className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">Atendente</span>
                 <UserMention
                   name={ticket.assignedToName}
+                  userId={ticket.assignedTo}
                   avatarUrl={ticket.assignedToAvatarUrl}
                   size="sm"
                   nameClassName="text-xs text-slate-600"

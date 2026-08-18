@@ -194,6 +194,7 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
                 {selectedResponsible ? (
                   <UserMention
                     name={selectedResponsible.name}
+                    userId={selectedResponsible.id}
                     avatarUrl={selectedResponsible.avatarUrl}
                     size="sm"
                     className="flex-1 min-w-0"
@@ -209,7 +210,7 @@ const TicketFilters: React.FC<TicketFiltersProps> = ({
               </SelectItem>
               {supportUsers.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
-                  <UserMention name={u.name} avatarUrl={u.avatarUrl} size="sm" />
+                  <UserMention name={u.name} userId={u.id} avatarUrl={u.avatarUrl} size="sm" />
                 </SelectItem>
               ))}
             </SelectContent>

@@ -783,6 +783,7 @@ const handleConfirmDelete = async () => {
                 <div className="flex items-center gap-4">
                   <UserAvatar
                     name={editingUser.name}
+                    userId={editingUser.id}
                     avatarUrl={editingUser.avatarUrl}
                     size="lg"
                     className="shrink-0"
@@ -1057,6 +1058,7 @@ const handleConfirmDelete = async () => {
                         <div className="flex items-center gap-3">
                           <UserAvatar
                             name={userItem.name}
+                            userId={userItem.id}
                             avatarUrl={userItem.avatarUrl}
                             size="sm"
                             className="shrink-0"

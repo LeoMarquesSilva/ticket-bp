@@ -113,6 +113,7 @@ export default function UserAssigneePicker(props: Props) {
               {!multiple && selectedUsers[0] ? (
                 <UserMention
                   name={selectedUsers[0].name}
+                  userId={selectedUsers[0].id}
                   avatarUrl={selectedUsers[0].avatarUrl}
                   subtitle={getRoleLabel(selectedUsers[0].role)}
                   size="sm"
@@ -178,6 +179,7 @@ export default function UserAssigneePicker(props: Props) {
                       />
                       <UserMention
                         name={user.name}
+                        userId={user.id}
                         avatarUrl={user.avatarUrl}
                         subtitle={roleLabel}
                         size="sm"

@@ -161,6 +161,7 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
           <div className="flex items-center gap-3 mb-3">
             <UserAvatar
               name={user?.name}
+              userId={user?.id}
               avatarUrl={user?.avatarUrl}
               size="lg"
               className="h-12 w-12 border-2 border-[#D5B170]/30 shadow-md"

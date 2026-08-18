@@ -23,6 +23,7 @@ interface RecentFeedbackItem {
   comment?: string;
   resolvedAt?: string;
   ticketUrl: string;
+  assignedTo?: string;
   assignedToName: string; // Nome do atendente
   assignedToRole?: string; // Função do atendente (support, lawyer, etc.)
   assignedToAvatarUrl?: string; // Foto do atendente
@@ -484,6 +485,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                   );
                   
                   const attendantAvatarUrl = firstFeedback?.assignedToAvatarUrl;
+                  const attendantUserId = firstFeedback?.assignedTo;
                   
                   return (
                     <div key={attendantName} className="flex-shrink-0 flex flex-col h-full w-[260px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -491,6 +493,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                         <div className="flex items-center gap-3 min-w-0">
                           <UserAvatar
                             name={attendantName}
+                            userId={attendantUserId}
                             avatarUrl={attendantAvatarUrl}
                             size="md"
                             className="h-9 w-9 shrink-0 border-2 border-white shadow-sm"
@@ -644,6 +647,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                       <div className="flex items-center gap-1 min-w-0">
                         <UserAvatar
                           name={selectedTicket.assignedToName}
+                          userId={selectedTicket.assignedTo}
                           avatarUrl={selectedTicket.assignedToAvatarUrl}
                           size="sm"
                           className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
@@ -720,6 +724,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                           <div className="flex flex-col items-center mt-1 shrink-0">
                             <UserAvatar
                               name={message.userName}
+                              userId={message.userId}
                               avatarUrl={message.avatarUrl}
                               size="md"
                               className={`h-8 w-8 ${styles.avatarBg}`}

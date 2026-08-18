@@ -582,6 +582,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                     <div className="flex items-center gap-1.5 shrink-0">
                       <UserAvatar
                         name={assignedUserName}
+                        userId={selectedTicket.assignedTo}
                         avatarUrl={assignedUser?.avatarUrl}
                         size="sm"
                         className="h-5 w-5"
@@ -779,6 +780,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
                 <UserAvatar
                   name={selectedTicket.createdByName}
+                  userId={selectedTicket.createdBy}
                   avatarUrl={createdByAvatarUrl}
                   size="lg"
                   className="h-10 w-10 shrink-0 border-2 border-white shadow-sm"
@@ -792,6 +794,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
                 <UserAvatar
                   name={assignedUserName || undefined}
+                  userId={selectedTicket.assignedTo}
                   avatarUrl={assignedUser?.avatarUrl}
                   size="lg"
                   className="h-10 w-10 shrink-0 border-2 border-white shadow-sm"
@@ -920,6 +923,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 >
                   <UserAvatar
                     name={message.userName}
+                    userId={message.userId}
                     avatarUrl={message.avatarUrl}
                     size="md"
                     className="h-8 w-8 flex-shrink-0 border border-slate-200 shadow-sm"

@@ -113,6 +113,7 @@ const TransferTicketButton: React.FC<TransferTicketButtonProps> = ({
                   <Label htmlFor={user.id} className="flex items-center justify-between w-full cursor-pointer gap-2">
                     <UserMention
                       name={user.name}
+                      userId={user.id}
                       avatarUrl={user.avatarUrl}
                       subtitle={user.role === 'lawyer' ? 'Advogado' : 'Suporte'}
                       size="sm"

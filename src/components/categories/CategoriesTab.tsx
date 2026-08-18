@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import UserAvatar from '@/components/UserAvatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Info } from 'lucide-react';
@@ -20,13 +20,6 @@ interface TagGroup {
   tag: TagType | null;
   tagLabel: string;
   categories: Category[];
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 interface Props {
@@ -272,10 +265,14 @@ export default function CategoriesTab({
                   {supportUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       <span className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={u.avatarUrl} alt={u.name} />
-                          <AvatarFallback className="text-[10px] bg-[#F69F19]/15 text-[#DE5532]">{getInitials(u.name)}</AvatarFallback>
-                        </Avatar>
+                        <UserAvatar
+                          name={u.name}
+                          userId={u.id}
+                          avatarUrl={u.avatarUrl}
+                          size="sm"
+                          className="h-6 w-6"
+                          fallbackClassName="text-[10px] bg-[#F69F19]/15 text-[#DE5532]"
+                        />
                         <span className="truncate">{u.name}</span>
                         <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 bg-slate-100 text-slate-600">{getRoleLabel(u.role)}</Badge>
                       </span>
