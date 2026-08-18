@@ -161,6 +161,8 @@ const PlanoSaudeFields: React.FC<Props> = ({ data, onChange, errors }) => {
               onChange={(value) => update({ dataNascimento: value })}
               placeholder="DD/MM/AAAA"
               label="Data de nascimento"
+              fromYear={1926}
+              disableFuture
               className={errors.dataNascimento ? 'border-[#BD2D29]' : ''}
             />
             {fieldError('dataNascimento')}
@@ -325,6 +327,8 @@ const PlanoSaudeFields: React.FC<Props> = ({ data, onChange, errors }) => {
                         }
                         placeholder="DD/MM/AAAA"
                         label="Data de nascimento"
+                        fromYear={1926}
+                        disableFuture
                         className={errors[`${prefix}dataNascimento`] ? 'border-[#BD2D29]' : ''}
                       />
                       {fieldError(`${prefix}dataNascimento`)}
