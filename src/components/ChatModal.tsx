@@ -675,6 +675,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ ticket, isOpen, onClose, onTicket
                   ticketTitle={ticket.title}
                   assignedTo={ticket.assignedTo}
                   assignedToName={ticket.assignedToName}
+                  assignedToAvatarUrl={ticket.assignedToAvatarUrl}
                   ticketDescription={ticket.description}
                   category={ticket.category}
                   subcategory={ticket.subcategory}

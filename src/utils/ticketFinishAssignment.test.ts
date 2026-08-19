@@ -50,14 +50,18 @@ describe('ticketFinishAssignment', () => {
 
   it('identifica o responsável atual nas opções de finalização', () => {
     expect(getFinishAssignmentCopy('Ana')).toEqual({
-      description: 'Este ticket está atribuído a Ana. Escolha como deseja contabilizar a finalização.',
-      keepLabel: 'Finalizar com Ana',
+      description: 'Este ticket está com Ana. Escolha em nome de quem esta conclusão deve ser registrada.',
+      keepLabel: 'Finalizar em nome de Ana',
+      keepDescription: 'Mantém a atribuição atual e contabiliza a conclusão para essa pessoa.',
       assignLabel: 'Transferir para mim e finalizar',
+      assignDescription: 'Transfere o ticket para você antes de concluir e contabiliza o atendimento no seu nome.',
     });
   });
 
   it('usa texto seguro quando o nome do responsável não está disponível', () => {
-    expect(getFinishAssignmentCopy(undefined).keepLabel)
-      .toBe('Finalizar com o responsável atual');
+    expect(getFinishAssignmentCopy(undefined)).toMatchObject({
+      description: 'Este ticket já tem um responsável. Escolha em nome de quem esta conclusão deve ser registrada.',
+      keepLabel: 'Finalizar em nome do responsável atual',
+    });
   });
 });

@@ -707,6 +707,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 ticketTitle={selectedTicket.title}
                 assignedTo={selectedTicket.assignedTo}
                 assignedToName={selectedTicket.assignedToName}
+                assignedToAvatarUrl={selectedTicket.assignedToAvatarUrl}
                 ticketDescription={selectedTicket.description}
                 category={selectedTicket.category}
                 subcategory={selectedTicket.subcategory}
