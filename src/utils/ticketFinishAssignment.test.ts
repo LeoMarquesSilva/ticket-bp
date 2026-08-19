@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getFinishAssignmentCopy,
   getFinishStepAfterAssignmentChoice,
   getInitialFinishTicketStep,
   shouldAssignToFinalizer,
@@ -45,5 +46,18 @@ describe('ticketFinishAssignment', () => {
       isEvidenceAudit: true,
     })).toBe('evidence');
     expect(shouldAssignToFinalizer(undefined)).toBe(true);
+  });
+
+  it('identifica o responsável atual nas opções de finalização', () => {
+    expect(getFinishAssignmentCopy('Ana')).toEqual({
+      description: 'Este ticket está atribuído a Ana. Escolha como deseja contabilizar a finalização.',
+      keepLabel: 'Finalizar com Ana',
+      assignLabel: 'Transferir para mim e finalizar',
+    });
+  });
+
+  it('usa texto seguro quando o nome do responsável não está disponível', () => {
+    expect(getFinishAssignmentCopy(undefined).keepLabel)
+      .toBe('Finalizar com o responsável atual');
   });
 });

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, AlertCircle, FileCheck2, FileX2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, FileCheck2, FileX2, UserCheck } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -18,10 +18,19 @@ import {
   extractCiFromTicketText,
   isEvidenciaFatalAuditTicket,
 } from '@/utils/evidenciaFatal';
+import {
+  type FinishAssignmentDecision,
+  getFinishAssignmentCopy,
+  getFinishStepAfterAssignmentChoice,
+  getInitialFinishTicketStep,
+  shouldAssignToFinalizer,
+} from '@/utils/ticketFinishAssignment';
 
 interface FinishTicketButtonProps {
   ticketId: string;
   ticketTitle: string;
+  assignedTo?: string;
+  assignedToName?: string;
   ticketDescription?: string;
   category?: string;
   subcategory?: string;
@@ -35,6 +44,8 @@ interface FinishTicketButtonProps {
 const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
   ticketId,
   ticketTitle,
+  assignedTo,
+  assignedToName,
   ticketDescription,
   category,
   subcategory,
@@ -45,22 +56,43 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
 }) => {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isEvidenciaDialogOpen, setIsEvidenciaDialogOpen] = useState(false);
+  const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
+  const [assignToFinalizer, setAssignToFinalizer] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
   const isEvidenciaAudit = isEvidenciaFatalAuditTicket(category, subcategory);
   const hasSavedDecision =
     evidenciaEnviadaSalva === true || evidenciaEnviadaSalva === false;
+  const assignmentCopy = getFinishAssignmentCopy(assignedToName);
 
-  const handleOpen = () => {
-    if (isEvidenciaAudit) {
-      setIsEvidenciaDialogOpen(true);
-      return;
-    }
-    setIsConfirmDialogOpen(true);
+  const openFinalStep = () => {
+    const step = getFinishStepAfterAssignmentChoice(isEvidenciaAudit);
+    if (step === 'evidence') setIsEvidenciaDialogOpen(true);
+    else setIsConfirmDialogOpen(true);
   };
 
-  const finishTicket = async (evidenciaEnviada?: boolean) => {
+  const handleOpen = () => {
+    const step = getInitialFinishTicketStep({
+      assignedTo,
+      finalizerId: user?.id,
+      isEvidenceAudit: isEvidenciaAudit,
+    });
+
+    if (step === 'assignment-choice') {
+      setIsAssignmentDialogOpen(true);
+      return;
+    }
+
+    setAssignToFinalizer(shouldAssignToFinalizer(assignedTo));
+    if (step === 'evidence') setIsEvidenciaDialogOpen(true);
+    else setIsConfirmDialogOpen(true);
+  };
+
+  const finishTicket = async (
+    evidenciaEnviada?: boolean,
+    assignOverride = assignToFinalizer,
+  ) => {
     try {
       setIsLoading(true);
 
@@ -86,7 +118,7 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
         await TicketService.finishTicket(
           ticketId,
           user ? { userId: user.id, userName: user.name } : undefined,
-          { evidenciaEnviada: decisao },
+          { evidenciaEnviada: decisao, assignToFinalizer: assignOverride },
         );
 
         // Política: resolve localmente mesmo se o SIOE falhar; erro fica em evidencia_sioe_erro.
@@ -112,12 +144,14 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
         await TicketService.finishTicket(
           ticketId,
           user ? { userId: user.id, userName: user.name } : undefined,
+          { assignToFinalizer: assignOverride },
         );
         toast.success('Ticket finalizado com sucesso');
       }
 
       setIsConfirmDialogOpen(false);
       setIsEvidenciaDialogOpen(false);
+      setIsAssignmentDialogOpen(false);
       onTicketFinished();
     } catch (error) {
       console.error('Erro ao finalizar ticket:', error);
@@ -125,6 +159,19 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAssignmentDecision = async (decision: FinishAssignmentDecision) => {
+    const shouldAssign = shouldAssignToFinalizer(assignedTo, decision);
+    setAssignToFinalizer(shouldAssign);
+
+    if (isEvidenciaAudit) {
+      setIsAssignmentDialogOpen(false);
+      openFinalStep();
+      return;
+    }
+
+    await finishTicket(undefined, shouldAssign);
   };
 
   return (
@@ -141,6 +188,44 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
         Finalizar
       </Button>
 
+      <Dialog open={isAssignmentDialogOpen} onOpenChange={setIsAssignmentDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-amber-500" />
+              Quem deve receber esta finalização?
+            </DialogTitle>
+            <DialogDescription>{assignmentCopy.description}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isLoading}
+              onClick={() => void handleAssignmentDecision('keep-current')}
+            >
+              {assignmentCopy.keepLabel}
+            </Button>
+            <Button
+              type="button"
+              disabled={isLoading}
+              onClick={() => void handleAssignmentDecision('assign-to-finalizer')}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {assignmentCopy.assignLabel}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isLoading}
+              onClick={() => setIsAssignmentDialogOpen(false)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Confirmação padrão — demais tickets */}
       <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -152,6 +237,7 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
             <DialogDescription>
               Tem certeza que deseja finalizar este atendimento? O ticket será
               marcado como resolvido.
+              {!assignedTo && ' Este ticket será atribuído a você antes da finalização.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -201,6 +287,7 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
                   Antes de finalizar este chamado de auditoria FATAL, informe se a
                   evidência foi enviada. A resposta afeta o indicador no
                   financeiro-bp (SIOE).
+                  {!assignedTo && ' Este ticket será atribuído a você antes da finalização.'}
                 </>
               )}
             </DialogDescription>

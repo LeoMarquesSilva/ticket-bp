@@ -31,3 +31,12 @@ export function shouldAssignToFinalizer(
 ): boolean {
   return !assignedTo || decision === 'assign-to-finalizer';
 }
+
+export function getFinishAssignmentCopy(assignedToName?: string) {
+  const currentAssignee = assignedToName?.trim() || 'o responsável atual';
+  return {
+    description: `Este ticket está atribuído a ${currentAssignee}. Escolha como deseja contabilizar a finalização.`,
+    keepLabel: `Finalizar com ${currentAssignee}`,
+    assignLabel: 'Transferir para mim e finalizar',
+  };
+}
