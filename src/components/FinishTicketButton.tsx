@@ -25,6 +25,7 @@ import {
   getInitialFinishTicketStep,
   shouldAssignToFinalizer,
 } from '@/utils/ticketFinishAssignment';
+import { runFinishTicketOperation } from '@/utils/finishTicketOrchestration';
 
 interface FinishTicketButtonProps {
   ticketId: string;
@@ -93,69 +94,77 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
     evidenciaEnviada?: boolean,
     assignOverride = assignToFinalizer,
   ) => {
+    setIsLoading(true);
+
     try {
-      setIsLoading(true);
+      await runFinishTicketOperation({
+        operation: async () => {
+          if (isEvidenciaAudit) {
+            if (typeof evidenciaEnviada !== 'boolean' && !hasSavedDecision) {
+              toast.error('Informe se a evidência foi enviada (Sim ou Não).');
+              return false;
+            }
 
-      if (isEvidenciaAudit) {
-        if (typeof evidenciaEnviada !== 'boolean' && !hasSavedDecision) {
-          toast.error('Informe se a evidência foi enviada (Sim ou Não).');
-          return;
-        }
+            const ci = extractCiFromTicketText(ticketTitle, ticketDescription);
+            if (!ci) {
+              toast.error(
+                'Não foi possível extrair o CI do título/descrição (padrão: CI <valor>). Corrija o texto antes de finalizar.',
+              );
+              return false;
+            }
 
-        const ci = extractCiFromTicketText(ticketTitle, ticketDescription);
-        if (!ci) {
-          toast.error(
-            'Não foi possível extrair o CI do título/descrição (padrão: CI <valor>). Corrija o texto antes de finalizar.',
-          );
-          return;
-        }
+            const decisao =
+              typeof evidenciaEnviada === 'boolean'
+                ? evidenciaEnviada
+                : Boolean(evidenciaEnviadaSalva);
 
-        const decisao =
-          typeof evidenciaEnviada === 'boolean'
-            ? evidenciaEnviada
-            : Boolean(evidenciaEnviadaSalva);
+            await TicketService.finishTicket(
+              ticketId,
+              user ? { userId: user.id, userName: user.name } : undefined,
+              { evidenciaEnviada: decisao, assignToFinalizer: assignOverride },
+            );
 
-        await TicketService.finishTicket(
-          ticketId,
-          user ? { userId: user.id, userName: user.name } : undefined,
-          { evidenciaEnviada: decisao, assignToFinalizer: assignOverride },
-        );
+            // Política: resolve localmente mesmo se o SIOE falhar; erro fica em evidencia_sioe_erro.
+            const sioe = await notifySioeEvidenciaDecisao(ticketId, decisao);
+            if (sioe.ok || sioe.idempotent) {
+              toast.success(
+                decisao
+                  ? 'Ticket finalizado — evidência ok (excludente mantida)'
+                  : 'Ticket finalizado — sem evidência (incluído no FATAL)',
+              );
+            } else if (sioe.mocked) {
+              toast.success(
+                'Ticket finalizado. Callback SIOE ainda pendente (endpoint/config) — decisão gravada no RESPONSUM.',
+              );
+              console.warn('[FinishTicket] SIOE mock/log:', sioe);
+            } else {
+              toast.warning(
+                'Ticket finalizado, mas o SIOE não confirmou o callback. A decisão ficou salva para retry.',
+              );
+              console.warn('[FinishTicket] SIOE callback falhou:', sioe);
+            }
+          } else {
+            await TicketService.finishTicket(
+              ticketId,
+              user ? { userId: user.id, userName: user.name } : undefined,
+              { assignToFinalizer: assignOverride },
+            );
+            toast.success('Ticket finalizado com sucesso');
+          }
 
-        // Política: resolve localmente mesmo se o SIOE falhar; erro fica em evidencia_sioe_erro.
-        const sioe = await notifySioeEvidenciaDecisao(ticketId, decisao);
-        if (sioe.ok || sioe.idempotent) {
-          toast.success(
-            decisao
-              ? 'Ticket finalizado — evidência ok (excludente mantida)'
-              : 'Ticket finalizado — sem evidência (incluído no FATAL)',
-          );
-        } else if (sioe.mocked) {
-          toast.success(
-            'Ticket finalizado. Callback SIOE ainda pendente (endpoint/config) — decisão gravada no RESPONSUM.',
-          );
-          console.warn('[FinishTicket] SIOE mock/log:', sioe);
-        } else {
-          toast.warning(
-            'Ticket finalizado, mas o SIOE não confirmou o callback. A decisão ficou salva para retry.',
-          );
-          console.warn('[FinishTicket] SIOE callback falhou:', sioe);
-        }
-      } else {
-        await TicketService.finishTicket(
-          ticketId,
-          user ? { userId: user.id, userName: user.name } : undefined,
-          { assignToFinalizer: assignOverride },
-        );
-        toast.success('Ticket finalizado com sucesso');
-      }
-
-      setIsConfirmDialogOpen(false);
-      setIsEvidenciaDialogOpen(false);
-      setIsAssignmentDialogOpen(false);
-      onTicketFinished();
-    } catch (error) {
-      console.error('Erro ao finalizar ticket:', error);
-      toast.error('Erro ao finalizar ticket. Tente novamente.');
+          return true;
+        },
+        onSuccess: () => {
+          setIsConfirmDialogOpen(false);
+          setIsEvidenciaDialogOpen(false);
+          setIsAssignmentDialogOpen(false);
+          onTicketFinished();
+        },
+        onError: (error) => {
+          console.error('Erro ao finalizar ticket:', error);
+          toast.error('Erro ao finalizar ticket. Tente novamente.');
+        },
+      });
     } finally {
       setIsLoading(false);
     }
@@ -222,6 +231,9 @@ const FinishTicketButton: React.FC<FinishTicketButtonProps> = ({
             >
               Cancelar
             </Button>
+            {isLoading && (
+              <p className="text-center text-xs text-slate-500">Finalizando...</p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
