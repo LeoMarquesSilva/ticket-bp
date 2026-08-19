@@ -13,8 +13,8 @@ export function isNpsExemptTicket(category?: string, subcategory?: string): bool
 export function canUserFinishTicket(
   userId: string | undefined,
   hasFinishPermission: boolean,
-  userRole?: string,
+  _userRole?: string,
 ): boolean {
   if (!userId) return false;
-  return hasFinishPermission && userRole !== 'user';
+  return hasFinishPermission;
 }
