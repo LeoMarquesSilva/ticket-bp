@@ -508,7 +508,7 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
   static async finishTicket(
     ticketId: string,
     finalizedBy?: { userId: string; userName: string },
-    options?: { evidenciaEnviada?: boolean },
+    options?: { evidenciaEnviada?: boolean; assignToFinalizer?: boolean },
   ): Promise<Ticket> {
     try {
       console.log('Finalizando ticket:', ticketId);
@@ -535,6 +535,16 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
       }
 
       const updates: UpdateTicketData = { status: 'resolved' };
+
+      if (options?.assignToFinalizer) {
+        if (!finalizedBy?.userId || !finalizedBy.userName) {
+          throw new Error('Usuário finalizador não informado');
+        }
+
+        updates.assignedTo = finalizedBy.userId;
+        updates.assignedToName = finalizedBy.userName;
+        updates.assignedAt = new Date().toISOString();
+      }
 
       // Decisão de auditoria FATAL (SIOE) — só nesta subcategoria; não misturar com NPS.
       if (npsExempt && typeof options?.evidenciaEnviada === 'boolean') {
