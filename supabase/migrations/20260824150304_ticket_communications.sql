@@ -108,7 +108,7 @@ as $$
       )
     )
   order by t.id
-  limit pg_catalog.least(pg_catalog.greatest(coalesce(p_limit, 0), 0), 500);
+  limit least(greatest(coalesce(p_limit, 0), 0), 500);
 $$;
 
 create function public.helpdesk_get_ticket_communication_contexts(

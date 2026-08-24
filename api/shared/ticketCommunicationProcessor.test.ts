@@ -213,6 +213,30 @@ describe('processDeliveries', () => {
     expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 1, skipped: 0 });
   });
 
+  it.each([
+    ['ausente', null],
+    ['com email inválido', { ...requester, email: 'email-invalido' }],
+  ])('prioriza cancelamento da entrega inelegível quando o destinatário está %s', async (_case, invalidRequester) => {
+    const repository = fakeRepository({ claimed: [{
+      ...emailDelivery,
+      requester: invalidRequester,
+      lastHumanMessage: { user_id: requesterId, created_at: '2026-08-24T11:59:00.000Z' },
+    }] });
+    const graph = fakeGraph();
+
+    const result = await processDeliveries({ repository, graph, appBaseUrl: 'https://responsum.example', now });
+
+    expect(graph.sendEmail).not.toHaveBeenCalled();
+    expect(graph.resolveUserId).not.toHaveBeenCalled();
+    expect(repository.completed).toEqual([{
+      id: emailDelivery.id,
+      outcome: 'cancelled',
+      error: 'no_longer_eligible',
+      nextAttemptAt: null,
+    }]);
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 1, skipped: 0 });
+  });
+
   it('cancela convite quando a avaliação foi enviada depois do enqueue, sem chamar Graph', async () => {
     const repository = fakeRepository({ claimed: [{
       ...emailDelivery,

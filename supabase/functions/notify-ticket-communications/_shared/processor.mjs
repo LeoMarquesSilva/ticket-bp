@@ -127,11 +127,11 @@ export async function processDeliveries({
     }
 
     const enabledAt = new Date(delivery.enabledAt);
-    if (!delivery.ticket || Number.isNaN(enabledAt.getTime()) || !isValidRecipient(delivery.requester)) {
+    if (!delivery.ticket || Number.isNaN(enabledAt.getTime())) {
       const completed = await completeDelivery(repository, {
         id: delivery.id,
         outcome: 'failed',
-        error: 'Configuração do destinatário ausente ou e-mail inválido',
+        error: 'Contexto do ticket ausente ou inválido',
         nextAttemptAt: nextDailyAttemptAt(claimNow),
       });
       countCompletion(counts, completed, 'failed');
@@ -152,6 +152,17 @@ export async function processDeliveries({
         nextAttemptAt: null,
       });
       countCompletion(counts, completed, 'cancelled');
+      continue;
+    }
+
+    if (!isValidRecipient(delivery.requester)) {
+      const completed = await completeDelivery(repository, {
+        id: delivery.id,
+        outcome: 'failed',
+        error: 'Configuração do destinatário ausente ou e-mail inválido',
+        nextAttemptAt: nextDailyAttemptAt(claimNow),
+      });
+      countCompletion(counts, completed, 'failed');
       continue;
     }
 
