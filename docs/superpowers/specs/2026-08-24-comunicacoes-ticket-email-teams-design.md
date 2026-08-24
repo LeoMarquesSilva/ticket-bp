@@ -18,7 +18,7 @@ Os dois lembretes recorrentes são repetidos uma vez por dia enquanto a condiç�
 
 Todos os avisos têm como único destinatário o usuário de `ticket.created_by`, resolvido na tabela `app_c009c0e4f1_users`. Um chamado sem usuário ou sem e-mail válido é registrado como falha de configuração e não é enviado a outra pessoa.
 
-Mensagens com `user_id = 'system'` são automáticas e não participam da determinação da última resposta humana. Para a regra `awaiting_requester`, uma mensagem humana é considerada do solicitante quando `message.user_id = ticket.created_by`; qualquer outra mensagem humana é considerada resposta do suporte. O lembrete só é elegível quando a mensagem humana mais recente for do suporte. Assim que o solicitante responder, a condição deixa de existir. Se o suporte enviar uma nova mensagem depois disso, um novo prazo de 48 horas começa na data dessa mensagem.
+Mensagens automáticas preservam um `user_id` UUID válido do ator e são marcadas por `is_system = true`; elas não participam da determinação da última resposta humana. Para a regra `awaiting_requester`, uma mensagem humana é considerada do solicitante quando `message.user_id = ticket.created_by`; qualquer outra mensagem humana é considerada resposta do suporte. O lembrete só é elegível quando a mensagem humana mais recente for do suporte. Assim que o solicitante responder, a condição deixa de existir. Se o suporte enviar uma nova mensagem depois disso, um novo prazo de 48 horas começa na data dessa mensagem.
 
 Chamados reconhecidos por `isNpsExemptTicket` não recebem `resolved_feedback_invite` nem `awaiting_feedback`. A isenção não afeta `awaiting_requester` enquanto o chamado estiver ativo.
 
@@ -28,15 +28,15 @@ Na ativação, será gravada a configuração `ticket_communications_enabled_at`
 
 O e-mail de finalização e o lembrete de avaliação usam:
 
-`{HELPDESK_APP_BASE_URL}/tickets/{ticketId}?showFeedback=true`
+`{APP_PUBLIC_URL}/tickets/{ticketId}?showFeedback=true`
 
 Essa rota já abre o chamado e solicita a exibição do modal de avaliação. O lembrete de resposta usa:
 
-`{HELPDESK_APP_BASE_URL}/tickets/{ticketId}`
+`{APP_PUBLIC_URL}/tickets/{ticketId}`
 
 Os e-mails terão assunto específico, resumo do chamado, motivo do contato, chamada para ação e link textual de contingência. O HTML será simples, responsivo e terá também uma versão textual equivalente.
 
-No Teams, o aviso aparecerá no feed Atividade e poderá gerar banner, som e notificação do sistema conforme as preferências pessoais do usuário. O tópico usará o título do chamado, a prévia explicará a pendência e o clique abrirá o mesmo link direto usado no e-mail. Não será criada uma mensagem em chat.
+No Teams, o aviso aparecerá no feed Atividade e poderá gerar banner, som e notificação do sistema conforme as preferências pessoais do usuário. Como tópicos com `source = text` exigem URL Teams, o clique usará `https://teams.microsoft.com/l/entity/{teamsAppId}/ticket-detail?webUrl={ticketUrl codificada}&label={label codificada}` para a tab pessoal estática `ticket-detail`. O link HTTPS direto do chamado continuará explícito no conteúdo e no parâmetro `webUrl`. Não será criada uma mensagem em chat. O `chainId` será derivado deterministicamente da entrega e do ciclo.
 
 ## Arquitetura
 
@@ -69,8 +69,9 @@ Será criada a tabela `app_c009c0e4f1_ticket_notification_deliveries` com:
 - `notification_type text` limitado aos três tipos definidos;
 - `channel text` limitado a `email` e `teams`;
 - `cycle_key text`;
-- `status text` limitado a `pending`, `processing`, `sent` e `failed`;
+- `status text` limitado a `pending`, `processing`, `sent`, `failed` e `cancelled`;
 - `attempt_count integer`;
+- `claim_token uuid`;
 - `next_attempt_at timestamptz`;
 - `processing_started_at timestamptz`;
 - `sent_at timestamptz`;
@@ -81,32 +82,34 @@ A restrição única `(ticket_id, notification_type, channel, cycle_key)` impedi
 
 Se uma entrega diária anterior ainda não tiver sido enviada, ela será retentada antes de criar uma nova entrega do mesmo tipo e canal. O sucesso tardio valerá como a comunicação daquele dia; outra entrega só poderá ser criada numa rodada posterior. E-mail e Teams terão linhas separadas, de modo que sucesso em um canal não provoque reenvio quando apenas o outro falhar.
 
-Uma RPC de reserva usará atualização atômica e prazo de processamento. Itens presos em `processing` por mais de 15 minutos voltarão a ser elegíveis. Isso permite execução concorrente sem envio duplicado em condições normais e recuperação após interrupções.
+Uma RPC de reserva usará atualização atômica, token de claim, versão por `attempt_count` e prazo de processamento. A conclusão só será aceita para o item ainda em `processing` cujo token e versão coincidam; um worker antigo não poderá sobrescrever um lease renovado. Itens presos em `processing` por mais de 15 minutos voltarão a ser elegíveis. Convites de resolução cujo `cycle_key` não seja exatamente o `resolved_at` atual serão cancelados como stale antes da reserva. O processador drenará vários lotes sob orçamento explícito de entregas, lotes e tempo, retornando e registrando o backlog se o orçamento terminar.
+
+A transição para `resolved` e a definição de `resolved_at` ocorrerão numa RPC condicional única. Ela informará se a chamada venceu a transição; somente o vencedor persistirá a mensagem automática e disparará o preparo imediato. Isso cobre também o fluxo de criação de ticket já resolvido.
 
 ### Microsoft Graph
 
 A Function obterá token pelo fluxo OAuth 2.0 `client_credentials`, usando:
 
-- `MICROSOFT_TENANT_ID`;
-- `MICROSOFT_CLIENT_ID`;
-- `MICROSOFT_CLIENT_SECRET`;
-- `MICROSOFT_NOTIFICATION_SENDER`;
-- `MICROSOFT_TEAMS_APP_ID`;
-- `HELPDESK_APP_BASE_URL`.
+- `TICKET_COMMUNICATIONS_MICROSOFT_TENANT_ID`;
+- `TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID`;
+- `TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_SECRET`;
+- `TICKET_COMMUNICATIONS_MICROSOFT_NOTIFICATION_SENDER`;
+- `TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID`;
+- `APP_PUBLIC_URL`.
 
-O token será reutilizado durante uma execução, mas nunca persistido no banco ou em logs.
+O registro e as credenciais são dedicados a comunicações de tickets e não reutilizam `MICROSOFT_*` do SharePoint. `APP_PUBLIC_URL` exige HTTPS, rejeita userinfo, query e fragment, e normaliza o pathname/base. O token respeitará `expires_in`, será renovado uma vez após `401` e nunca será persistido no banco ou em logs.
 
-Além do privilégio de envio escolhido, a aplicação terá `User.Read.All` para resolver o identificador Microsoft Entra do destinatário. A resolução tentará o e-mail como UPN, consultará `mail` e `userPrincipalName` e aplicará as variantes corporativas `@bpplaw.com.br` e `@bismarchipires.com.br`, seguindo o comportamento já existente nas integrações Graph do projeto. O envio do Teams usará o ID Microsoft Entra resolvido; a falha de resolução não afetará o envio por e-mail.
+Além do privilégio de envio escolhido, a aplicação terá `User.Read.All` para resolver o identificador Microsoft Entra do destinatário. A resolução verificará primeiro o endereço original como UPN e como `mail`; somente sem correspondência original tentará variantes corporativas `@bpplaw.com.br` e `@bismarchipires.com.br`. Uma variante nunca vencerá antes do `mail` original. O envio do Teams usará o ID Microsoft Entra resolvido; a falha de resolução não afetará o envio por e-mail.
 
-E-mails serão enviados por `POST /users/{MICROSOFT_NOTIFICATION_SENDER}/sendMail`. O caminho recomendado é Exchange Online Application RBAC, atribuindo `Application Mail.Send` apenas à mailbox/grupo remetente, sem consentimento global Entra `Mail.Send`; a alternativa de compatibilidade é `Mail.Send` global no Entra acompanhado obrigatoriamente de Application Access Policy `RestrictAccess`. Os caminhos são mutuamente exclusivos porque grants são aditivos: o `Mail.Send` global não pode coexistir com RBAC, mas é necessário no caminho AAP; `User.Read.All` permanece consentido para a resolução de destinatários.
+E-mails serão enviados por `POST /users/{TICKET_COMMUNICATIONS_MICROSOFT_NOTIFICATION_SENDER}/sendMail`. O caminho recomendado é Exchange Online Application RBAC, atribuindo `Application Mail.Send` apenas à mailbox/grupo remetente, sem consentimento global Entra `Mail.Send`; a alternativa de compatibilidade é `Mail.Send` global no Entra acompanhado obrigatoriamente de Application Access Policy `RestrictAccess`. Os caminhos são mutuamente exclusivos porque grants são aditivos: o `Mail.Send` global não pode coexistir com RBAC, mas é necessário no caminho AAP; `User.Read.All` permanece consentido para a resolução de destinatários.
 
-Notificações do Teams serão enviadas por `POST /users/{userId-or-UPN}/teamwork/sendActivityNotification`, com a permissão de aplicação de consentimento específico ao recurso `TeamsActivity.Send.User`, que é a opção de menor privilégio para um app instalado no escopo pessoal do usuário. O manifesto declara o activity type templado `ticketCommunication`, com `templateText` simples e o parâmetro `notificationText`; o payload envia esse tipo, `templateParameters`, tópico textual, `webUrl` do chamado e texto de prévia. A permissão ampla `TeamsActivity.Send` não será solicitada por padrão.
+Notificações do Teams serão enviadas por `POST /users/{userId-or-UPN}/teamwork/sendActivityNotification`, com a permissão de aplicação de consentimento específico ao recurso `TeamsActivity.Send.User`, que é a opção de menor privilégio para um app instalado no escopo pessoal do usuário. O manifesto declara a tab pessoal estática `ticket-detail` e o activity type `ticketCommunication`, com os parâmetros `notificationText` e `ticketUrl`; o tópico textual usa o deep link Teams e o conteúdo mantém o link direto do chamado. A permissão ampla `TeamsActivity.Send` não será solicitada por padrão.
 
 O Microsoft Entra app ID deverá constar em `webApplicationInfo` no manifesto do aplicativo Teams. O aplicativo Teams deverá estar instalado no escopo pessoal do destinatário. O repositório conterá o manifesto versionado e instruções de empacotamento, publicação no catálogo da organização e instalação. A instalação pode ser feita administrativamente pelo Graph, mas não fará parte do envio de cada aviso.
 
 ## Agendamento
 
-O comando `daily` será agendado no Supabase Cron para `0 12 * * *` em UTC, equivalente a 09:00 em `America/Sao_Paulo` durante todo o ano, pois o Brasil não utiliza horário de verão no fuso adotado atualmente.
+O primeiro comando `daily` será agendado às 12:00 UTC, equivalente a 09:00 em `America/Sao_Paulo`. Disparos de continuação poderão ocorrer em intervalos curtos após 12:00 UTC para drenar backlog; todos recalculam o mesmo `cycle_key` diário local e são idempotentes, sem criar uma segunda comunicação diária.
 
 A chamada agendada usará uma secret key nomeada `ticket-communications`, armazenada no Vault/ambiente seguro do Supabase e enviada somente no header `apikey`; nenhum JWT, service role key ou segredo Microsoft será gravado em migrations ou arquivos versionados. As instruções de implantação descreverão a criação do agendamento no painel do Supabase e uma chamada manual de verificação.
 
@@ -118,7 +121,9 @@ Erros `4xx` de configuração, usuário inexistente, aplicativo Teams não insta
 
 O campo `last_error` armazenará código HTTP, categoria e mensagem truncada. Headers, tokens, segredos e corpo completo de respostas do Graph não serão persistidos nem registrados no console.
 
-Falhas de e-mail ou Teams não alteram o estado do chamado, não revertem avaliação e não bloqueiam a interface. A invocação imediata exibirá apenas telemetria técnica; o usuário que finaliza continuará vendo o resultado da operação principal.
+Falhas de e-mail ou Teams não alteram o estado do chamado, não revertem avaliação e não bloqueiam a interface. A invocação imediata exibirá apenas telemetria técnica; o usuário que finaliza continuará vendo o resultado da operação principal. Requests Graph e aquisição de token têm timeout, retries transitórios limitados e teto para `Retry-After`.
+
+As entregas externas têm semântica residual **at-least-once**, não exactly-once. O Graph pode aceitar `sendMail` e a Function perder a resposta ou falhar antes de concluir a linha; o retry poderá duplicar o e-mail. Fencing evita workers locais stale, mas não cria transação distribuída com o Graph.
 
 ## Segurança e autorização
 
