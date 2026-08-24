@@ -6,7 +6,6 @@ import {
 import { buildNotificationContent } from './templates.mjs';
 
 const DEFAULT_BATCH_SIZE = 100;
-const MAX_PERSISTED_ERROR_LENGTH = 500;
 const DAILY_RUN_UTC_HOUR = 12;
 const SUPPORTED_CHANNELS = new Set(['email', 'teams']);
 const SUPPORTED_NOTIFICATION_TYPES = new Set([
@@ -15,6 +14,7 @@ const SUPPORTED_NOTIFICATION_TYPES = new Set([
   'awaiting_feedback',
 ]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const INTERNAL_FAILURE_CATEGORIES = new Set(['entra_user_not_found']);
 
 function nextDailyAttemptAt(now) {
   const next = new Date(Date.UTC(
@@ -31,25 +31,28 @@ function isValidRecipient(requester) {
   return typeof requester?.email === 'string' && EMAIL_PATTERN.test(requester.email.trim());
 }
 
-function sanitizeText(value, fallback) {
-  const text = String(value ?? fallback)
-    .replace(/\b(authorization|x-api-key|api[_-]?key|password)\s*[:=]\s*[^\r\n]+/gi, '$1: [redacted]')
-    .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
-    .replace(/\b(access[_-]?token|client[_-]?secret|token)\s*[=:]\s*[^\s,;]+/gi, '$1=[redacted]')
-    .replace(/\b[^\s@]+@[^\s@]+\.[^\s@]+\b/g, '[redacted]')
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return text || fallback;
+function sanitizeError(error) {
+  if (INTERNAL_FAILURE_CATEGORIES.has(error?.code)) return error.code;
+  if (Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599) {
+    return `graph_http_${error.status}`;
+  }
+  return 'delivery_error';
 }
 
-function sanitizeError(error) {
-  const status = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599
-    ? `HTTP ${error.status} `
-    : '';
-  const code = sanitizeText(error?.code, 'delivery_error').slice(0, 100);
-  const message = sanitizeText(error?.message, 'Falha ao entregar comunicação');
-  return `${status}${code}: ${message}`.slice(0, MAX_PERSISTED_ERROR_LENGTH);
+async function completeDelivery(repository, input) {
+  try {
+    await repository.complete(input);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function countCompletion(counts, completed, outcome) {
+  // Each claimed row has one mutually exclusive terminal count. A queue write
+  // failure is reported as skipped because its final state is unknown.
+  if (completed) counts[outcome] += 1;
+  else counts.skipped += 1;
 }
 
 function isSupportedDelivery(delivery) {
@@ -102,24 +105,24 @@ export async function processDeliveries({
 
   for (const delivery of deliveries) {
     if (!isSupportedDelivery(delivery)) {
-      await repository.complete({
+      const completed = await completeDelivery(repository, {
         id: delivery?.id,
         success: false,
         error: 'Entrega de comunicação inválida',
         nextAttemptAt: nextDailyAttemptAt(now),
       });
-      counts.failed += 1;
+      countCompletion(counts, completed, 'failed');
       continue;
     }
 
     if (!delivery.ticket || !isValidRecipient(delivery.requester)) {
-      await repository.complete({
+      const completed = await completeDelivery(repository, {
         id: delivery.id,
         success: false,
         error: 'Configuração do destinatário ausente ou e-mail inválido',
         nextAttemptAt: nextDailyAttemptAt(now),
       });
-      counts.failed += 1;
+      countCompletion(counts, completed, 'failed');
       continue;
     }
 
@@ -144,18 +147,23 @@ export async function processDeliveries({
         await graph.sendTeamsActivity({ userId, ...content.teams });
       }
     } catch (error) {
-      await repository.complete({
+      const completed = await completeDelivery(repository, {
         id: delivery.id,
         success: false,
         error: sanitizeError(error),
         nextAttemptAt: nextDailyAttemptAt(now),
       });
-      counts.failed += 1;
+      countCompletion(counts, completed, 'failed');
       continue;
     }
 
-    await repository.complete({ id: delivery.id, success: true, error: null, nextAttemptAt: null });
-    counts.sent += 1;
+    const completed = await completeDelivery(repository, {
+      id: delivery.id,
+      success: true,
+      error: null,
+      nextAttemptAt: null,
+    });
+    countCompletion(counts, completed, 'sent');
   }
 
   return counts;

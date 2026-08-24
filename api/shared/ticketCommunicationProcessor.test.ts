@@ -37,9 +37,10 @@ const teamsDelivery = {
   requester,
 };
 
-function fakeRepository({ candidates = [], claimed = [], completeError } = {}) {
+function fakeRepository({ candidates = [], claimed = [], completeError, completeErrors = [] } = {}) {
   const enqueued: Record<string, unknown>[] = [];
   const completed: Record<string, unknown>[] = [];
+  let completeAttempt = 0;
   return {
     enqueued,
     completed,
@@ -51,7 +52,9 @@ function fakeRepository({ candidates = [], claimed = [], completeError } = {}) {
     claim: vi.fn(async () => claimed),
     complete: vi.fn(async (row) => {
       completed.push(row);
-      if (completeError) throw completeError;
+      const error = completeErrors[completeAttempt] ?? completeError;
+      completeAttempt += 1;
+      if (error) throw error;
     }),
   };
 }
@@ -160,7 +163,7 @@ describe('processDeliveries', () => {
       expect.objectContaining({
         id: teamsDelivery.id,
         success: false,
-        error: 'delivery_error: Teams app not installed',
+        error: 'delivery_error',
         nextAttemptAt: new Date('2026-08-25T12:00:00.000Z'),
       }),
     ]);
@@ -221,7 +224,7 @@ describe('processDeliveries', () => {
     expect(result).toEqual({ selected: 1, sent: 0, failed: 1, skipped: 0 });
   });
 
-  it('sanitiza e limita a falha do Graph antes de persistir a próxima tentativa', async () => {
+  it('persiste apenas a categoria HTTP normalizada, sem a mensagem bruta do Graph', async () => {
     const unsafeMessage = `Falha para ana@bpplaw.com.br com Bearer ${'secret-token-value-'.repeat(40)}`;
     const error = Object.assign(new Error(unsafeMessage), { status: 429, code: 'TooManyRequests' });
     const repository = fakeRepository({ claimed: [emailDelivery] });
@@ -237,7 +240,7 @@ describe('processDeliveries', () => {
       error: string;
       nextAttemptAt: Date;
     };
-    expect(completion.error).toMatch(/^HTTP 429 TooManyRequests: /);
+    expect(completion.error).toBe('graph_http_429');
     expect(completion.error).not.toContain('ana@bpplaw.com.br');
     expect(completion.error).not.toContain('secret-token-value');
     expect(completion.error.length).toBeLessThanOrEqual(500);
@@ -245,55 +248,99 @@ describe('processDeliveries', () => {
     expect(result).toEqual({ selected: 1, sent: 0, failed: 1, skipped: 0 });
   });
 
-  it('redige o valor de segredo sem perder a categoria do erro persistido', async () => {
+  it.each([
+    ['Cookie', new Error('Cookie: session=secret-cookie-value'), 'secret-cookie-value'],
+    ['Authorization JSON', new Error('{"Authorization":"Bearer secret-json-token"}'), 'secret-json-token'],
+    ['URL assinada', new Error('https://graph.example/file?sig=secret-url-signature'), 'secret-url-signature'],
+    ['corpo curto com dado pessoal', new Error('Ana Souza <ana.souza@bpplaw.com.br>'), 'ana.souza@bpplaw.com.br'],
+    ['propriedades e causa', Object.assign(new Error('falha genérica'), {
+      cause: new Error('cause-secret-value'),
+      body: 'body-secret-value',
+      headers: { authorization: 'Bearer property-secret-value' },
+      url: 'https://graph.example/?sig=property-url-signature',
+    }), 'cause-secret-value'],
+  ])('não persiste texto bruto de erro com %s', async (_kind, error, secret) => {
     const repository = fakeRepository({ claimed: [emailDelivery] });
 
     await processDeliveries({
       repository,
-      graph: fakeGraph({ emailError: new Error('client_secret=never-persist-this') }),
+      graph: fakeGraph({ emailError: error }),
       appBaseUrl: 'https://responsum.example',
       now,
     });
 
-    expect(repository.completed).toEqual([
-      expect.objectContaining({ error: 'delivery_error: client_secret=[redacted]' }),
-    ]);
+    const completion = repository.completed[0] as { error: string };
+    expect(completion.error).toBe('delivery_error');
+    expect(JSON.stringify(completion)).not.toContain(secret);
+    expect(JSON.stringify(completion)).not.toContain('property-secret-value');
+    expect(JSON.stringify(completion)).not.toContain('property-url-signature');
   });
 
-  it('redige credenciais enviadas em cabeçalho antes de persistir a falha', async () => {
-    const repository = fakeRepository({ claimed: [emailDelivery] });
-
-    await processDeliveries({
-      repository,
-      graph: fakeGraph({ emailError: new Error('Authorization: Basic credential-should-not-persist') }),
-      appBaseUrl: 'https://responsum.example',
-      now,
-    });
-
-    expect(repository.completed).toEqual([
-      expect.objectContaining({ error: 'delivery_error: Authorization: [redacted]' }),
-    ]);
-  });
-
-  it('não marca como falha uma entrega enviada quando a persistência do sucesso falha', async () => {
+  it('classifica como skipped o envio aceito quando a conclusão de sucesso não é persistida', async () => {
     const repository = fakeRepository({
       claimed: [emailDelivery],
       completeError: new Error('database unavailable'),
     });
     const graph = fakeGraph();
 
-    await expect(processDeliveries({
+    const result = await processDeliveries({
       repository,
       graph,
       appBaseUrl: 'https://responsum.example',
       now,
-    })).rejects.toThrow('database unavailable');
+    });
 
     expect(graph.sendEmail).toHaveBeenCalledTimes(1);
     expect(repository.complete).toHaveBeenCalledTimes(1);
     expect(repository.completed).toEqual([
       expect.objectContaining({ id: emailDelivery.id, success: true }),
     ]);
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, skipped: 1 });
+  });
+
+  it('continua o lote quando a conclusão da falha Graph da primeira entrega é rejeitada', async () => {
+    const repository = fakeRepository({
+      claimed: [emailDelivery, teamsDelivery],
+      completeErrors: [new Error('database unavailable')],
+    });
+    const graph = fakeGraph({ emailError: new Error('primeira falha Graph') });
+
+    const result = await processDeliveries({
+      repository,
+      graph,
+      appBaseUrl: 'https://responsum.example',
+      now,
+    });
+
+    expect(graph.sendEmail).toHaveBeenCalledTimes(1);
+    expect(graph.sendTeamsActivity).toHaveBeenCalledTimes(1);
+    expect(repository.completed).toEqual([
+      expect.objectContaining({ id: emailDelivery.id, success: false, error: 'delivery_error' }),
+      expect.objectContaining({ id: teamsDelivery.id, success: true }),
+    ]);
+    expect(result).toEqual({ selected: 2, sent: 1, failed: 0, skipped: 1 });
+  });
+
+  it('continua o lote depois de rejeições de conclusão para entrega inválida e destinatário ausente', async () => {
+    const invalidDelivery = { ...emailDelivery, id: 'invalid-delivery', channel: 'push' };
+    const missingRequesterDelivery = { ...emailDelivery, id: 'missing-requester', requester: null };
+    const repository = fakeRepository({
+      claimed: [invalidDelivery, missingRequesterDelivery, teamsDelivery],
+      completeErrors: [new Error('database unavailable'), new Error('database unavailable')],
+    });
+    const graph = fakeGraph();
+
+    const result = await processDeliveries({
+      repository,
+      graph,
+      appBaseUrl: 'https://responsum.example',
+      now,
+    });
+
+    expect(graph.sendEmail).not.toHaveBeenCalled();
+    expect(graph.sendTeamsActivity).toHaveBeenCalledTimes(1);
+    expect(repository.complete).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ selected: 3, sent: 1, failed: 0, skipped: 2 });
   });
 
   it('retorna somente contadores quando não há entregas no lote', async () => {
