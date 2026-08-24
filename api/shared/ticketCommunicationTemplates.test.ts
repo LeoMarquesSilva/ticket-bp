@@ -50,6 +50,10 @@ describe('buildNotificationContent', () => {
     expect(content.email.html).toContain('Responda para continuarmos &lt;agora&gt;.');
     expect(content.email.html).toContain('Continuar atendimento');
     expect(content.email.html).not.toContain('malicioso.example');
+    expect(content.teams).toMatchObject({
+      label: 'Responder chamado',
+      previewText: 'O suporte aguarda sua resposta há mais de 48 horas.',
+    });
   });
 
   it('descarta configuração inválida por campo e preserva os defaults versionados', () => {

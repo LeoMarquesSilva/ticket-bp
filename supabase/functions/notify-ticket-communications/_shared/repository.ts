@@ -5,6 +5,7 @@ const RPCS = {
   claim: 'helpdesk_claim_ticket_notifications',
   countReady: 'helpdesk_count_ready_ticket_notifications',
   complete: 'helpdesk_complete_ticket_notification',
+  emailTemplates: 'helpdesk_get_ticket_communication_email_templates',
 } as const;
 
 const PAGE_SIZE = 500;
@@ -52,6 +53,20 @@ export function createTicketCommunicationRepository(supabaseAdmin: unknown) {
   const client = clientFrom(supabaseAdmin);
 
   return {
+    async getEmailTemplateOverrides() {
+      const result = await client.rpc(RPCS.emailTemplates, {});
+      throwOnError(result.error, 'email_templates');
+      if (typeof result.data !== 'string' || !result.data.trim()) return {};
+      try {
+        const parsed = JSON.parse(result.data);
+        return parsed?.version === 1 && parsed.templates && typeof parsed.templates === 'object'
+          ? parsed.templates
+          : {};
+      } catch {
+        return {};
+      }
+    },
+
     async listCandidates(ticketId?: string) {
       const candidates: ReturnType<typeof mapContext>[] = [];
       let afterId: string | null = null;

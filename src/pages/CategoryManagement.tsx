@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, RefreshCw, Tag, MessageCircle, FolderTree, MessageSquare, Settings2 } from 'lucide-react';
+import { Plus, RefreshCw, Tag, MessageCircle, FolderTree, MessageSquare, Settings2, Mail } from 'lucide-react';
 import { useCategories } from '@/hooks/useCategories';
 import { useEvolutionApi } from '@/hooks/useEvolutionApi';
 import { useQuickReplyTemplates } from '@/hooks/useQuickReplyTemplates';
@@ -10,6 +10,7 @@ import CategoriesTab from '@/components/categories/CategoriesTab';
 import FrentesTab from '@/components/categories/FrentesTab';
 import WhatsAppTab from '@/components/categories/WhatsAppTab';
 import QuickRepliesTab from '@/components/categories/QuickRepliesTab';
+import TicketCommunicationsTab from '@/components/categories/TicketCommunicationsTab';
 import CategoryFormDialog from '@/components/categories/CategoryFormDialog';
 import SubcategoryFormDialog from '@/components/categories/SubcategoryFormDialog';
 import FrenteFormDialog from '@/components/categories/FrenteFormDialog';
@@ -112,6 +113,10 @@ export default function CategoryManagement() {
           <TabsTrigger value="respostas-rapidas" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
             <MessageSquare className="h-4 w-4" />
             Respostas Rápidas
+          </TabsTrigger>
+          <TabsTrigger value="comunicacoes" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+            <Mail className="h-4 w-4" />
+            Comunicações
           </TabsTrigger>
         </TabsList>
         </div>
@@ -243,6 +248,10 @@ export default function CategoryManagement() {
             onDelete={(t) => quickReplies.setPendingDelete(t)}
             onMove={(t, dir) => void quickReplies.moveTemplate(t, dir)}
           />
+        </TabsContent>
+
+        <TabsContent value="comunicacoes" className="mt-6">
+          <TicketCommunicationsTab />
         </TabsContent>
       </Tabs>
 

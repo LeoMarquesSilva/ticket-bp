@@ -572,6 +572,21 @@ describe('createTicketCommunicationRepository', () => {
       p_next_attempt_at: '2026-08-25T12:00:00.000Z',
     });
   });
+
+  it('lê somente o envelope versionado dos textos de e-mail', async () => {
+    const fake = fakeSupabase({ rpcs: {
+      helpdesk_get_ticket_communication_email_templates: {
+        data: '{"version":1,"templates":{"awaiting_feedback":{"action":"Avaliar agora"}}}',
+        error: null,
+      },
+    }});
+    const repository = createTicketCommunicationRepository(fake.client);
+
+    await expect(repository.getEmailTemplateOverrides()).resolves.toEqual({
+      awaiting_feedback: { action: 'Avaliar agora' },
+    });
+    expect(fake.rpc).toHaveBeenCalledWith('helpdesk_get_ticket_communication_email_templates', {});
+  });
 });
 
 describe('createCorsHeaders', () => {

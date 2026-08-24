@@ -125,3 +125,9 @@ Após o rollout, acompanhe a tabela de entregas nas primeiras execuções. Prese
 ## 8. Semântica de entrega externa
 
 A fila oferece deduplicação local, revalidação por entrega e fencing de leases, mas o envio externo é **at-least-once residual**, não exactly-once. Se o Graph aceitar `sendMail` e a resposta ou a conclusão no banco se perder, o retry poderá duplicar o e-mail. Não prometa ausência absoluta de duplicatas distribuídas; investigue pelo horário Graph, `attempt_count` e auditoria da entrega.
+
+## 9. Visual e textos dos e-mails
+
+Administradores e perfis com `manage_categories` encontram a aba **Estrutura de atendimento → Comunicações**. A tela permite visualizar as três comunicações em desktop/mobile e editar somente assunto, texto principal e rótulo do botão.
+
+Os ajustes são salvos na chave `ticket_communication_email_templates_v1` de `app_c009c0e4f1_integration_settings`, em um envelope JSON `version: 1`. HTML, destinatário e URL não são configuráveis; a Edge Function saneia novamente o conteúdo e usa os padrões versionados se a configuração estiver ausente ou inválida. O link continua sendo criado exclusivamente com `APP_PUBLIC_URL` e o ID do chamado.

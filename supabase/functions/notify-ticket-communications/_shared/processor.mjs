@@ -167,6 +167,13 @@ export async function processDeliveries({
   };
   let batches = 0;
   let queueDrained = false;
+  let emailTemplateOverrides = {};
+  try {
+    emailTemplateOverrides = await repository.getEmailTemplateOverrides();
+  } catch {
+    // Configuração visual nunca deve bloquear uma comunicação operacional.
+    emailTemplateOverrides = {};
+  }
 
   while (
     counts.selected < effectiveBudget.maxDeliveries
@@ -242,6 +249,7 @@ export async function processDeliveries({
         ticket: context.ticket,
         requester: context.requester,
         appBaseUrl,
+        emailTemplateOverrides,
       });
       const email = context.requester.email.trim();
 

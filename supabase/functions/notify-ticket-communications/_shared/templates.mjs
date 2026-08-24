@@ -137,6 +137,7 @@ export function buildNotificationContent({ type, ticket, requester, appBaseUrl, 
   const feedback = type !== 'awaiting_requester';
   const webUrl = buildTicketUrl(appBaseUrl, ticket.id, feedback);
   const copy = resolveCopy(type, ticket.title, emailTemplateOverrides);
+  const teamsCopy = resolveCopy(type, ticket.title, {});
   const html = renderEmailHtml({
     name: requester.name, title: ticket.title, reason: copy.reason,
     action: copy.action, webUrl, type,
@@ -147,8 +148,8 @@ export function buildNotificationContent({ type, ticket, requester, appBaseUrl, 
     email: { subject: copy.subject, html, text },
     teams: {
       topic: ticket.title,
-      label: copy.action,
-      previewText: copy.reason,
+      label: teamsCopy.action,
+      previewText: teamsCopy.reason,
       ticketUrl: webUrl,
     },
   };

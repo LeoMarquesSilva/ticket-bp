@@ -51,7 +51,7 @@ const teamsDelivery = {
   lastHumanMessage: awaitingRequesterCandidate.lastHumanMessage,
 };
 
-function fakeRepository({ candidates = [], claimed = [], completeError, completeErrors = [] } = {}) {
+function fakeRepository({ candidates = [], claimed = [], completeError, completeErrors = [], emailTemplateOverrides = {} } = {}) {
   const enqueued: Record<string, unknown>[] = [];
   const completed: Record<string, unknown>[] = [];
   const claimQueue = [...claimed];
@@ -60,6 +60,7 @@ function fakeRepository({ candidates = [], claimed = [], completeError, complete
     enqueued,
     completed,
     listCandidates: vi.fn(async () => candidates),
+    getEmailTemplateOverrides: vi.fn(async () => emailTemplateOverrides),
     enqueue: vi.fn(async (row) => {
       enqueued.push(row);
       return row;
@@ -195,6 +196,28 @@ describe('prepareDeliveries', () => {
 });
 
 describe('processDeliveries', () => {
+  it('carrega a configuração uma vez e aplica os textos saneados ao e-mail', async () => {
+    const repository = fakeRepository({
+      claimed: [emailDelivery],
+      emailTemplateOverrides: {
+        awaiting_requester: { subject: 'Precisamos da sua resposta', action: 'Responder agora' },
+      },
+    });
+    const graph = fakeGraph();
+
+    await processDeliveries({
+      repository, graph, appBaseUrl: 'https://responsum.example', now,
+      monotonicNow: () => 0,
+    });
+
+    expect(repository.getEmailTemplateOverrides).toHaveBeenCalledTimes(1);
+    expect(graph.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: requester.email,
+      subject: 'Precisamos da sua resposta',
+      html: expect.stringContaining('Responder agora'),
+    }));
+  });
+
   it('drena 102 entregas em mais de um lote dentro do orçamento explícito', async () => {
     const deliveries = Array.from({ length: 102 }, (_, index) => ({
       ...emailDelivery,

@@ -613,6 +613,22 @@ begin
 end;
 $$;
 
+create function public.helpdesk_get_ticket_communication_email_templates()
+returns text
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select settings.value
+  from public.app_c009c0e4f1_integration_settings settings
+  where settings.key = 'ticket_communication_email_templates_v1'
+  limit 1;
+$$;
+
+revoke all
+  on function public.helpdesk_get_ticket_communication_email_templates()
+  from public, anon, authenticated, service_role;
 revoke all
   on function public.helpdesk_list_ticket_communication_candidates(uuid, integer, uuid)
   from public, anon, authenticated, service_role;
@@ -635,6 +651,9 @@ revoke all
   on function public.helpdesk_finish_ticket(uuid, uuid, text, timestamptz, boolean, uuid, timestamptz)
   from public, anon, authenticated, service_role;
 
+grant execute
+  on function public.helpdesk_get_ticket_communication_email_templates()
+  to service_role;
 grant execute
   on function public.helpdesk_list_ticket_communication_candidates(uuid, integer, uuid)
   to service_role;
