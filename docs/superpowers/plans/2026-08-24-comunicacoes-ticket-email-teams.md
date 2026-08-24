@@ -653,51 +653,46 @@ git commit -m "feat: processa entregas de comunicacao por canal"
 **Files:**
 - Create: `supabase/functions/notify-ticket-communications/_shared/repository.ts`
 - Create: `supabase/functions/notify-ticket-communications/_shared/cors.ts`
+- Create: `supabase/functions/notify-ticket-communications/_shared/requestHandler.mjs`
 - Create: `supabase/functions/notify-ticket-communications/index.ts`
+- Create: `api/shared/ticketCommunicationHandler.test.ts`
 - Modify: `supabase/config.toml`
 - Modify: `.env.example`
 
 **Interfaces:**
 - `ticket_resolved`: body `{ action: 'ticket_resolved', ticketId: string }`, resposta `{ ok, prepared, sent, failed }`.
-- `daily`: body `{ action: 'daily' }`, autorizado por JWT service role, mesma resposta agregada.
+- `daily`: body `{ action: 'daily' }`, autorizado pela secret key nomeada `ticket-communications` no header `apikey`, mesma resposta agregada.
 
 - [ ] **Step 1: Criar repository usando service role e RPCs**
 
 `listCandidates(ticketId?)` consulta tickets `open/assigned/in_progress` e tickets `resolved` sem feedback posteriores à ativação, busca os respectivos usuários e a última mensagem com `.neq('user_id', 'system').order('created_at', { ascending: false }).limit(1)`. Quando `ticketId` existe, restringe todas as consultas a esse UUID. `claim` e `complete` chamam as RPCs da Task 4.
 
-- [ ] **Step 2: Criar handler autenticado**
+- [ ] **Step 2: Escrever testes RED do handler injetável**
 
-```ts
-const body = await req.json().catch(() => ({})) as { action?: string; ticketId?: string };
-if (!['ticket_resolved', 'daily'].includes(body.action ?? '')) return json({ error: 'Ação inválida' }, 400);
+Criar `requestHandler.mjs` sem dependência de Deno, com dependências injetadas, e testar: ação inválida; UUID inválido; `ticket_resolved` recusado sem `authMode = user`; `daily` recusado sem `authMode = secret`; ticket não visível/não resolvido; nenhum destinatário/conteúdo vindo do body; e resposta apenas com contagens.
 
-if (body.action === 'ticket_resolved') {
-  const { data: { user }, error } = await userClient.auth.getUser();
-  if (error || !user) return json({ error: 'Não autorizado' }, 401);
-  if (!isUuid(body.ticketId)) return json({ error: 'ticketId inválido' }, 400);
-}
+Run: `npm test -- api/shared/ticketCommunicationHandler.test.ts`
 
-if (body.action === 'daily' && !isServiceRoleJwt(req.headers.get('Authorization'))) {
-  return json({ error: 'Não autorizado' }, 401);
-}
-```
+Expected: FAIL porque o handler ainda não existe.
 
-Não comparar a chave service role em texto. Validar o JWT recebido pelo cliente Supabase e confirmar a claim `role = service_role` para `daily`. Para `ticket_resolved`, confirmar que o ticket está `resolved`; a operação é idempotente e não aceita conteúdo/destinatário do cliente.
+- [ ] **Step 3: Criar handler e wrapper autenticado**
 
-- [ ] **Step 3: Configurar Graph e orquestrar**
+Usar `withSupabase({ auth: ['user', 'secret:ticket-communications'] }, ...)` de `npm:@supabase/server`. O handler injetável deve aceitar somente `authMode`, body e dependências já construídas. Para `ticket_resolved`, exigir `authMode = user`, UUID válido, visibilidade do ticket pelo cliente RLS do usuário e status `resolved`. Para `daily`, exigir `authMode = secret`. A operação é idempotente e não aceita conteúdo/destinatário do cliente.
+
+- [ ] **Step 4: Configurar Graph e orquestrar**
 
 Validar os seis secrets antes de processar. Criar Graph client uma vez, executar `prepareDeliveries` com `ticketId` no modo imediato ou sem filtro no modo diário e depois `processDeliveries`. Responder somente contagens. Adicionar:
 
 ```toml
 [functions.notify-ticket-communications]
-verify_jwt = true
+verify_jwt = false
 ```
 
 Adicionar à `.env.example` somente os nomes `MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_NOTIFICATION_SENDER`, `MICROSOFT_TEAMS_APP_ID` e `HELPDESK_APP_BASE_URL`.
 
-- [ ] **Step 4: Verificar importações e configuração**
+- [ ] **Step 5: Executar GREEN e verificar importações/configuração**
 
-Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts`
+Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationHandler.test.ts`
 
 Run: `npx supabase test db supabase/tests/database/ticket_communications.test.sql`
 
@@ -705,10 +700,10 @@ Run, se Deno estiver disponível: `deno check supabase/functions/notify-ticket-c
 
 Expected: todos PASS; Deno sem erro de tipo/importação.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add .env.example supabase/config.toml supabase/functions/notify-ticket-communications
+git add .env.example api/shared/ticketCommunicationHandler.test.ts supabase/config.toml supabase/functions/notify-ticket-communications
 git commit -m "feat: adiciona edge function de comunicacoes"
 ```
 
@@ -868,7 +863,7 @@ Documentar na ordem:
 5. aprovar `TeamsActivity.Send.User` no manifesto e instalar o app no escopo pessoal dos usuários por política do Teams Admin Center, concedendo o consentimento específico ao recurso;
 6. configurar os seis Edge Function secrets;
 7. aplicar migration e fazer deploy da Function;
-8. criar cron `0 12 * * *` chamando `{SUPABASE_URL}/functions/v1/notify-ticket-communications` com body `{ "action": "daily" }` e JWT service role armazenado no cofre/painel, nunca no repositório;
+8. criar uma secret key Supabase nomeada `ticket-communications` e o cron `0 12 * * *` chamando `{SUPABASE_URL}/functions/v1/notify-ticket-communications` com body `{ "action": "daily" }` e a secret key armazenada no Vault/painel e enviada somente em `apikey`, nunca no repositório;
 9. realizar smoke test com usuário de homologação e consultas de auditoria na tabela de entregas;
 10. diagnosticar `403` de Graph, app não instalado, UPN não resolvido e `429`.
 
@@ -899,7 +894,7 @@ git commit -m "docs: adiciona implantacao de email e teams"
 
 - [ ] **Step 1: Executar suíte direcionada**
 
-Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.finishTicket.test.ts src/utils/finishTicketOrchestration.test.ts`
+Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationHandler.test.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.finishTicket.test.ts src/utils/finishTicketOrchestration.test.ts`
 
 Run: `npx supabase test db supabase/tests/database/ticket_communications.test.sql`
 
@@ -938,7 +933,7 @@ Run: `git status --short`
 Confirmar que alterações preexistentes do usuário continuam fora dos commits. Se a verificação exigiu correção, criar teste RED, corrigir e commitar somente os arquivos da funcionalidade:
 
 ```bash
-git add api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts supabase/tests/database/ticket_communications.test.sql src/services/ticketCommunicationService.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.ts src/services/ticketService.finishTicket.test.ts supabase/config.toml supabase/migrations/*_ticket_communications.sql supabase/functions/notify-ticket-communications .env.example .gitignore docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
+git add api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationHandler.test.ts supabase/tests/database/ticket_communications.test.sql src/services/ticketCommunicationService.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.ts src/services/ticketService.finishTicket.test.ts supabase/config.toml supabase/migrations/*_ticket_communications.sql supabase/functions/notify-ticket-communications .env.example .gitignore docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
 git commit -m "fix: corrige verificacao de comunicacoes de tickets"
 ```
 

@@ -42,7 +42,7 @@ No Teams, o aviso aparecerá no feed Atividade e poderá gerar banner, som e not
 
 ### Edge Function
 
-Será criada a Edge Function `notify-ticket-communications`, com autenticação JWT habilitada e dois comandos:
+Será criada a Edge Function `notify-ticket-communications`, com autenticação explícita pelo `@supabase/server` e dois comandos:
 
 - `ticket_resolved`, recebido do cliente após uma finalização bem-sucedida, contendo apenas `ticketId`;
 - `daily`, autorizado somente para a rotina administrativa agendada.
@@ -108,7 +108,7 @@ O Microsoft Entra app ID deverá constar em `webApplicationInfo` no manifesto do
 
 O comando `daily` será agendado no Supabase Cron para `0 12 * * *` em UTC, equivalente a 09:00 em `America/Sao_Paulo` durante todo o ano, pois o Brasil não utiliza horário de verão no fuso adotado atualmente.
 
-A chamada agendada usará uma credencial armazenada no ambiente seguro do Supabase; nenhum JWT, service role key ou segredo Microsoft será gravado em migrations ou arquivos versionados. As instruções de implantação descreverão a criação do agendamento no painel do Supabase e uma chamada manual de verificação.
+A chamada agendada usará uma secret key nomeada `ticket-communications`, armazenada no Vault/ambiente seguro do Supabase e enviada somente no header `apikey`; nenhum JWT, service role key ou segredo Microsoft será gravado em migrations ou arquivos versionados. As instruções de implantação descreverão a criação do agendamento no painel do Supabase e uma chamada manual de verificação.
 
 ## Retentativas e tratamento de erros
 
@@ -124,7 +124,7 @@ Falhas de e-mail ou Teams não alteram o estado do chamado, não revertem avalia
 
 O comando `ticket_resolved` exigirá usuário autenticado e verificará no banco se o chamado está realmente finalizado. Repetições são seguras pela chave única.
 
-O comando `daily` não será acessível como ação administrativa comum da interface. Ele exigirá a identidade usada pelo agendador e executará consultas com service role somente dentro da Edge Function.
+O comando `daily` não será acessível como ação administrativa comum da interface. Ele exigirá `authMode = secret` validado pelo `@supabase/server` contra a secret key nomeada `ticket-communications` e executará consultas privilegiadas somente dentro da Edge Function. O comando `ticket_resolved` exigirá `authMode = user`. Como secret keys não são JWTs, a configuração da Function terá `verify_jwt = false`; isso não a torna pública, pois o SDK valida ambos os modos antes do handler.
 
 Todas as tabelas novas terão RLS habilitada e nenhuma política de leitura ou escrita para `anon` ou `authenticated`. O acesso ocorrerá apenas por service role e por RPCs restritas ao service role.
 
