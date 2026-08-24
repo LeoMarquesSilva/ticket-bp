@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(35);
+select plan(36);
 
 select has_table(
   'public',
@@ -60,10 +60,75 @@ select results_eq(
   'as RPCs executam com os privilegios do chamador'
 );
 
--- A fila depende apenas do UUID do ticket. Desabilitar os triggers nesta
--- transacao evita acoplar o teste aos dados/seed da tabela de tickets; o
--- rollback restaura os triggers e remove todas as entregas criadas aqui.
-alter table public.app_c009c0e4f1_ticket_notification_deliveries disable trigger all;
+-- Fixtures validos preservam e exercitam a FK da entrega. Os campos refletem
+-- os inserts reais de AuthContext/UserService e TicketService. A transacao do
+-- teste remove usuario, ticket e entregas no rollback final.
+insert into public.app_c009c0e4f1_users (
+  id,
+  email,
+  name,
+  role,
+  department,
+  is_active,
+  is_online,
+  first_login,
+  must_change_password,
+  ticket_view_preference,
+  created_at,
+  updated_at
+)
+values (
+  '40000000-0000-0000-0000-000000000002',
+  'ticket-communications-pgtap@example.invalid',
+  'Ticket Communications pgTAP',
+  'user',
+  'Geral',
+  true,
+  false,
+  false,
+  false,
+  'list',
+  '2099-08-24 11:00:00+00',
+  '2099-08-24 11:00:00+00'
+);
+
+-- O trigger de webhook e um trigger de usuario e nao participa da FK. Ele e
+-- suspenso somente durante o insert da fixture para o teste nunca enfileirar
+-- uma chamada HTTP; os triggers internos de integridade continuam ativos.
+alter table public.app_c009c0e4f1_tickets
+  disable trigger notification_push_tickets;
+
+insert into public.app_c009c0e4f1_tickets (
+  id,
+  title,
+  description,
+  status,
+  priority,
+  category,
+  subcategory,
+  created_by,
+  created_by_name,
+  created_at,
+  updated_at,
+  attachments
+)
+values (
+  '40000000-0000-0000-0000-000000000001',
+  'Ticket Communications pgTAP',
+  'Fixture transacional para validar a FK da fila',
+  'open',
+  'medium',
+  'testes',
+  'comunicacoes',
+  '40000000-0000-0000-0000-000000000002',
+  'Ticket Communications pgTAP',
+  '2099-08-24 11:00:00+00',
+  '2099-08-24 11:00:00+00',
+  '[]'::jsonb
+);
+
+alter table public.app_c009c0e4f1_tickets
+  enable trigger notification_push_tickets;
 
 create temporary table ticket_communication_test_enqueues (
   call_no integer primary key,
@@ -76,25 +141,29 @@ set local role anon;
 
 select throws_ok(
   $$select count(*) from public.app_c009c0e4f1_ticket_notification_deliveries$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'anon nao consegue consultar a tabela'
 );
 
 select throws_ok(
   $$select public.helpdesk_enqueue_ticket_notification('40000000-0000-0000-0000-000000000001', 'awaiting_requester', 'email', '2026-08-24')$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'anon nao executa a RPC de enfileiramento'
 );
 
 select throws_ok(
   $$select * from public.helpdesk_claim_ticket_notifications(1, '2099-08-24 12:00:00+00')$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'anon nao executa a RPC de reserva'
 );
 
 select throws_ok(
   $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', true, null, null)$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'anon nao executa a RPC de conclusao'
 );
 
@@ -103,30 +172,48 @@ set local role authenticated;
 
 select throws_ok(
   $$select count(*) from public.app_c009c0e4f1_ticket_notification_deliveries$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'authenticated nao consegue consultar a tabela'
 );
 
 select throws_ok(
   $$select public.helpdesk_enqueue_ticket_notification('40000000-0000-0000-0000-000000000001', 'awaiting_requester', 'email', '2026-08-24')$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'authenticated nao executa a RPC de enfileiramento'
 );
 
 select throws_ok(
   $$select * from public.helpdesk_claim_ticket_notifications(1, '2099-08-24 12:00:00+00')$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'authenticated nao executa a RPC de reserva'
 );
 
 select throws_ok(
   $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', true, null, null)$$,
-  '42501',
+  '42501'::char(5),
+  null::text,
   'authenticated nao executa a RPC de conclusao'
 );
 
 reset role;
 set local role service_role;
+
+select throws_ok(
+  $$
+    select public.helpdesk_enqueue_ticket_notification(
+      '40000000-0000-0000-0000-000000000098',
+      'awaiting_requester',
+      'email',
+      '2026-08-24'
+    )
+  $$,
+  '23503'::char(5),
+  null::text,
+  'a FK rejeita uma entrega sem ticket correspondente'
+);
 
 insert into pg_temp.ticket_communication_test_enqueues (call_no, id)
 select 1, id
@@ -194,7 +281,8 @@ select throws_ok(
       '2026-08-24'
     )
   $$,
-  '22023',
+  '22023'::char(5),
+  'invalid notification_type',
   'a RPC rejeita um tipo de notificacao invalido'
 );
 
@@ -207,7 +295,8 @@ select throws_ok(
       '2026-08-24'
     )
   $$,
-  '22023',
+  '22023'::char(5),
+  'invalid channel',
   'a RPC rejeita um canal invalido'
 );
 
