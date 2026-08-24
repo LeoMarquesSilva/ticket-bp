@@ -16,6 +16,27 @@ function jsonResponse(body: unknown, status = 200, headers: Record<string, strin
   });
 }
 
+function sentMime(fetchImpl: ReturnType<typeof vi.fn>) {
+  const emailCall = fetchImpl.mock.calls[fetchImpl.mock.calls.length - 1];
+  return Buffer.from(emailCall[1].body, 'base64').toString('utf8');
+}
+
+function mimeBase64Parts(mime: string) {
+  const lines = mime.split('\r\n');
+  const parts: string[][] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index] !== 'Content-Transfer-Encoding: base64') continue;
+    const encodedLines: string[] = [];
+    for (let bodyIndex = index + 2; bodyIndex < lines.length && !lines[bodyIndex].startsWith('--responsum-ticket-notification'); bodyIndex += 1) {
+      encodedLines.push(lines[bodyIndex]);
+    }
+    parts.push(encodedLines);
+  }
+
+  return parts;
+}
+
 describe('createGraphClient', () => {
   it('envia email pela caixa configurada', async () => {
     const fetchImpl = vi.fn()
@@ -57,17 +78,60 @@ describe('createGraphClient', () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
       .mockResolvedValueOnce(jsonResponse({ error: { code: 'Request_ResourceNotFound' } }, 404))
-      .mockResolvedValueOnce(jsonResponse({ value: [] }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'entra-user-id' }));
+      .mockResolvedValueOnce(jsonResponse({ id: 'entra-user-id', userPrincipalName: 'ana@bpplaw.com.br', mail: 'ana@bpplaw.com.br' }));
     const graph = createGraphClient(config, { fetchImpl, sleep: vi.fn() });
 
     await expect(graph.resolveUserId('ana@bismarchipires.com.br')).resolves.toBe('entra-user-id');
 
     expect(fetchImpl.mock.calls.slice(1).map(([url]) => url)).toEqual([
-      'https://graph.microsoft.com/v1.0/users/ana%40bismarchipires.com.br?$select=id',
-      "https://graph.microsoft.com/v1.0/users?$filter=mail%20eq%20'ana%40bismarchipires.com.br'%20or%20userPrincipalName%20eq%20'ana%40bismarchipires.com.br'&$select=id&$top=1",
-      'https://graph.microsoft.com/v1.0/users/ana%40bpplaw.com.br?$select=id',
+      'https://graph.microsoft.com/v1.0/users/ana%40bismarchipires.com.br?$select=id,userPrincipalName,mail',
+      'https://graph.microsoft.com/v1.0/users/ana%40bpplaw.com.br?$select=id,userPrincipalName,mail',
     ]);
+  });
+
+  it('não aceita resposta direta cujo UPN não coincide exatamente', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'wrong-user-id', userPrincipalName: 'outra.pessoa@bismarchipires.com.br', mail: 'ana@bismarchipires.com.br' }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: 'Request_ResourceNotFound' } }, 404))
+      .mockResolvedValueOnce(jsonResponse({ value: [] }))
+      .mockResolvedValueOnce(jsonResponse({ value: [] }));
+    const graph = createGraphClient(config, { fetchImpl, sleep: vi.fn() });
+
+    await expect(graph.resolveUserId('ana@bismarchipires.com.br')).resolves.toBeNull();
+  });
+
+  it('aceita somente um resultado de mail que coincide exatamente', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: 'Request_ResourceNotFound' } }, 404))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: 'Request_ResourceNotFound' } }, 404))
+      .mockResolvedValueOnce(jsonResponse({
+        value: [{ id: 'mail-user-id', mail: 'ana@bismarchipires.com.br', userPrincipalName: 'ana.externa@tenant.onmicrosoft.com' }],
+      }));
+    const graph = createGraphClient(config, { fetchImpl, sleep: vi.fn() });
+
+    await expect(graph.resolveUserId('ana@bismarchipires.com.br')).resolves.toBe('mail-user-id');
+    expect(fetchImpl.mock.calls[3][0]).toBe(
+      "https://graph.microsoft.com/v1.0/users?$filter=mail%20eq%20'ana%40bismarchipires.com.br'&$select=id,mail,userPrincipalName&$top=2",
+    );
+  });
+
+  it('rejeita mail ambíguo sem escolher arbitrariamente uma pessoa', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: 'Request_ResourceNotFound' } }, 404))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: 'Request_ResourceNotFound' } }, 404))
+      .mockResolvedValueOnce(jsonResponse({
+        value: [
+          { id: 'first-user-id', mail: 'ana@bismarchipires.com.br', userPrincipalName: 'ana.primeira@tenant.onmicrosoft.com' },
+          { id: 'second-user-id', mail: 'ana@bismarchipires.com.br', userPrincipalName: 'ana.segunda@tenant.onmicrosoft.com' },
+        ],
+      }));
+    const graph = createGraphClient(config, { fetchImpl, sleep: vi.fn() });
+
+    await expect(graph.resolveUserId('ana@bismarchipires.com.br')).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
   it('envia atividade com link do chamado', async () => {
@@ -95,6 +159,32 @@ describe('createGraphClient', () => {
     });
   });
 
+  it('serializa assunto e partes Unicode longas em MIME com linhas RFC-compliant', async () => {
+    const subject = `Atualização ${'áéíóú 😀 '.repeat(18)}`;
+    const text = `Olá, ${'conteúdo acentuado 😀 '.repeat(40)}`;
+    const html = `<p>${'conteúdo HTML áéíóú 😀 '.repeat(40)}</p>`;
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
+      .mockResolvedValueOnce(new Response(null, { status: 202 }));
+    const graph = createGraphClient(config, { fetchImpl, sleep: vi.fn() });
+
+    await graph.sendEmail({ to: 'ana@bpplaw.com.br', subject, html, text });
+
+    const mime = sentMime(fetchImpl);
+    const subjectHeader = mime.slice(mime.indexOf('Subject:'), mime.indexOf('MIME-Version:'));
+    const encodedWords = [...subjectHeader.matchAll(/=\?UTF-8\?B\?([A-Za-z0-9+/=]+)\?=/g)];
+    const encodedParts = mimeBase64Parts(mime);
+
+    expect(subjectHeader).toContain('\r\n ');
+    expect(encodedWords.length).toBeGreaterThan(1);
+    expect(encodedWords.every(([word]) => word.length <= 75)).toBe(true);
+    expect(encodedWords.map(([, value]) => Buffer.from(value, 'base64').toString('utf8')).join('')).toBe(subject);
+    expect(encodedParts).toHaveLength(2);
+    expect(encodedParts.flat().every((line) => line.length <= 76 && /^[A-Za-z0-9+/]+={0,2}$/.test(line))).toBe(true);
+    expect(Buffer.from(encodedParts[0].join(''), 'base64').toString('utf8')).toBe(text);
+    expect(Buffer.from(encodedParts[1].join(''), 'base64').toString('utf8')).toBe(html);
+  });
+
   it('respeita Retry-After em respostas 429', async () => {
     const sleep = vi.fn();
     const fetchImpl = vi.fn()
@@ -107,6 +197,34 @@ describe('createGraphClient', () => {
 
     expect(sleep).toHaveBeenCalledOnce();
     expect(sleep).toHaveBeenCalledWith(1000);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('repete falha transitória ao obter token antes de enviar o e-mail', async () => {
+    const sleep = vi.fn();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
+      .mockResolvedValueOnce(new Response(null, { status: 202 }));
+    const graph = createGraphClient(config, { fetchImpl, sleep });
+
+    await graph.sendEmail({ to: 'ana@bpplaw.com.br', subject: 'Assunto', html: '<p>Oi</p>', text: 'Oi' });
+
+    expect(sleep).toHaveBeenCalledWith(250);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('permite uma nova obtenção de token após falha terminal anterior', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: 'invalid_client' }, 401))
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'new-access-token' }))
+      .mockResolvedValueOnce(new Response(null, { status: 202 }));
+    const graph = createGraphClient(config, { fetchImpl, sleep: vi.fn() });
+    const email = { to: 'ana@bpplaw.com.br', subject: 'Assunto', html: '<p>Oi</p>', text: 'Oi' };
+
+    await expect(graph.sendEmail(email)).rejects.toThrow('Falha ao autenticar no Microsoft Graph (401)');
+    await expect(graph.sendEmail(email)).resolves.toBeInstanceOf(Response);
+
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 

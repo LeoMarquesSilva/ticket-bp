@@ -5,15 +5,46 @@ function utf8Base64(value) {
   return btoa(binary);
 }
 
+function foldBase64(value) {
+  return utf8Base64(value).match(/.{1,76}/g)?.join('\r\n') ?? '';
+}
+
+function encodedSubjectWords(value) {
+  const encoder = new TextEncoder();
+  const words = [];
+  let bytes = [];
+
+  for (const character of String(value)) {
+    const characterBytes = [...encoder.encode(character)];
+    if (bytes.length && bytes.length + characterBytes.length > 45) {
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      words.push(`=?UTF-8?B?${btoa(binary)}?=`);
+      bytes = [];
+    }
+    bytes.push(...characterBytes);
+  }
+
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  words.push(`=?UTF-8?B?${btoa(binary)}?=`);
+  return words;
+}
+
+function encodedSubjectHeader(subject) {
+  const words = encodedSubjectWords(subject);
+  if (words.length === 1) return `Subject: ${words[0]}`;
+  return ['Subject:', ...words.map((word) => ` ${word}`)].join('\r\n');
+}
+
 function buildMimeBase64({ from, to, subject, html, text }) {
   const boundary = 'responsum-ticket-notification';
   const safeFrom = String(from).replace(/[\r\n]/g, '');
   const safeTo = String(to).replace(/[\r\n]/g, '');
-  const encodedSubject = `=?UTF-8?B?${utf8Base64(String(subject))}?=`;
   const mime = [
     `From: ${safeFrom}`,
     `To: ${safeTo}`,
-    `Subject: ${encodedSubject}`,
+    encodedSubjectHeader(subject),
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
@@ -21,37 +52,57 @@ function buildMimeBase64({ from, to, subject, html, text }) {
     'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: base64',
     '',
-    utf8Base64(text),
+    foldBase64(text),
     `--${boundary}`,
     'Content-Type: text/html; charset="UTF-8"',
     'Content-Transfer-Encoding: base64',
     '',
-    utf8Base64(html),
+    foldBase64(html),
     `--${boundary}--`,
   ].join('\r\n');
   return utf8Base64(mime);
 }
 
-async function requestToken(config, fetchImpl) {
+function isRetryable(response) {
+  return [408, 429].includes(response.status) || response.status >= 500;
+}
+
+function retryDelayMs(response, attempt) {
+  const retryAfterHeader = response.headers.get('Retry-After');
+  const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader);
+  return Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : 250 * 2 ** (attempt - 1);
+}
+
+async function requestToken(config, fetchImpl, sleep) {
   const body = new URLSearchParams({
     client_id: config.clientId,
     client_secret: config.clientSecret,
     scope: 'https://graph.microsoft.com/.default',
     grant_type: 'client_credentials',
   });
-  const response = await fetchImpl(
-    `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    },
-  );
-  const json = await response.json().catch(() => ({}));
-  if (!response.ok || !json.access_token) {
-    throw new Error(`Falha ao autenticar no Microsoft Graph (${response.status})`);
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetchImpl(
+      `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      },
+    );
+    if (isRetryable(response) && attempt < 3) {
+      await sleep(retryDelayMs(response, attempt));
+      continue;
+    }
+
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || !json.access_token) {
+      throw new Error(`Falha ao autenticar no Microsoft Graph (${response.status})`);
+    }
+    return String(json.access_token);
   }
-  return String(json.access_token);
+
+  throw new Error('Falha ao autenticar no Microsoft Graph');
 }
 
 async function sanitizedGraphError(response) {
@@ -77,19 +128,30 @@ function emailVariants(email) {
 }
 
 async function resolveGraphUserId(email, graphRequest) {
-  for (const variant of emailVariants(email)) {
+  const variants = emailVariants(email);
+  for (const variant of variants) {
     const direct = await graphRequest(
-      `/users/${encodeURIComponent(variant)}?$select=id`,
+      `/users/${encodeURIComponent(variant)}?$select=id,userPrincipalName,mail`,
       {},
       { allowNotFound: true },
     );
-    if (direct.ok) return String((await direct.json()).id);
+    if (!direct.ok) continue;
+    const user = await direct.json();
+    if (user?.id && String(user.userPrincipalName ?? '').trim().toLowerCase() === variant) {
+      return String(user.id);
+    }
+  }
 
+  for (const variant of variants) {
     const escaped = variant.replace(/'/g, "''");
-    const filter = encodeURIComponent(`mail eq '${escaped}' or userPrincipalName eq '${escaped}'`);
-    const filtered = await graphRequest(`/users?$filter=${filter}&$select=id&$top=1`);
-    const user = (await filtered.json()).value?.[0];
-    if (user?.id) return String(user.id);
+    const filter = encodeURIComponent(`mail eq '${escaped}'`);
+    const filtered = await graphRequest(`/users?$filter=${filter}&$select=id,mail,userPrincipalName&$top=2`);
+    const users = (await filtered.json()).value;
+    const matches = Array.isArray(users)
+      ? users.filter((user) => user?.id && String(user.mail ?? '').trim().toLowerCase() === variant)
+      : [];
+    if (matches.length === 1) return String(matches[0].id);
+    if (matches.length > 1) return null;
   }
   return null;
 }
@@ -102,7 +164,15 @@ export function createGraphClient(
   } = {},
 ) {
   let tokenPromise;
-  const getToken = () => tokenPromise ??= requestToken(config, fetchImpl);
+  const getToken = () => {
+    if (!tokenPromise) {
+      tokenPromise = requestToken(config, fetchImpl, sleep).catch((error) => {
+        tokenPromise = undefined;
+        throw error;
+      });
+    }
+    return tokenPromise;
+  };
 
   const graphRequest = async (path, init = {}, options = {}, attempt = 1) => {
     const token = await getToken();
@@ -114,13 +184,9 @@ export function createGraphClient(
         ...(init.headers ?? {}),
       },
     });
-    if ([408, 429].includes(response.status) || response.status >= 500) {
-      if (attempt < 3) {
-        const retryAfterHeader = response.headers.get('Retry-After');
-        const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader);
-        await sleep(Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : 250 * 2 ** (attempt - 1));
-        return graphRequest(path, init, options, attempt + 1);
-      }
+    if (isRetryable(response) && attempt < 3) {
+      await sleep(retryDelayMs(response, attempt));
+      return graphRequest(path, init, options, attempt + 1);
     }
     if (options.allowNotFound && response.status === 404) return response;
     if (!response.ok) throw await sanitizedGraphError(response);
