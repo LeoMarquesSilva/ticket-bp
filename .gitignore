@@ -34,3 +34,9 @@ dist-ssr
 # Codex/Superpowers isolated worktrees
 .worktrees/
 .env.*.local
+
+# Pacote publicado manualmente no catálogo do Teams (manter só o template versionado)
+teams/responsum-notifications/*.zip
+teams/responsum-notifications/manifest.json
+teams/responsum-notifications/color.png
+teams/responsum-notifications/outline.png
