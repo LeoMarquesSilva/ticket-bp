@@ -43,4 +43,3 @@ Transformar os avisos de chamados em e-mails claros, confiáveis e alinhados à 
 - Serviço de leitura/escrita e fallback.
 - Componente administrativo: alternância de variante, preview e salvar/restaurar.
 - Processador: configuração carregada e aplicada sem aceitar destinatário ou link do banco.
-

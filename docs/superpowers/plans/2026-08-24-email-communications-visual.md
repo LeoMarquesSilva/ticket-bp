@@ -66,4 +66,3 @@
 - [ ] Rodar `npm test -- --run` e o Deno check da Edge Function.
 - [ ] Validar HTML sem conteúdo não escapado, JSON/manifesto e `git diff --check`.
 - [ ] Confirmar worktree limpo e commit final.
-
