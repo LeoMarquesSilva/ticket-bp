@@ -61,18 +61,21 @@ const fetch = withSupabase(
     if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
 
     const body = await req.json().catch(() => null);
-    const config = readRuntimeConfig();
-    if (!config) return json(503, { error: 'service_unavailable' });
-
     const result = await handleTicketCommunicationRequest({
       authMode: ctx.authMode,
       body,
       dependencies: {
         supabase: ctx.supabase,
-        repository: createTicketCommunicationRepository(ctx.supabaseAdmin),
-        graph: getGraphClient(config),
-        appBaseUrl: config.HELPDESK_APP_BASE_URL,
-        now: new Date(),
+        clock: () => new Date(),
+        createRuntimeDependencies: () => {
+          const config = readRuntimeConfig();
+          if (!config) return null;
+          return {
+            repository: createTicketCommunicationRepository(ctx.supabaseAdmin),
+            graph: getGraphClient(config),
+            appBaseUrl: config.HELPDESK_APP_BASE_URL,
+          };
+        },
       },
     });
 

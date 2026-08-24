@@ -7,7 +7,6 @@ const HOURS_72 = 72 * 60 * 60 * 1000;
 
 export function latestHumanMessage(messages) {
   return [...messages]
-    .filter((message) => message.user_id !== 'system')
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] ?? null;
 }
 

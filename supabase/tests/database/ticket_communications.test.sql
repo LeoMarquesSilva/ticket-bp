@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(36);
+select plan(54);
 
 select has_table(
   'public',
@@ -13,22 +13,36 @@ select has_table(
 select has_function(
   'public',
   'helpdesk_enqueue_ticket_notification',
-  array['uuid', 'text', 'text', 'text'],
+  array['uuid', 'text', 'text', 'text', 'timestamp with time zone'],
   'a RPC de enfileiramento existe'
 );
 
 select has_function(
   'public',
   'helpdesk_claim_ticket_notifications',
-  array['integer', 'timestamp with time zone'],
+  array['integer', 'timestamp with time zone', 'uuid', 'text'],
   'a RPC de reserva existe'
 );
 
 select has_function(
   'public',
   'helpdesk_complete_ticket_notification',
-  array['uuid', 'boolean', 'text', 'timestamp with time zone'],
+  array['uuid', 'text', 'text', 'timestamp with time zone'],
   'a RPC de conclusao existe'
+);
+
+select has_function(
+  'public',
+  'helpdesk_list_ticket_communication_candidates',
+  array['uuid', 'integer', 'uuid'],
+  'a RPC paginada de candidatos existe'
+);
+
+select has_function(
+  'public',
+  'helpdesk_get_ticket_communication_contexts',
+  array['uuid[]'],
+  'a RPC de revalidacao existe'
 );
 
 select results_eq(
@@ -52,11 +66,13 @@ select results_eq(
       and p.proname in (
         'helpdesk_enqueue_ticket_notification',
         'helpdesk_claim_ticket_notifications',
-        'helpdesk_complete_ticket_notification'
+        'helpdesk_complete_ticket_notification',
+        'helpdesk_list_ticket_communication_candidates',
+        'helpdesk_get_ticket_communication_contexts'
       )
     order by p.proname
   $$,
-  array[true, true, true],
+  array[true, true, true, true, true],
   'as RPCs executam com os privilegios do chamador'
 );
 
@@ -130,6 +146,29 @@ values (
 alter table public.app_c009c0e4f1_tickets
   enable trigger notification_push_tickets;
 
+alter table public.app_c009c0e4f1_chat_messages disable trigger user;
+
+insert into public.app_c009c0e4f1_chat_messages (
+  ticket_id,
+  user_id,
+  user_name,
+  message,
+  attachments,
+  created_at,
+  read
+)
+values (
+  '40000000-0000-0000-0000-000000000001',
+  '40000000-0000-0000-0000-000000000002',
+  'Ticket Communications pgTAP',
+  'Mensagem UUID valida para a RPC lateral',
+  '[]'::jsonb,
+  '2099-08-24 11:30:00+00',
+  false
+);
+
+alter table public.app_c009c0e4f1_chat_messages enable trigger user;
+
 create temporary table ticket_communication_test_enqueues (
   call_no integer primary key,
   id uuid not null
@@ -147,7 +186,7 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$select public.helpdesk_enqueue_ticket_notification('40000000-0000-0000-0000-000000000001', 'awaiting_requester', 'email', '2026-08-24')$$,
+  $$select public.helpdesk_enqueue_ticket_notification('40000000-0000-0000-0000-000000000001', 'awaiting_requester', 'email', '2026-08-24', '2099-08-24 11:59:59+00')$$,
   '42501'::char(5),
   null::text,
   'anon nao executa a RPC de enfileiramento'
@@ -161,10 +200,22 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', true, null, null)$$,
+  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', 'sent', null, null)$$,
   '42501'::char(5),
   null::text,
   'anon nao executa a RPC de conclusao'
+);
+
+select throws_ok(
+  $$select * from public.helpdesk_list_ticket_communication_candidates(null, 10, null)$$,
+  '42501'::char(5), null::text,
+  'anon nao executa a RPC de candidatos'
+);
+
+select throws_ok(
+  $$select * from public.helpdesk_get_ticket_communication_contexts(array['40000000-0000-0000-0000-000000000001'::uuid])$$,
+  '42501'::char(5), null::text,
+  'anon nao executa a RPC de contextos'
 );
 
 reset role;
@@ -178,7 +229,7 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$select public.helpdesk_enqueue_ticket_notification('40000000-0000-0000-0000-000000000001', 'awaiting_requester', 'email', '2026-08-24')$$,
+  $$select public.helpdesk_enqueue_ticket_notification('40000000-0000-0000-0000-000000000001', 'awaiting_requester', 'email', '2026-08-24', '2099-08-24 11:59:59+00')$$,
   '42501'::char(5),
   null::text,
   'authenticated nao executa a RPC de enfileiramento'
@@ -192,14 +243,50 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', true, null, null)$$,
+  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', 'sent', null, null)$$,
   '42501'::char(5),
   null::text,
   'authenticated nao executa a RPC de conclusao'
 );
 
+select throws_ok(
+  $$select * from public.helpdesk_list_ticket_communication_candidates(null, 10, null)$$,
+  '42501'::char(5), null::text,
+  'authenticated nao executa a RPC de candidatos'
+);
+
+select throws_ok(
+  $$select * from public.helpdesk_get_ticket_communication_contexts(array['40000000-0000-0000-0000-000000000001'::uuid])$$,
+  '42501'::char(5), null::text,
+  'authenticated nao executa a RPC de contextos'
+);
+
 reset role;
 set local role service_role;
+
+select results_eq(
+  $$select count(*)::bigint from public.helpdesk_list_ticket_communication_candidates(null, 500, null)$$,
+  array[1::bigint],
+  'a RPC paginada retorna o candidato elegivel'
+);
+
+select results_eq(
+  $$
+    select (last_human_message ->> 'user_id')::uuid
+    from public.helpdesk_list_ticket_communication_candidates(null, 500, '40000000-0000-0000-0000-000000000001')
+  $$,
+  array['40000000-0000-0000-0000-000000000002'::uuid],
+  'a ultima mensagem preserva user_id UUID sem sentinela textual'
+);
+
+select results_eq(
+  $$
+    select (requester ->> 'id')::uuid
+    from public.helpdesk_get_ticket_communication_contexts(array['40000000-0000-0000-0000-000000000001'::uuid])
+  $$,
+  array['40000000-0000-0000-0000-000000000002'::uuid],
+  'a RPC de contexto hidrata o solicitante para revalidacao'
+);
 
 select throws_ok(
   $$
@@ -207,7 +294,8 @@ select throws_ok(
       '40000000-0000-0000-0000-000000000098',
       'awaiting_requester',
       'email',
-      '2026-08-24'
+      '2026-08-24',
+      '2099-08-24 11:59:59+00'
     )
   $$,
   '23503'::char(5),
@@ -221,7 +309,8 @@ from public.helpdesk_enqueue_ticket_notification(
   '40000000-0000-0000-0000-000000000001',
   'awaiting_requester',
   'email',
-  '2026-08-24'
+  '2026-08-24',
+  '2099-08-24 11:59:59+00'
 );
 
 insert into pg_temp.ticket_communication_test_enqueues (call_no, id)
@@ -230,7 +319,8 @@ from public.helpdesk_enqueue_ticket_notification(
   '40000000-0000-0000-0000-000000000001',
   'awaiting_requester',
   'email',
-  '2026-08-24'
+  '2026-08-24',
+  '2099-08-24 11:59:59+00'
 );
 
 select results_eq(
@@ -265,7 +355,8 @@ select results_eq(
       '40000000-0000-0000-0000-000000000001',
       'awaiting_requester',
       'email',
-      '2026-08-25'
+      '2026-08-25',
+      '2099-08-24 11:59:59+00'
     )
   $$,
   $$select id from pg_temp.ticket_communication_test_enqueues where call_no = 1$$,
@@ -278,7 +369,8 @@ select throws_ok(
       '40000000-0000-0000-0000-000000000001',
       'unknown',
       'email',
-      '2026-08-24'
+      '2026-08-24',
+      '2099-08-24 11:59:59+00'
     )
   $$,
   '22023'::char(5),
@@ -292,12 +384,55 @@ select throws_ok(
       '40000000-0000-0000-0000-000000000001',
       'awaiting_requester',
       'chat',
-      '2026-08-24'
+      '2026-08-24',
+      '2099-08-24 11:59:59+00'
     )
   $$,
   '22023'::char(5),
   'invalid channel',
   'a RPC rejeita um canal invalido'
+);
+
+select results_eq(
+  $$
+    select count(*)::bigint
+    from public.helpdesk_claim_ticket_notifications(
+      1,
+      '2099-08-24 12:00:00+00',
+      '40000000-0000-0000-0000-000000000098',
+      'awaiting_requester'
+    )
+  $$,
+  array[0::bigint],
+  'o filtro de ticket nao invade entregas de outro chamado'
+);
+
+select results_eq(
+  $$
+    select count(*)::bigint
+    from public.helpdesk_claim_ticket_notifications(
+      1,
+      '2099-08-24 12:00:00+00',
+      '40000000-0000-0000-0000-000000000001',
+      'resolved_feedback_invite'
+    )
+  $$,
+  array[0::bigint],
+  'o filtro de tipo nao invade outra notificacao do mesmo chamado'
+);
+
+select throws_ok(
+  $$select * from public.helpdesk_claim_ticket_notifications(1, '2099-08-24 12:00:00+00', '40000000-0000-0000-0000-000000000001', 'unknown')$$,
+  '22023'::char(5),
+  'invalid notification_type',
+  'a reserva rejeita filtro de tipo invalido'
+);
+
+select throws_ok(
+  $$select * from public.helpdesk_claim_ticket_notifications(1, '2099-08-24 12:00:00+00', '40000000-0000-0000-0000-000000000001', null)$$,
+  '22023'::char(5),
+  'claim filters must be paired',
+  'a reserva exige ticket e tipo juntos'
 );
 
 select results_eq(
@@ -348,7 +483,7 @@ select lives_ok(
   $$
     select public.helpdesk_complete_ticket_notification(
       (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1),
-      false,
+      'failed',
       repeat('x', 650),
       '2099-08-25 12:00:00+00'
     )
@@ -400,7 +535,7 @@ select lives_ok(
   $$
     select public.helpdesk_complete_ticket_notification(
       (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1),
-      true,
+      'sent',
       null,
       null
     )
@@ -429,7 +564,8 @@ select results_eq(
       '40000000-0000-0000-0000-000000000001',
       'awaiting_requester',
       'email',
-      '2026-08-24'
+      '2026-08-24',
+      '2099-08-25 12:00:00+00'
     )
   $$,
   $$select id from pg_temp.ticket_communication_test_enqueues where call_no = 1$$,
@@ -443,7 +579,8 @@ select results_ne(
       '40000000-0000-0000-0000-000000000001',
       'awaiting_requester',
       'email',
-      '2026-08-25'
+      '2026-08-25',
+      '2099-08-25 12:00:00+00'
     )
   $$,
   $$select id from pg_temp.ticket_communication_test_enqueues where call_no = 1$$,
@@ -461,6 +598,93 @@ select is(
   2::bigint,
   'a fila preserva exatamente uma entrega por ciclo enviado'
 );
+
+set local role service_role;
+
+select public.helpdesk_enqueue_ticket_notification(
+  '40000000-0000-0000-0000-000000000001',
+  'awaiting_feedback',
+  'teams',
+  'cancel-test',
+  '2099-08-25 12:00:00+00'
+);
+
+select results_eq(
+  $$
+    select count(*)::bigint
+    from public.helpdesk_claim_ticket_notifications(
+      1,
+      '2099-08-25 12:00:00+00',
+      '40000000-0000-0000-0000-000000000001',
+      'awaiting_feedback'
+    )
+  $$,
+  array[1::bigint],
+  'a reserva filtrada seleciona somente a entrega solicitada'
+);
+
+select lives_ok(
+  $$
+    select public.helpdesk_complete_ticket_notification(
+      (
+        select id from public.app_c009c0e4f1_ticket_notification_deliveries
+        where cycle_key = 'cancel-test'
+      ),
+      'cancelled',
+      'no_longer_eligible',
+      null
+    )
+  $$,
+  'service_role cancela terminalmente uma entrega inelegivel'
+);
+
+reset role;
+
+select results_eq(
+  $$
+    select status, cancelled_at is not null, cancellation_reason, last_error is null
+    from public.app_c009c0e4f1_ticket_notification_deliveries
+    where cycle_key = 'cancel-test'
+  $$,
+  $$values ('cancelled'::text, true, 'no_longer_eligible'::text, true)$$,
+  'o cancelamento fica auditavel e nao e mascarado como envio ou falha'
+);
+
+set local role service_role;
+
+select results_ne(
+  $$
+    select id
+    from public.helpdesk_enqueue_ticket_notification(
+      '40000000-0000-0000-0000-000000000001',
+      'awaiting_feedback',
+      'teams',
+      'after-cancel',
+      '2200-08-25 12:00:00+00'
+    )
+  $$,
+  $$
+    select id from public.app_c009c0e4f1_ticket_notification_deliveries
+    where cycle_key = 'cancel-test'
+  $$,
+  'o indice parcial libera um novo ciclo depois do cancelamento'
+);
+
+select results_eq(
+  $$
+    select count(*)::bigint
+    from public.helpdesk_claim_ticket_notifications(
+      1,
+      '2100-08-25 12:00:00+00',
+      '40000000-0000-0000-0000-000000000001',
+      'awaiting_feedback'
+    )
+  $$,
+  array[0::bigint],
+  'uma entrega cancelada nao volta em retries futuros'
+);
+
+reset role;
 
 select * from finish();
 rollback;

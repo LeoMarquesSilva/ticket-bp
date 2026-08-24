@@ -32,7 +32,7 @@ function fakeQuery(result: QueryResult) {
 
 function fakeSupabase(input: {
   tables?: Record<string, QueryResult[]>;
-  rpcs?: Record<string, QueryResult>;
+  rpcs?: Record<string, QueryResult | QueryResult[]>;
 } = {}) {
   const queues = new Map(
     Object.entries(input.tables ?? {}).map(([table, results]) => [table, [...results]]),
@@ -44,7 +44,11 @@ function fakeSupabase(input: {
     queries.push({ table, query });
     return query;
   });
-  const rpc = vi.fn(async (name: string) => input.rpcs?.[name] ?? { data: null, error: null });
+  const rpcQueues = new Map(Object.entries(input.rpcs ?? {}).map(([name, results]) => [
+    name,
+    Array.isArray(results) ? [...results] : [results],
+  ]));
+  const rpc = vi.fn(async (name: string) => rpcQueues.get(name)?.shift() ?? { data: null, error: null });
 
   return { client: { from, rpc }, from, rpc, queries };
 }
@@ -59,7 +63,7 @@ function handlerDependencies(ticket: unknown = { id: TICKET_ID, status: 'resolve
     repository: { source: 'admin-client' },
     graph: { source: 'microsoft-graph' },
     appBaseUrl: 'https://responsum.example',
-    now: NOW,
+    clock: vi.fn(() => NOW),
     prepareDeliveries,
     processDeliveries,
   };
@@ -117,6 +121,25 @@ describe('handleTicketCommunicationRequest', () => {
 
     expect(result).toEqual({ status: 403, body: { error: 'forbidden' } });
     expect(context.prepareDeliveries).not.toHaveBeenCalled();
+  });
+
+  it('recusa daily por usuário antes de construir dependências Graph ausentes', async () => {
+    const context = handlerDependencies();
+    const createRuntimeDependencies = vi.fn(() => {
+      throw new Error('missing Graph secrets');
+    });
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      body: { action: 'daily' },
+      dependencies: {
+        supabase: context.dependencies.supabase,
+        createRuntimeDependencies,
+      },
+    });
+
+    expect(result).toEqual({ status: 403, body: { error: 'forbidden' } });
+    expect(createRuntimeDependencies).not.toHaveBeenCalled();
   });
 
   it('não revela se um ticket fora da visibilidade RLS existe', async () => {
@@ -178,12 +201,15 @@ describe('handleTicketCommunicationRequest', () => {
       repository: context.dependencies.repository,
       now: NOW,
       ticketId: undefined,
+      notificationType: undefined,
     });
     expect(context.processDeliveries).toHaveBeenCalledWith({
       repository: context.dependencies.repository,
       graph: context.dependencies.graph,
       appBaseUrl: 'https://responsum.example',
-      now: NOW,
+      clock: context.dependencies.clock,
+      ticketId: undefined,
+      notificationType: undefined,
     });
     expect(result).toEqual({
       status: 200,
@@ -207,8 +233,126 @@ describe('handleTicketCommunicationRequest', () => {
       repository: context.dependencies.repository,
       now: NOW,
       ticketId: TICKET_ID,
+      notificationType: 'resolved_feedback_invite',
     });
+    expect(context.processDeliveries).toHaveBeenCalledWith(expect.objectContaining({
+      ticketId: TICKET_ID,
+      notificationType: 'resolved_feedback_invite',
+    }));
     expect(result.status).toBe(200);
+  });
+
+  it('lê o relógio de claim somente depois que o preparo termina', async () => {
+    const context = handlerDependencies();
+    const prepareNow = new Date('2026-08-24T12:00:00.000Z');
+    const claimNow = new Date('2026-08-24T12:00:01.000Z');
+    const clock = vi.fn()
+      .mockReturnValueOnce(prepareNow)
+      .mockReturnValueOnce(claimNow);
+    context.dependencies.clock = clock;
+    context.processDeliveries.mockImplementationOnce(async ({ clock: processClock }) => {
+      expect(processClock()).toBe(claimNow);
+      return { selected: 0, sent: 0, failed: 0, cancelled: 0, skipped: 0 };
+    });
+
+    await handleTicketCommunicationRequest({
+      authMode: 'secret',
+      body: { action: 'daily' },
+      dependencies: context.dependencies,
+    });
+
+    expect(context.prepareDeliveries).toHaveBeenCalledWith(expect.objectContaining({ now: prepareNow }));
+    expect(clock).toHaveBeenCalledTimes(2);
+    expect(context.prepareDeliveries.mock.invocationCallOrder[0])
+      .toBeLessThan(context.processDeliveries.mock.invocationCallOrder[0]);
+  });
+
+  it('torna a entrega recém-criada claimable sem consumir outra fila no disparo do usuário', async () => {
+    const otherTicketId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const prepareNow = new Date('2026-08-24T12:00:00.000Z');
+    const claimNow = new Date('2026-08-24T12:00:01.000Z');
+    const clock = vi.fn().mockReturnValueOnce(prepareNow).mockReturnValueOnce(claimNow);
+    const requester = { id: REQUESTER_ID, name: 'Ana', email: 'ana@bpplaw.com.br' };
+    const resolvedTicket = {
+      id: TICKET_ID,
+      title: 'Acesso',
+      status: 'resolved',
+      created_by: REQUESTER_ID,
+      category: 'ti',
+      subcategory: 'acesso',
+      resolved_at: '2026-08-24T11:00:00.000Z',
+      feedback_submitted_at: null,
+    };
+    const queue: Array<Record<string, unknown>> = [{
+      id: '99999999-9999-9999-9999-999999999999',
+      ticket_id: otherTicketId,
+      notification_type: 'awaiting_feedback',
+      channel: 'teams',
+      nextAttemptAt: prepareNow,
+    }];
+    const repository = {
+      listCandidates: vi.fn(async () => [{
+        enabledAt: '2026-08-01T00:00:00.000Z',
+        ticket: resolvedTicket,
+        requester,
+        lastHumanMessage: null,
+      }]),
+      enqueue: vi.fn(async (input: {
+        ticketId: string;
+        notificationType: string;
+        channel: string;
+        nextAttemptAt: Date;
+      }) => {
+        queue.push({
+          id: '88888888-8888-8888-8888-888888888888',
+          ticket_id: input.ticketId,
+          notification_type: input.notificationType,
+          channel: input.channel,
+          nextAttemptAt: input.nextAttemptAt,
+          enabledAt: '2026-08-01T00:00:00.000Z',
+          ticket: resolvedTicket,
+          requester,
+          lastHumanMessage: null,
+        });
+      }),
+      claim: vi.fn(async (
+        _limit: number,
+        at: Date,
+        filters: { ticketId: string; notificationType: string },
+      ) => queue.filter((delivery) => (
+        delivery.ticket_id === filters.ticketId
+        && delivery.notification_type === filters.notificationType
+        && (delivery.nextAttemptAt as Date) <= at
+      ))),
+      complete: vi.fn(async () => undefined),
+    };
+    const graph = {
+      sendEmail: vi.fn(async () => undefined),
+      resolveUserId: vi.fn(async () => 'entra-id'),
+      sendTeamsActivity: vi.fn(async () => undefined),
+    };
+    const userQuery = fakeQuery({ data: { id: TICKET_ID, status: 'resolved' }, error: null });
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      body: { action: 'ticket_resolved', ticketId: TICKET_ID },
+      dependencies: {
+        supabase: { from: vi.fn(() => userQuery) },
+        repository,
+        graph,
+        appBaseUrl: 'https://responsum.example',
+        clock,
+      },
+    });
+
+    expect(result).toEqual({ status: 200, body: { ok: true, prepared: 1, sent: 1, failed: 0 } });
+    expect(repository.claim).toHaveBeenCalledWith(100, claimNow, {
+      ticketId: TICKET_ID,
+      notificationType: 'resolved_feedback_invite',
+    });
+    expect(graph.sendEmail).toHaveBeenCalledTimes(1);
+    expect(graph.resolveUserId).not.toHaveBeenCalled();
+    expect(queue[0].ticket_id).toBe(otherTicketId);
   });
 
   it('sanitiza erros internos sem expor destinatários ou detalhes do provedor', async () => {
@@ -230,7 +374,7 @@ describe('handleTicketCommunicationRequest', () => {
 });
 
 describe('createTicketCommunicationRepository', () => {
-  it('usa nomes reais, restringe o ticket e carrega solicitante e última mensagem humana', async () => {
+  it('usa RPC service_role paginada e aceita user_id UUID na última mensagem', async () => {
     const activeTicket = {
       id: TICKET_ID,
       title: 'Acesso',
@@ -242,16 +386,15 @@ describe('createTicketCommunicationRepository', () => {
       feedback_submitted_at: null,
     };
     const requester = { id: REQUESTER_ID, name: 'Ana', email: 'ana@bpplaw.com.br' };
-    const message = { user_id: 'support-id', created_at: '2026-08-22T12:00:00.000Z' };
+    const message = { user_id: '33333333-3333-3333-3333-333333333333', created_at: '2026-08-22T12:00:00.000Z' };
     const fake = fakeSupabase({
-      tables: {
-        app_c009c0e4f1_integration_settings: [{ data: { value: '2026-08-01T00:00:00.000Z' }, error: null }],
-        app_c009c0e4f1_tickets: [
-          { data: [activeTicket], error: null },
-          { data: [], error: null },
-        ],
-        app_c009c0e4f1_users: [{ data: [requester], error: null }],
-        app_c009c0e4f1_chat_messages: [{ data: [message], error: null }],
+      rpcs: {
+        helpdesk_list_ticket_communication_candidates: { data: [{
+          enabled_at: '2026-08-01T00:00:00.000Z',
+          ticket: activeTicket,
+          requester,
+          last_human_message: message,
+        }], error: null },
       },
     });
     const repository = createTicketCommunicationRepository(fake.client);
@@ -264,43 +407,40 @@ describe('createTicketCommunicationRepository', () => {
       requester,
       lastHumanMessage: message,
     }]);
-    expect(fake.from.mock.calls.map(([table]) => table)).toEqual([
-      'app_c009c0e4f1_integration_settings',
-      'app_c009c0e4f1_tickets',
-      'app_c009c0e4f1_tickets',
-      'app_c009c0e4f1_users',
-      'app_c009c0e4f1_chat_messages',
-    ]);
-    const activeQuery = fake.queries[1].query;
-    const resolvedQuery = fake.queries[2].query;
-    const messageQuery = fake.queries[4].query;
-    expect(activeQuery.in).toHaveBeenCalledWith('status', ['open', 'assigned', 'in_progress']);
-    expect(activeQuery.eq).toHaveBeenCalledWith('id', TICKET_ID);
-    expect(resolvedQuery.eq).toHaveBeenCalledWith('id', TICKET_ID);
-    expect(messageQuery.eq).toHaveBeenCalledWith('ticket_id', TICKET_ID);
-    expect(messageQuery.neq).toHaveBeenCalledWith('user_id', 'system');
-    expect(messageQuery.order).toHaveBeenCalledWith('created_at', { ascending: false });
-    expect(messageQuery.limit).toHaveBeenCalledWith(1);
+    expect(fake.from).not.toHaveBeenCalled();
+    expect(fake.rpc).toHaveBeenCalledWith('helpdesk_list_ticket_communication_candidates', {
+      p_after_id: null,
+      p_limit: 500,
+      p_ticket_id: TICKET_ID,
+    });
   });
 
-  it('limita candidatos resolvidos à ativação e à ausência de feedback', async () => {
+  it('pagina até esgotar mais de mil candidatos sem N+1/Data API limit', async () => {
+    const makeRows = (start: number, count: number) => Array.from({ length: count }, (_, offset) => {
+      const serial = (start + offset).toString(16).padStart(12, '0');
+      return {
+        ticket_id: `11111111-1111-1111-1111-${serial}`,
+        enabled_at: '2026-08-01T00:00:00.000Z',
+        ticket: { id: `11111111-1111-1111-1111-${serial}`, created_by: REQUESTER_ID },
+        requester: { id: REQUESTER_ID },
+        last_human_message: null,
+      };
+    });
+    const pages = [makeRows(1, 500), makeRows(501, 500), makeRows(1001, 1)];
     const fake = fakeSupabase({
-      tables: {
-        app_c009c0e4f1_integration_settings: [{ data: { value: '2026-08-01T00:00:00.000Z' }, error: null }],
-        app_c009c0e4f1_tickets: [
-          { data: [], error: null },
-          { data: [], error: null },
-        ],
+      rpcs: {
+        helpdesk_list_ticket_communication_candidates: pages.map((data) => ({ data, error: null })),
       },
     });
     const repository = createTicketCommunicationRepository(fake.client);
 
-    await repository.listCandidates();
+    const result = await repository.listCandidates();
 
-    const resolvedQuery = fake.queries[2].query;
-    expect(resolvedQuery.eq).toHaveBeenCalledWith('status', 'resolved');
-    expect(resolvedQuery.is).toHaveBeenCalledWith('feedback_submitted_at', null);
-    expect(resolvedQuery.gte).toHaveBeenCalledWith('resolved_at', '2026-08-01T00:00:00.000Z');
+    expect(result).toHaveLength(1001);
+    expect(fake.rpc).toHaveBeenCalledTimes(3);
+    expect(fake.rpc.mock.calls[1][1].p_after_id).toBe(pages[0][499].ticket_id);
+    expect(fake.rpc.mock.calls[2][1].p_after_id).toBe(pages[1][499].ticket_id);
+    expect(fake.from).not.toHaveBeenCalled();
   });
 
   it('hidrata entregas reservadas com ticket e solicitante em consultas agrupadas', async () => {
@@ -310,30 +450,43 @@ describe('createTicketCommunicationRepository', () => {
       notification_type: 'resolved_feedback_invite',
       channel: 'email',
     };
-    const ticket = { id: TICKET_ID, title: 'Acesso', created_by: REQUESTER_ID };
+    const ticket = { id: TICKET_ID, title: 'Acesso', status: 'resolved', created_by: REQUESTER_ID };
     const requester = { id: REQUESTER_ID, name: 'Ana', email: 'ana@bpplaw.com.br' };
     const fake = fakeSupabase({
-      tables: {
-        app_c009c0e4f1_tickets: [{ data: [ticket], error: null }],
-        app_c009c0e4f1_users: [{ data: [requester], error: null }],
-      },
       rpcs: {
         helpdesk_claim_ticket_notifications: { data: [delivery], error: null },
+        helpdesk_get_ticket_communication_contexts: { data: [{
+          ticket_id: TICKET_ID,
+          enabled_at: '2026-08-01T00:00:00.000Z',
+          ticket,
+          requester,
+          last_human_message: null,
+        }], error: null },
       },
     });
     const repository = createTicketCommunicationRepository(fake.client);
 
-    const result = await repository.claim(25, NOW);
+    const result = await repository.claim(25, NOW, {
+      ticketId: TICKET_ID,
+      notificationType: 'resolved_feedback_invite',
+    });
 
     expect(fake.rpc).toHaveBeenCalledWith('helpdesk_claim_ticket_notifications', {
       p_limit: 25,
       p_now: '2026-08-24T12:00:00.000Z',
+      p_ticket_id: TICKET_ID,
+      p_notification_type: 'resolved_feedback_invite',
     });
-    expect(fake.from.mock.calls.map(([table]) => table)).toEqual([
-      'app_c009c0e4f1_tickets',
-      'app_c009c0e4f1_users',
-    ]);
-    expect(result).toEqual([{ ...delivery, ticket, requester }]);
+    expect(fake.rpc).toHaveBeenNthCalledWith(2, 'helpdesk_get_ticket_communication_contexts', {
+      p_ticket_ids: [TICKET_ID],
+    });
+    expect(result).toEqual([{
+      ...delivery,
+      ticket,
+      requester,
+      enabledAt: '2026-08-01T00:00:00.000Z',
+      lastHumanMessage: null,
+    }]);
   });
 
   it('mapeia enqueue e nextAttemptAt para os nomes exatos das RPCs', async () => {
@@ -350,10 +503,11 @@ describe('createTicketCommunicationRepository', () => {
       notificationType: 'awaiting_requester',
       channel: 'teams',
       cycleKey: '2026-08-24',
+      nextAttemptAt: NOW,
     });
     await repository.complete({
       id: '33333333-3333-3333-3333-333333333333',
-      success: false,
+      outcome: 'failed',
       error: 'delivery_error',
       nextAttemptAt: new Date('2026-08-25T12:00:00.000Z'),
     });
@@ -363,10 +517,11 @@ describe('createTicketCommunicationRepository', () => {
       p_notification_type: 'awaiting_requester',
       p_channel: 'teams',
       p_cycle_key: '2026-08-24',
+      p_next_attempt_at: '2026-08-24T12:00:00.000Z',
     });
     expect(fake.rpc).toHaveBeenNthCalledWith(2, 'helpdesk_complete_ticket_notification', {
       p_delivery_id: '33333333-3333-3333-3333-333333333333',
-      p_success: false,
+      p_outcome: 'failed',
       p_error: 'delivery_error',
       p_next_attempt_at: '2026-08-25T12:00:00.000Z',
     });

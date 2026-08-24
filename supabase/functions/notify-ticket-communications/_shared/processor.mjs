@@ -62,17 +62,20 @@ function isSupportedDelivery(delivery) {
     && channelsForNotification(delivery.notification_type).includes(delivery.channel);
 }
 
-export async function prepareDeliveries({ repository, now, ticketId }) {
+export async function prepareDeliveries({ repository, now, ticketId, notificationType }) {
   const candidates = await repository.listCandidates(ticketId);
   let enqueued = 0;
 
   for (const candidate of candidates) {
-    const types = getEligibleNotificationTypes({
+    const eligibleTypes = getEligibleNotificationTypes({
       now,
       enabledAt: new Date(candidate.enabledAt),
       ticket: candidate.ticket,
       lastHumanMessage: candidate.lastHumanMessage,
     });
+    const types = notificationType
+      ? eligibleTypes.filter((type) => type === notificationType)
+      : eligibleTypes;
 
     for (const type of types) {
       const cycleKey = type === 'resolved_feedback_invite'
@@ -84,6 +87,7 @@ export async function prepareDeliveries({ repository, now, ticketId }) {
           notificationType: type,
           channel,
           cycleKey,
+          nextAttemptAt: now,
         });
         enqueued += 1;
       }
@@ -98,31 +102,56 @@ export async function processDeliveries({
   graph,
   appBaseUrl,
   now,
+  clock,
+  ticketId,
+  notificationType,
   batchSize = DEFAULT_BATCH_SIZE,
 }) {
-  const deliveries = await repository.claim(batchSize, now);
-  const counts = { selected: deliveries.length, sent: 0, failed: 0, skipped: 0 };
+  const claimNow = clock ? clock() : now;
+  if (!(claimNow instanceof Date) || Number.isNaN(claimNow.getTime())) {
+    throw new TypeError('A valid claim clock is required');
+  }
+  const deliveries = await repository.claim(batchSize, claimNow, { ticketId, notificationType });
+  const counts = { selected: deliveries.length, sent: 0, failed: 0, cancelled: 0, skipped: 0 };
 
   for (const delivery of deliveries) {
     if (!isSupportedDelivery(delivery)) {
       const completed = await completeDelivery(repository, {
         id: delivery?.id,
-        success: false,
+        outcome: 'failed',
         error: 'Entrega de comunicação inválida',
-        nextAttemptAt: nextDailyAttemptAt(now),
+        nextAttemptAt: nextDailyAttemptAt(claimNow),
       });
       countCompletion(counts, completed, 'failed');
       continue;
     }
 
-    if (!delivery.ticket || !isValidRecipient(delivery.requester)) {
+    const enabledAt = new Date(delivery.enabledAt);
+    if (!delivery.ticket || Number.isNaN(enabledAt.getTime()) || !isValidRecipient(delivery.requester)) {
       const completed = await completeDelivery(repository, {
         id: delivery.id,
-        success: false,
+        outcome: 'failed',
         error: 'Configuração do destinatário ausente ou e-mail inválido',
-        nextAttemptAt: nextDailyAttemptAt(now),
+        nextAttemptAt: nextDailyAttemptAt(claimNow),
       });
       countCompletion(counts, completed, 'failed');
+      continue;
+    }
+
+    const eligibleTypes = getEligibleNotificationTypes({
+      now: claimNow,
+      enabledAt,
+      ticket: delivery.ticket,
+      lastHumanMessage: delivery.lastHumanMessage,
+    });
+    if (!eligibleTypes.includes(delivery.notification_type)) {
+      const completed = await completeDelivery(repository, {
+        id: delivery.id,
+        outcome: 'cancelled',
+        error: 'no_longer_eligible',
+        nextAttemptAt: null,
+      });
+      countCompletion(counts, completed, 'cancelled');
       continue;
     }
 
@@ -149,9 +178,9 @@ export async function processDeliveries({
     } catch (error) {
       const completed = await completeDelivery(repository, {
         id: delivery.id,
-        success: false,
+        outcome: 'failed',
         error: sanitizeError(error),
-        nextAttemptAt: nextDailyAttemptAt(now),
+        nextAttemptAt: nextDailyAttemptAt(claimNow),
       });
       countCompletion(counts, completed, 'failed');
       continue;
@@ -159,7 +188,7 @@ export async function processDeliveries({
 
     const completed = await completeDelivery(repository, {
       id: delivery.id,
-      success: true,
+      outcome: 'sent',
       error: null,
       nextAttemptAt: null,
     });

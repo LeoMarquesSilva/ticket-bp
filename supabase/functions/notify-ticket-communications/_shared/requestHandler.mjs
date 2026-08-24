@@ -54,25 +54,39 @@ export async function handleTicketCommunicationRequest({ authMode, body, depende
   }
 
   try {
-    const now = dependencies.now ?? new Date();
     const ticketId = action === 'ticket_resolved' ? body.ticketId : undefined;
+    const notificationType = ticketId ? 'resolved_feedback_invite' : undefined;
     if (ticketId) {
       const ticketError = await visibleResolvedTicket(dependencies.supabase, ticketId);
       if (ticketError) return ticketError;
     }
 
-    const prepareDeliveries = dependencies.prepareDeliveries ?? defaultPrepareDeliveries;
-    const processDeliveries = dependencies.processDeliveries ?? defaultProcessDeliveries;
+    const runtimeDependencies = dependencies.createRuntimeDependencies
+      ? await dependencies.createRuntimeDependencies()
+      : dependencies;
+    if (!runtimeDependencies) return response(503, 'service_unavailable');
+
+    const prepareDeliveries = runtimeDependencies.prepareDeliveries
+      ?? dependencies.prepareDeliveries
+      ?? defaultPrepareDeliveries;
+    const processDeliveries = runtimeDependencies.processDeliveries
+      ?? dependencies.processDeliveries
+      ?? defaultProcessDeliveries;
+    const clock = dependencies.clock ?? runtimeDependencies.clock ?? (() => new Date());
+    const prepareNow = clock();
     const prepared = await prepareDeliveries({
-      repository: dependencies.repository,
-      now,
+      repository: runtimeDependencies.repository,
+      now: prepareNow,
       ticketId,
+      notificationType,
     });
     const processed = await processDeliveries({
-      repository: dependencies.repository,
-      graph: dependencies.graph,
-      appBaseUrl: dependencies.appBaseUrl,
-      now,
+      repository: runtimeDependencies.repository,
+      graph: runtimeDependencies.graph,
+      appBaseUrl: runtimeDependencies.appBaseUrl,
+      clock,
+      ticketId,
+      notificationType,
     });
 
     return {

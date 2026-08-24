@@ -9,13 +9,15 @@ import {
 } from '../../supabase/functions/notify-ticket-communications/_shared/rules.mjs';
 
 const now = new Date('2026-08-24T12:00:00.000Z');
+const requesterId = '11111111-1111-1111-1111-111111111111';
+const supportId = '22222222-2222-2222-2222-222222222222';
 
 it('lembra quando a última mensagem humana do suporte completa 48 horas', () => {
   const result = getEligibleNotificationTypes({
     now,
     enabledAt: new Date('2026-08-01T00:00:00.000Z'),
-    ticket: { status: 'in_progress', created_by: 'requester', resolved_at: null, feedback_submitted_at: null, category: 'ti', subcategory: 'acesso' },
-    lastHumanMessage: { user_id: 'support', created_at: '2026-08-22T12:00:00.000Z' },
+    ticket: { status: 'in_progress', created_by: requesterId, resolved_at: null, feedback_submitted_at: null, category: 'ti', subcategory: 'acesso' },
+    lastHumanMessage: { user_id: supportId, created_at: '2026-08-22T12:00:00.000Z' },
   });
   expect(result).toEqual(['awaiting_requester']);
 });
@@ -24,8 +26,8 @@ it('não lembra um milissegundo antes de completar 48 horas', () => {
   const result = getEligibleNotificationTypes({
     now: new Date('2026-08-24T11:59:59.999Z'),
     enabledAt: new Date('2026-08-01T00:00:00.000Z'),
-    ticket: { status: 'in_progress', created_by: 'requester', resolved_at: null, feedback_submitted_at: null, category: 'ti', subcategory: 'acesso' },
-    lastHumanMessage: { user_id: 'support', created_at: '2026-08-22T12:00:00.000Z' },
+    ticket: { status: 'in_progress', created_by: requesterId, resolved_at: null, feedback_submitted_at: null, category: 'ti', subcategory: 'acesso' },
+    lastHumanMessage: { user_id: supportId, created_at: '2026-08-22T12:00:00.000Z' },
   });
   expect(result).toEqual([]);
 });
@@ -34,24 +36,24 @@ it('não lembra quando a última mensagem humana é do solicitante', () => {
   const result = getEligibleNotificationTypes({
     now,
     enabledAt: new Date('2026-08-01T00:00:00.000Z'),
-    ticket: { status: 'in_progress', created_by: 'requester', resolved_at: null, feedback_submitted_at: null, category: 'ti', subcategory: 'acesso' },
-    lastHumanMessage: { user_id: 'requester', created_at: '2026-08-20T12:00:00.000Z' },
+    ticket: { status: 'in_progress', created_by: requesterId, resolved_at: null, feedback_submitted_at: null, category: 'ti', subcategory: 'acesso' },
+    lastHumanMessage: { user_id: requesterId, created_at: '2026-08-20T12:00:00.000Z' },
   });
   expect(result).toEqual([]);
 });
 
-it('ignora mensagens do sistema ao localizar a última mensagem humana', () => {
+it('localiza a última mensagem persistida, cujos autores são UUIDs', () => {
   expect(latestHumanMessage([
-    { user_id: 'support', created_at: '2026-08-20T12:00:00.000Z' },
-    { user_id: 'system', created_at: '2026-08-24T11:00:00.000Z' },
-  ])?.user_id).toBe('support');
+    { user_id: supportId, created_at: '2026-08-20T12:00:00.000Z' },
+    { user_id: requesterId, created_at: '2026-08-24T11:00:00.000Z' },
+  ])?.user_id).toBe(requesterId);
 });
 
 describe('convite e lembrete de feedback', () => {
   const enabledAt = new Date('2026-08-01T00:00:00.000Z');
   const resolvedTicket = {
     status: 'resolved',
-    created_by: 'requester',
+    created_by: requesterId,
     resolved_at: '2026-08-21T12:00:00.000Z',
     feedback_submitted_at: null,
     category: 'ti',
