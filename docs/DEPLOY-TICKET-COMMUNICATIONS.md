@@ -18,7 +18,7 @@ Não faça uma chamada `daily` em produção para testar um usuário. O cron só
 
 ## 2. Escolher exatamente um modelo de menor privilégio para e-mail
 
-`User.Read.All` continua sendo uma permissão de aplicação Graph com consentimento administrativo nos dois caminhos, pois o código resolve UPN/e-mail. Para envio, escolha **um e somente um** dos caminhos abaixo. Grants são aditivos: nunca configure ambos, nem deixe `Mail.Send` global do Entra ativo junto com RBAC/AAP esperando que o outro o restrinja.
+`User.Read.All` continua sendo uma permissão de aplicação Graph com consentimento administrativo nos dois caminhos, pois o código resolve UPN/e-mail. Para envio, escolha **um e somente um** dos caminhos abaixo. Grants são aditivos: nunca misture os caminhos. No Caminho A, não deixe `Mail.Send` global do Entra ativo junto com RBAC; no Caminho B, o `Mail.Send` global do Entra é obrigatório e deve sempre vir acompanhado da Application Access Policy `RestrictAccess`.
 
 ### Caminho A — recomendado: Exchange Online Application RBAC
 
