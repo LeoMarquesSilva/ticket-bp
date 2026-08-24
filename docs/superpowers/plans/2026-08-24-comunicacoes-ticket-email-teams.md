@@ -25,7 +25,7 @@
 
 ## File Structure
 
-- `supabase/migrations/20260824150000_ticket_communications.sql`: tabela, configuração de ativação, RLS e RPCs de enfileiramento/reserva/conclusão.
+- `supabase/migrations/<timestamp>_ticket_communications.sql`: migration gerada pelo Supabase CLI com tabela, configuração de ativação, RLS e RPCs de enfileiramento/reserva/conclusão.
 - `supabase/functions/notify-ticket-communications/_shared/rules.mjs`: elegibilidade, última mensagem humana, canais e chaves de ciclo.
 - `supabase/functions/notify-ticket-communications/_shared/templates.mjs`: links, assuntos, HTML/texto de e-mail e conteúdo do Teams.
 - `supabase/functions/notify-ticket-communications/_shared/graphClient.mjs`: token app-only, resolução Entra, e-mail, Teams e retry.
@@ -37,7 +37,7 @@
 - `api/shared/ticketCommunicationTemplates.test.ts`: testes de conteúdo e links.
 - `api/shared/ticketCommunicationGraph.test.ts`: testes do cliente Graph com transporte injetado.
 - `api/shared/ticketCommunicationProcessor.test.ts`: testes de orquestração e independência dos canais.
-- `api/shared/ticketCommunicationMigration.test.ts`: contrato estrutural da migration e controles de segurança.
+- `supabase/tests/database/ticket_communications.test.sql`: testes comportamentais pgTAP da migration, idempotência e controles de segurança.
 - `src/services/ticketCommunicationService.ts`: invocação não bloqueante da Function após finalização.
 - `src/services/ticketCommunicationService.test.ts`: contrato do cliente frontend.
 - `src/services/ticketService.ts`: disparo após resolução persistida.
@@ -437,37 +437,28 @@ git commit -m "feat: adiciona cliente microsoft graph de notificacoes"
 ### Task 4: Persistência, RLS e fila idempotente
 
 **Files:**
-- Create: `supabase/migrations/20260824150000_ticket_communications.sql`
-- Create: `api/shared/ticketCommunicationMigration.test.ts`
+- Create via `npx supabase migration new ticket_communications`: `supabase/migrations/<timestamp>_ticket_communications.sql`
+- Create: `supabase/tests/database/ticket_communications.test.sql`
 
 **Interfaces:**
 - Produces RPC `helpdesk_enqueue_ticket_notification(uuid,text,text,text)`, RPC `helpdesk_claim_ticket_notifications(integer,timestamptz)` e RPC `helpdesk_complete_ticket_notification(uuid,boolean,text,timestamptz)`.
 - Consumes somente `service_role`; nenhuma permissão para `anon` ou `authenticated`.
 
-- [ ] **Step 1: Escrever teste RED do contrato SQL**
+- [ ] **Step 1: Escrever teste RED comportamental com pgTAP**
 
-```ts
-import { readFileSync } from 'node:fs';
-
-const migrationPath = new URL('../../supabase/migrations/20260824150000_ticket_communications.sql', import.meta.url);
-
-it('protege e deduplica as entregas', () => {
-  const sql = readFileSync(migrationPath, 'utf8');
-  expect(sql).toContain('ENABLE ROW LEVEL SECURITY');
-  expect(sql).toMatch(/UNIQUE\s*\(ticket_id, notification_type, channel, cycle_key\)/i);
-  expect(sql).toContain("WHERE status IN ('pending', 'processing', 'failed')");
-  expect(sql).toMatch(/FOR UPDATE SKIP LOCKED/i);
-  expect(sql).toMatch(/REVOKE ALL.*FROM anon, authenticated/is);
-});
-```
+Criar `supabase/tests/database/ticket_communications.test.sql` dentro de transação. O teste deve exercer o banco real e comprovar: tabela e RPCs existem; duas tentativas do mesmo `ticket_id + notification_type + channel + cycle_key` produzem uma única entrega; `anon` e `authenticated` não executam as RPCs; `service_role` consegue enfileirar, reservar e concluir; uma entrega reservada deixa de aparecer para outra reserva; e RLS está habilitado. Não testar o SQL por busca de texto.
 
 - [ ] **Step 2: Executar RED**
 
-Run: `npm test -- api/shared/ticketCommunicationMigration.test.ts`
+Run: `npx supabase test db supabase/tests/database/ticket_communications.test.sql`
 
-Expected: FAIL porque a migration não existe.
+Expected: FAIL porque a migration e as RPCs ainda não existem.
 
-- [ ] **Step 3: Criar tabela e configuração de ativação**
+- [ ] **Step 3: Gerar a migration pelo CLI e criar tabela/configuração de ativação**
+
+Run: `npx supabase migration new ticket_communications`
+
+Usar exatamente o arquivo criado pelo CLI; não inventar timestamp manualmente.
 
 ```sql
 CREATE TABLE public.app_c009c0e4f1_ticket_notification_deliveries (
@@ -517,7 +508,7 @@ GRANT EXECUTE ON FUNCTION public.helpdesk_complete_ticket_notification(uuid,bool
 
 - [ ] **Step 5: Executar GREEN e validar SQL**
 
-Run: `npm test -- api/shared/ticketCommunicationMigration.test.ts`
+Run: `npx supabase test db supabase/tests/database/ticket_communications.test.sql`
 
 Run, quando o Supabase local estiver disponível: `npx supabase db lint --local`
 
@@ -526,7 +517,7 @@ Expected: teste PASS; lint sem erros na nova migration.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add api/shared/ticketCommunicationMigration.test.ts supabase/migrations/20260824150000_ticket_communications.sql
+git add supabase/tests/database/ticket_communications.test.sql supabase/migrations/*_ticket_communications.sql
 git commit -m "feat: cria fila idempotente de comunicacoes"
 ```
 
@@ -706,7 +697,9 @@ Adicionar à `.env.example` somente os nomes `MICROSOFT_TENANT_ID`, `MICROSOFT_C
 
 - [ ] **Step 4: Verificar importações e configuração**
 
-Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationMigration.test.ts`
+Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts`
+
+Run: `npx supabase test db supabase/tests/database/ticket_communications.test.sql`
 
 Run, se Deno estiver disponível: `deno check supabase/functions/notify-ticket-communications/index.ts`
 
@@ -896,7 +889,9 @@ git commit -m "docs: adiciona implantacao de email e teams"
 
 - [ ] **Step 1: Executar suíte direcionada**
 
-Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationMigration.test.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.finishTicket.test.ts src/utils/finishTicketOrchestration.test.ts`
+Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.finishTicket.test.ts src/utils/finishTicketOrchestration.test.ts`
+
+Run: `npx supabase test db supabase/tests/database/ticket_communications.test.sql`
 
 Expected: todos PASS, sem warnings inesperados.
 
@@ -933,7 +928,7 @@ Run: `git status --short`
 Confirmar que alterações preexistentes do usuário continuam fora dos commits. Se a verificação exigiu correção, criar teste RED, corrigir e commitar somente os arquivos da funcionalidade:
 
 ```bash
-git add api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationMigration.test.ts src/services/ticketCommunicationService.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.ts src/services/ticketService.finishTicket.test.ts supabase/config.toml supabase/migrations/20260824150000_ticket_communications.sql supabase/functions/notify-ticket-communications .env.example .gitignore docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
+git add api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts supabase/tests/database/ticket_communications.test.sql src/services/ticketCommunicationService.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.ts src/services/ticketService.finishTicket.test.ts supabase/config.toml supabase/migrations/*_ticket_communications.sql supabase/functions/notify-ticket-communications .env.example .gitignore docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
 git commit -m "fix: corrige verificacao de comunicacoes de tickets"
 ```
 
