@@ -193,6 +193,34 @@ describe('processDeliveries', () => {
     expect(result).toEqual({ selected: 1, sent: 0, failed: 1, skipped: 0 });
   });
 
+  it('recusa combinação de tipo e canal que não pertence à política de entrega', async () => {
+    const repository = fakeRepository({
+      claimed: [{
+        ...teamsDelivery,
+        notification_type: 'resolved_feedback_invite',
+      }],
+    });
+    const graph = fakeGraph();
+
+    const result = await processDeliveries({
+      repository,
+      graph,
+      appBaseUrl: 'https://responsum.example',
+      now,
+    });
+
+    expect(graph.resolveUserId).not.toHaveBeenCalled();
+    expect(graph.sendTeamsActivity).not.toHaveBeenCalled();
+    expect(repository.completed).toEqual([
+      expect.objectContaining({
+        id: teamsDelivery.id,
+        success: false,
+        error: 'Entrega de comunicação inválida',
+      }),
+    ]);
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 1, skipped: 0 });
+  });
+
   it('sanitiza e limita a falha do Graph antes de persistir a próxima tentativa', async () => {
     const unsafeMessage = `Falha para ana@bpplaw.com.br com Bearer ${'secret-token-value-'.repeat(40)}`;
     const error = Object.assign(new Error(unsafeMessage), { status: 429, code: 'TooManyRequests' });
@@ -229,6 +257,21 @@ describe('processDeliveries', () => {
 
     expect(repository.completed).toEqual([
       expect.objectContaining({ error: 'delivery_error: client_secret=[redacted]' }),
+    ]);
+  });
+
+  it('redige credenciais enviadas em cabeçalho antes de persistir a falha', async () => {
+    const repository = fakeRepository({ claimed: [emailDelivery] });
+
+    await processDeliveries({
+      repository,
+      graph: fakeGraph({ emailError: new Error('Authorization: Basic credential-should-not-persist') }),
+      appBaseUrl: 'https://responsum.example',
+      now,
+    });
+
+    expect(repository.completed).toEqual([
+      expect.objectContaining({ error: 'delivery_error: Authorization: [redacted]' }),
     ]);
   });
 

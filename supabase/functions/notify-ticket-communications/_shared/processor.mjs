@@ -33,6 +33,7 @@ function isValidRecipient(requester) {
 
 function sanitizeText(value, fallback) {
   const text = String(value ?? fallback)
+    .replace(/\b(authorization|x-api-key|api[_-]?key|password)\s*[:=]\s*[^\r\n]+/gi, '$1: [redacted]')
     .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
     .replace(/\b(access[_-]?token|client[_-]?secret|token)\s*[=:]\s*[^\s,;]+/gi, '$1=[redacted]')
     .replace(/\b[^\s@]+@[^\s@]+\.[^\s@]+\b/g, '[redacted]')
@@ -54,7 +55,8 @@ function sanitizeError(error) {
 function isSupportedDelivery(delivery) {
   return delivery?.id
     && SUPPORTED_CHANNELS.has(delivery.channel)
-    && SUPPORTED_NOTIFICATION_TYPES.has(delivery.notification_type);
+    && SUPPORTED_NOTIFICATION_TYPES.has(delivery.notification_type)
+    && channelsForNotification(delivery.notification_type).includes(delivery.channel);
 }
 
 export async function prepareDeliveries({ repository, now, ticketId }) {
