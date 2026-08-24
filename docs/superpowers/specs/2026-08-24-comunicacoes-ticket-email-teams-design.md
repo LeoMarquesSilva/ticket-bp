@@ -96,11 +96,11 @@ A Function obterá token pelo fluxo OAuth 2.0 `client_credentials`, usando:
 
 O token será reutilizado durante uma execução, mas nunca persistido no banco ou em logs.
 
-Além de `Mail.Send` e `TeamsActivity.Send`, a aplicação terá `User.Read.All` para resolver o identificador Microsoft Entra do destinatário. A resolução tentará o e-mail como UPN, consultará `mail` e `userPrincipalName` e aplicará as variantes corporativas `@bpplaw.com.br` e `@bismarchipires.com.br`, seguindo o comportamento já existente nas integrações Graph do projeto. O envio do Teams usará o ID Microsoft Entra resolvido; a falha de resolução não afetará o envio por e-mail.
+Além de `Mail.Send`, a aplicação terá `User.Read.All` para resolver o identificador Microsoft Entra do destinatário. A resolução tentará o e-mail como UPN, consultará `mail` e `userPrincipalName` e aplicará as variantes corporativas `@bpplaw.com.br` e `@bismarchipires.com.br`, seguindo o comportamento já existente nas integrações Graph do projeto. O envio do Teams usará o ID Microsoft Entra resolvido; a falha de resolução não afetará o envio por e-mail.
 
 E-mails serão enviados por `POST /users/{MICROSOFT_NOTIFICATION_SENDER}/sendMail`, com permissão de aplicação `Mail.Send`.
 
-Notificações do Teams serão enviadas por `POST /users/{userId-or-UPN}/teamwork/sendActivityNotification`, com permissão de aplicação `TeamsActivity.Send`. O payload usará `activityType: systemDefault`, tópico textual, `webUrl` do chamado e texto de prévia.
+Notificações do Teams serão enviadas por `POST /users/{userId-or-UPN}/teamwork/sendActivityNotification`, com a permissão de aplicação de consentimento específico ao recurso `TeamsActivity.Send.User`, que é a opção de menor privilégio para um app instalado no escopo pessoal do usuário. O payload usará `activityType: systemDefault`, tópico textual, `webUrl` do chamado e texto de prévia. A permissão ampla `TeamsActivity.Send` não será solicitada por padrão.
 
 O Microsoft Entra app ID deverá constar em `webApplicationInfo` no manifesto do aplicativo Teams. O aplicativo Teams deverá estar instalado no escopo pessoal do destinatário. O repositório conterá o manifesto versionado e instruções de empacotamento, publicação no catálogo da organização e instalação. A instalação pode ser feita administrativamente pelo Graph, mas não fará parte do envio de cada aviso.
 

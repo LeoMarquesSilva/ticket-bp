@@ -810,7 +810,7 @@ git commit -m "feat: dispara convite ao finalizar ticket"
 
 - [ ] **Step 1: Criar manifesto versionado**
 
-Usar o schema oficial estável validado no Developer Portal durante a execução. Não declarar bot, chat, canal ou permissões RSC desnecessárias. O template versionado será:
+Usar o schema oficial estável validado no Developer Portal durante a execução. Não declarar bot, chat ou canal. Declarar somente a permissão RSC de aplicação `TeamsActivity.Send.User`, opção de menor privilégio para o app pessoal instalado. O template versionado será:
 
 ```json
 {
@@ -841,6 +841,16 @@ Usar o schema oficial estável validado no Developer Portal durante a execução
   "webApplicationInfo": {
     "id": "${MICROSOFT_CLIENT_ID}",
     "resource": "api://www.responsum.com.br/${MICROSOFT_CLIENT_ID}"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "TeamsActivity.Send.User",
+          "type": "Application"
+        }
+      ]
+    }
   }
 }
 ```
@@ -851,11 +861,11 @@ Validar as URLs legais no Developer Portal. Se o tenant exigir páginas existent
 
 Documentar na ordem:
 
-1. conceder consentimento administrativo para `Mail.Send`, `User.Read.All` e `TeamsActivity.Send`;
+1. conceder consentimento administrativo no Entra para `Mail.Send` e `User.Read.All`;
 2. restringir `Mail.Send` à caixa `MICROSOFT_NOTIFICATION_SENDER` por Application Access Policy quando disponível no tenant;
 3. preparar e validar ícones a partir dos ativos oficiais do Responsum;
 4. substituir os dois identificadores do template, criar ZIP e publicar no catálogo da organização;
-5. instalar o app no escopo pessoal dos usuários por política do Teams Admin Center;
+5. aprovar `TeamsActivity.Send.User` no manifesto e instalar o app no escopo pessoal dos usuários por política do Teams Admin Center, concedendo o consentimento específico ao recurso;
 6. configurar os seis Edge Function secrets;
 7. aplicar migration e fazer deploy da Function;
 8. criar cron `0 12 * * *` chamando `{SUPABASE_URL}/functions/v1/notify-ticket-communications` com body `{ "action": "daily" }` e JWT service role armazenado no cofre/painel, nunca no repositório;
@@ -868,7 +878,7 @@ Adicionar `teams/responsum-notifications/*.zip`, `teams/responsum-notifications/
 
 - [ ] **Step 4: Revisar documentação contra o código**
 
-Run: `rg -n "Mail.Send|User.Read.All|TeamsActivity.Send|0 12 \* \* \*|MICROSOFT_NOTIFICATION_SENDER|HELPDESK_APP_BASE_URL" docs/DEPLOY-TICKET-COMMUNICATIONS.md .env.example teams/responsum-notifications/manifest.template.json`
+Run: `rg -n "Mail.Send|User.Read.All|TeamsActivity.Send.User|0 12 \* \* \*|MICROSOFT_NOTIFICATION_SENDER|HELPDESK_APP_BASE_URL" docs/DEPLOY-TICKET-COMMUNICATIONS.md .env.example teams/responsum-notifications/manifest.template.json`
 
 Expected: todas as permissões, variáveis e cron aparecem nos arquivos corretos; nenhum valor secreto aparece.
 
