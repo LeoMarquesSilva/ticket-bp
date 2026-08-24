@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(75);
+select plan(76);
 
 select has_table(
   'public',
@@ -43,6 +43,13 @@ select has_function(
   'helpdesk_complete_ticket_notification',
   array['uuid', 'uuid', 'integer', 'text', 'text', 'timestamp with time zone'],
   'a RPC de conclusao existe'
+);
+
+select has_function(
+  'public',
+  'helpdesk_release_ticket_notification',
+  array['uuid', 'uuid', 'integer', 'timestamp with time zone'],
+  'a RPC de liberacao de claim existe'
 );
 
 select has_function(
@@ -95,6 +102,7 @@ select results_eq(
         'helpdesk_enqueue_ticket_notification',
         'helpdesk_claim_ticket_notifications',
         'helpdesk_complete_ticket_notification',
+        'helpdesk_release_ticket_notification',
         'helpdesk_count_ready_ticket_notifications',
         'helpdesk_finish_ticket',
         'helpdesk_list_ticket_communication_candidates',
@@ -102,7 +110,7 @@ select results_eq(
       )
     order by p.proname
   $$,
-  array[true, true, true, true, true, true, true],
+  array[true, true, true, true, true, true, true, true],
   'as RPCs executam com os privilegios do chamador'
 );
 

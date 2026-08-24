@@ -1,6 +1,11 @@
 alter table public.app_c009c0e4f1_chat_messages
   add column if not exists is_system boolean not null default false;
 
+update public.app_c009c0e4f1_chat_messages
+set is_system = true
+where is_system = false
+  and message like '✅ Seu atendimento%foi finalizado!%Avaliar Agora%';
+
 create table public.app_c009c0e4f1_ticket_notification_deliveries (
   id uuid primary key default gen_random_uuid(),
   ticket_id uuid not null references public.app_c009c0e4f1_tickets(id) on delete cascade,
@@ -347,7 +352,7 @@ begin
     and (
       ticket.status <> 'resolved'
       or ticket.resolved_at is null
-      or delivery.cycle_key <> ticket.resolved_at::text
+      or delivery.cycle_key <> (pg_catalog.to_jsonb(ticket.resolved_at) #>> '{}')
     );
 
   return query
@@ -373,7 +378,7 @@ begin
           where ticket.id = delivery.ticket_id
             and ticket.status = 'resolved'
             and ticket.resolved_at is not null
-            and delivery.cycle_key = ticket.resolved_at::text
+            and delivery.cycle_key = (pg_catalog.to_jsonb(ticket.resolved_at) #>> '{}')
         )
       )
     order by delivery.next_attempt_at, delivery.created_at, delivery.id
@@ -390,6 +395,53 @@ begin
   from claimable
   where delivery.id = claimable.id
   returning delivery.*;
+end;
+$$;
+
+create function public.helpdesk_release_ticket_notification(
+  p_delivery_id uuid,
+  p_claim_token uuid,
+  p_attempt_count integer,
+  p_next_attempt_at timestamptz
+)
+returns public.app_c009c0e4f1_ticket_notification_deliveries
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_delivery public.app_c009c0e4f1_ticket_notification_deliveries%rowtype;
+begin
+  if p_delivery_id is null or p_claim_token is null then
+    raise exception using errcode = '22023', message = 'delivery claim is required';
+  end if;
+
+  if p_attempt_count is null or p_attempt_count <= 0 then
+    raise exception using errcode = '22023', message = 'attempt_count must be positive';
+  end if;
+
+  if p_next_attempt_at is null then
+    raise exception using errcode = '22023', message = 'next_attempt_at is required';
+  end if;
+
+  update public.app_c009c0e4f1_ticket_notification_deliveries delivery
+  set
+    status = 'pending',
+    next_attempt_at = p_next_attempt_at,
+    processing_started_at = null,
+    claim_token = null,
+    updated_at = pg_catalog.now()
+  where delivery.id = p_delivery_id
+    and delivery.status = 'processing'
+    and delivery.claim_token = p_claim_token
+    and delivery.attempt_count = p_attempt_count
+  returning delivery.* into v_delivery;
+
+  if not found then
+    return null;
+  end if;
+
+  return v_delivery;
 end;
 $$;
 
@@ -519,7 +571,7 @@ begin
         where ticket.id = delivery.ticket_id
           and ticket.status = 'resolved'
           and ticket.resolved_at is not null
-          and delivery.cycle_key = ticket.resolved_at::text
+          and delivery.cycle_key = (pg_catalog.to_jsonb(ticket.resolved_at) #>> '{}')
       )
     );
 
@@ -645,6 +697,9 @@ revoke all
   on function public.helpdesk_complete_ticket_notification(uuid, uuid, integer, text, text, timestamptz)
   from public, anon, authenticated, service_role;
 revoke all
+  on function public.helpdesk_release_ticket_notification(uuid, uuid, integer, timestamptz)
+  from public, anon, authenticated, service_role;
+revoke all
   on function public.helpdesk_count_ready_ticket_notifications(timestamptz, uuid, text)
   from public, anon, authenticated, service_role;
 revoke all
@@ -668,6 +723,9 @@ grant execute
   to service_role;
 grant execute
   on function public.helpdesk_complete_ticket_notification(uuid, uuid, integer, text, text, timestamptz)
+  to service_role;
+grant execute
+  on function public.helpdesk_release_ticket_notification(uuid, uuid, integer, timestamptz)
   to service_role;
 grant execute
   on function public.helpdesk_count_ready_ticket_notifications(timestamptz, uuid, text)

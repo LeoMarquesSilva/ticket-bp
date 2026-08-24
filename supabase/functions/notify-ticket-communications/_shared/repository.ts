@@ -5,6 +5,7 @@ const RPCS = {
   claim: 'helpdesk_claim_ticket_notifications',
   countReady: 'helpdesk_count_ready_ticket_notifications',
   complete: 'helpdesk_complete_ticket_notification',
+  release: 'helpdesk_release_ticket_notification',
   emailTemplates: 'helpdesk_get_ticket_communication_email_templates',
 } as const;
 
@@ -166,6 +167,22 @@ export function createTicketCommunicationRepository(supabaseAdmin: unknown) {
           : null,
       });
       throwOnError(result.error, 'complete');
+      return row(result.data);
+    },
+
+    async release(input: {
+      id: string;
+      claimToken: string;
+      attemptCount: number;
+      nextAttemptAt: Date | string;
+    }) {
+      const result = await client.rpc(RPCS.release, {
+        p_delivery_id: input.id,
+        p_claim_token: input.claimToken,
+        p_attempt_count: input.attemptCount,
+        p_next_attempt_at: new Date(input.nextAttemptAt).toISOString(),
+      });
+      throwOnError(result.error, 'release');
       return row(result.data);
     },
   };

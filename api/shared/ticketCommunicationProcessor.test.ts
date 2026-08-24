@@ -54,11 +54,13 @@ const teamsDelivery = {
 function fakeRepository({ candidates = [], claimed = [], completeError, completeErrors = [], emailTemplateOverrides = {} } = {}) {
   const enqueued: Record<string, unknown>[] = [];
   const completed: Record<string, unknown>[] = [];
+  const released: Record<string, unknown>[] = [];
   const claimQueue = [...claimed];
   let completeAttempt = 0;
   return {
     enqueued,
     completed,
+    released,
     listCandidates: vi.fn(async () => candidates),
     getEmailTemplateOverrides: vi.fn(async () => emailTemplateOverrides),
     enqueue: vi.fn(async (row) => {
@@ -76,6 +78,10 @@ function fakeRepository({ candidates = [], claimed = [], completeError, complete
       } : null;
     }),
     countReady: vi.fn(async () => claimQueue.length),
+    release: vi.fn(async (row) => {
+      released.push(row);
+      return row;
+    }),
     complete: vi.fn(async (row) => {
       completed.push(row);
       const error = completeErrors[completeAttempt] ?? completeError;
@@ -274,6 +280,48 @@ describe('processDeliveries', () => {
     expect(result).toEqual({
       selected: 2,
       sent: 2,
+      failed: 0,
+      cancelled: 0,
+      skipped: 0,
+      backlog: 1,
+      budgetExhausted: true,
+    });
+  });
+
+  it('interrompe dentro do lote e devolve os claims ainda não processados quando o tempo acaba', async () => {
+    const deliveries = [emailDelivery, {
+      ...emailDelivery,
+      id: 'delivery-not-processed',
+      claim_token: 'claim-not-processed',
+    }];
+    const repository = fakeRepository({ claimed: deliveries });
+    repository.countReady.mockResolvedValue(1);
+    const monotonicNow = vi.fn()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(30_001);
+
+    const result = await processDeliveries({
+      repository,
+      graph: fakeGraph(),
+      appBaseUrl: 'https://responsum.example',
+      now,
+      batchSize: 100,
+      budget: { maxDeliveries: 100, maxBatches: 2, maxDurationMs: 30_000 },
+      monotonicNow,
+    });
+
+    expect(repository.release).toHaveBeenCalledWith({
+      id: 'delivery-not-processed',
+      claimToken: 'claim-not-processed',
+      attemptCount: 1,
+      nextAttemptAt: now,
+    });
+    expect(repository.getContext).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      selected: 2,
+      sent: 1,
       failed: 0,
       cancelled: 0,
       skipped: 0,

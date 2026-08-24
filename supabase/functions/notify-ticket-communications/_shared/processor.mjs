@@ -58,6 +58,20 @@ async function completeDelivery(repository, delivery, input) {
   }
 }
 
+async function releaseDelivery(repository, delivery, nextAttemptAt) {
+  try {
+    const released = await repository.release({
+      id: delivery?.id,
+      claimToken: delivery?.claim_token,
+      attemptCount: delivery?.attempt_count,
+      nextAttemptAt,
+    });
+    return Boolean(released);
+  } catch {
+    return false;
+  }
+}
+
 function countCompletion(counts, completed, outcome) {
   // Each claimed row has one mutually exclusive terminal count. A queue write
   // failure is reported as skipped because its final state is unknown.
@@ -167,6 +181,7 @@ export async function processDeliveries({
   };
   let batches = 0;
   let queueDrained = false;
+  let deadlineReached = false;
   let emailTemplateOverrides = {};
   try {
     emailTemplateOverrides = await repository.getEmailTemplateOverrides();
@@ -186,7 +201,18 @@ export async function processDeliveries({
     batches += 1;
     counts.selected += deliveries.length;
 
-    for (const delivery of deliveries) {
+    for (let deliveryIndex = 0; deliveryIndex < deliveries.length; deliveryIndex += 1) {
+    if (monotonicNow() >= deadline) {
+      deadlineReached = true;
+      const deferredDeliveries = deliveries.slice(deliveryIndex);
+      for (const deferred of deferredDeliveries) {
+        const released = await releaseDelivery(repository, deferred, claimNow);
+        if (!released) counts.skipped += 1;
+      }
+      break;
+    }
+
+    const delivery = deliveries[deliveryIndex];
     if (!isSupportedDelivery(delivery)) {
       const completed = await completeDelivery(repository, delivery, {
         outcome: 'failed',
@@ -286,6 +312,8 @@ export async function processDeliveries({
     countCompletion(counts, completed, 'sent');
     }
 
+    if (deadlineReached) break;
+
     if (deliveries.length < claimLimit) {
       queueDrained = true;
       break;
@@ -294,7 +322,7 @@ export async function processDeliveries({
 
   if (!queueDrained) {
     counts.backlog = await repository.countReady(claimNow, { ticketId, notificationType });
-    counts.budgetExhausted = counts.backlog > 0;
+    counts.budgetExhausted = deadlineReached || counts.backlog > 0;
   }
 
   return counts;

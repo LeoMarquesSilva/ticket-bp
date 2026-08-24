@@ -22,8 +22,22 @@ describe('ticket communications migration contract', () => {
 
   it('cancels stale resolved-invite cycles and only claims the current resolved_at cycle', () => {
     expect(migration).toMatch(/cancellation_reason = 'stale_cycle'/);
-    expect(migration).toMatch(/delivery\.cycle_key <> ticket\.resolved_at::text/);
-    expect(migration).toMatch(/delivery\.cycle_key = ticket\.resolved_at::text/);
+    expect(migration).toMatch(/delivery\.cycle_key <> \(pg_catalog\.to_jsonb\(ticket\.resolved_at\) #>> '\{\}'\)/);
+    expect(migration).toMatch(/delivery\.cycle_key = \(pg_catalog\.to_jsonb\(ticket\.resolved_at\) #>> '\{\}'\)/);
+    expect(migration).not.toMatch(/ticket\.resolved_at::text/);
+  });
+
+  it('backfills the legacy automatic finalization prompt as a system message', () => {
+    expect(migration).toMatch(/update public\.app_c009c0e4f1_chat_messages/);
+    expect(migration).toMatch(/set is_system = true/);
+    expect(migration).toMatch(/message like '✅ Seu atendimento%foi finalizado!%Avaliar Agora%'/);
+  });
+
+  it('exposes a fenced release operation for claims deferred by the execution budget', () => {
+    expect(migration).toMatch(/create function public\.helpdesk_release_ticket_notification/);
+    expect(migration).toMatch(/delivery\.claim_token = p_claim_token/);
+    expect(migration).toMatch(/delivery\.attempt_count = p_attempt_count/);
+    expect(migration).toMatch(/status = 'pending'/);
   });
 
   it('exposes a service-only ready backlog counter', () => {
