@@ -20,6 +20,16 @@ it('lembra quando a última mensagem humana do suporte completa 48 horas', () =>
   expect(result).toEqual(['awaiting_requester']);
 });
 
+it('não lembra um milissegundo antes de completar 48 horas', () => {
+  const result = getEligibleNotificationTypes({
+    now: new Date('2026-08-24T11:59:59.999Z'),
+    enabledAt: new Date('2026-08-01T00:00:00.000Z'),
+    ticket: { status: 'in_progress', created_by: 'requester', resolved_at: null, feedback_submitted_at: null, category: 'ti', subcategory: 'acesso' },
+    lastHumanMessage: { user_id: 'support', created_at: '2026-08-22T12:00:00.000Z' },
+  });
+  expect(result).toEqual([]);
+});
+
 it('não lembra quando a última mensagem humana é do solicitante', () => {
   const result = getEligibleNotificationTypes({
     now,
