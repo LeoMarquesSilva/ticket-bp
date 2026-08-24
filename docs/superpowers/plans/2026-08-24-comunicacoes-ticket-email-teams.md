@@ -797,6 +797,7 @@ git commit -m "feat: dispara convite ao finalizar ticket"
 **Files:**
 - Create: `teams/responsum-notifications/manifest.template.json`
 - Create: `docs/DEPLOY-TICKET-COMMUNICATIONS.md`
+- Create: `api/shared/ticketCommunicationTeamsManifest.test.ts`
 - Modify: `.gitignore`
 
 **Interfaces:**
@@ -809,8 +810,8 @@ Usar o schema oficial estável validado no Developer Portal durante a execução
 
 ```json
 {
-  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
-  "manifestVersion": "1.22",
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.28/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.28",
   "version": "1.0.0",
   "id": "${MICROSOFT_TEAMS_APP_ID}",
   "developer": {
@@ -852,7 +853,15 @@ Usar o schema oficial estável validado no Developer Portal durante a execução
 
 Validar as URLs legais no Developer Portal. Se o tenant exigir páginas existentes para publicação no catálogo, apontar `privacyUrl` e `termsOfUseUrl` para as páginas corporativas aprovadas antes do upload; isso não altera a API nem o manifesto versionado da aplicação.
 
-- [ ] **Step 2: Escrever runbook completo**
+- [ ] **Step 2: Escrever teste RED do contrato do manifesto**
+
+O teste deve carregar e fazer `JSON.parse` do template, validar schema/versão `1.28`, placeholders de IDs, `webApplicationInfo`, exatamente uma permissão RSC `TeamsActivity.Send.User/Application`, ausência de bot/chat/canal e nomes dos dois ícones.
+
+Run: `npm test -- api/shared/ticketCommunicationTeamsManifest.test.ts`
+
+Expected: FAIL antes do manifesto existir.
+
+- [ ] **Step 3: Escrever runbook completo**
 
 Documentar na ordem:
 
@@ -867,20 +876,22 @@ Documentar na ordem:
 9. realizar smoke test com usuário de homologação e consultas de auditoria na tabela de entregas;
 10. diagnosticar `403` de Graph, app não instalado, UPN não resolvido e `429`.
 
-- [ ] **Step 3: Ignorar artefatos gerados**
+- [ ] **Step 4: Ignorar artefatos gerados**
 
 Adicionar `teams/responsum-notifications/*.zip`, `teams/responsum-notifications/manifest.json`, `teams/responsum-notifications/color.png` e `teams/responsum-notifications/outline.png` ao `.gitignore`; manter apenas o template versionado.
 
-- [ ] **Step 4: Revisar documentação contra o código**
+- [ ] **Step 5: Executar GREEN e revisar documentação contra o código**
+
+Run: `npm test -- api/shared/ticketCommunicationTeamsManifest.test.ts`
 
 Run: `rg -n "Mail.Send|User.Read.All|TeamsActivity.Send.User|0 12 \* \* \*|MICROSOFT_NOTIFICATION_SENDER|HELPDESK_APP_BASE_URL" docs/DEPLOY-TICKET-COMMUNICATIONS.md .env.example teams/responsum-notifications/manifest.template.json`
 
 Expected: todas as permissões, variáveis e cron aparecem nos arquivos corretos; nenhum valor secreto aparece.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add .gitignore docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
+git add .gitignore api/shared/ticketCommunicationTeamsManifest.test.ts docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
 git commit -m "docs: adiciona implantacao de email e teams"
 ```
 
@@ -894,7 +905,7 @@ git commit -m "docs: adiciona implantacao de email e teams"
 
 - [ ] **Step 1: Executar suíte direcionada**
 
-Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationHandler.test.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.finishTicket.test.ts src/utils/finishTicketOrchestration.test.ts`
+Run: `npm test -- api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationHandler.test.ts api/shared/ticketCommunicationTeamsManifest.test.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.finishTicket.test.ts src/utils/finishTicketOrchestration.test.ts`
 
 Run: `npx supabase test db supabase/tests/database/ticket_communications.test.sql`
 
@@ -933,7 +944,7 @@ Run: `git status --short`
 Confirmar que alterações preexistentes do usuário continuam fora dos commits. Se a verificação exigiu correção, criar teste RED, corrigir e commitar somente os arquivos da funcionalidade:
 
 ```bash
-git add api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationHandler.test.ts supabase/tests/database/ticket_communications.test.sql src/services/ticketCommunicationService.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.ts src/services/ticketService.finishTicket.test.ts supabase/config.toml supabase/migrations/*_ticket_communications.sql supabase/functions/notify-ticket-communications .env.example .gitignore docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
+git add api/shared/ticketCommunicationRules.test.ts api/shared/ticketCommunicationTemplates.test.ts api/shared/ticketCommunicationGraph.test.ts api/shared/ticketCommunicationProcessor.test.ts api/shared/ticketCommunicationHandler.test.ts api/shared/ticketCommunicationTeamsManifest.test.ts supabase/tests/database/ticket_communications.test.sql src/services/ticketCommunicationService.ts src/services/ticketCommunicationService.test.ts src/services/ticketService.ts src/services/ticketService.finishTicket.test.ts supabase/config.toml supabase/migrations/*_ticket_communications.sql supabase/functions/notify-ticket-communications .env.example .gitignore docs/DEPLOY-TICKET-COMMUNICATIONS.md teams/responsum-notifications/manifest.template.json
 git commit -m "fix: corrige verificacao de comunicacoes de tickets"
 ```
 
