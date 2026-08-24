@@ -293,7 +293,7 @@ it('resolve o domínio corporativo alternativo antes de desistir', async () => {
   await expect(graph.resolveUserId('ana@bismarchipires.com.br')).resolves.toBe('entra-user-id');
 });
 
-it('envia atividade com link do chamado', async () => {
+it('envia atividade templada com link do chamado', async () => {
   const fetchImpl = vi.fn()
     .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
     .mockResolvedValueOnce(new Response(null, { status: 204 }));
@@ -311,7 +311,7 @@ Expected: FAIL por módulo ausente.
 
 - [ ] **Step 3: Implementar token, requests e payloads**
 
-O método de e-mail deve construir MIME `multipart/alternative` com partes `text/plain` e `text/html`, codificar os bytes em base64 e enviar para `sendMail` com header `Content-Type: text/plain`. O método Teams deve enviar `teamsAppId`, `activityType: 'systemDefault'`, `topic: { source: 'text', value, webUrl }` e `previewText: { content }`. `resolveUserId` tenta cada variante primeiro em `/users/{email}?$select=id` e depois com filtro `mail eq ... or userPrincipalName eq ...`.
+O método de e-mail deve construir MIME `multipart/alternative` com partes `text/plain` e `text/html`, codificar os bytes em base64 e enviar para `sendMail` com header `Content-Type: text/plain`. O método Teams deve enviar `teamsAppId`, `activityType: 'ticketCommunication'`, `templateParameters: [{ name: 'notificationText', value: previewText }]`, `topic: { source: 'text', value, webUrl }` e `previewText: { content }`. `resolveUserId` tenta cada variante primeiro em `/users/{email}?$select=id` e depois com filtro `mail eq ... or userPrincipalName eq ...`.
 
 ```js
 function utf8Base64(value) {
@@ -392,7 +392,7 @@ export function createGraphClient(config, { fetchImpl = fetch, sleep = (ms) => n
   );
   const sendTeamsActivity = ({ userId, topic, previewText, webUrl }) => graphRequest(
     `/users/${encodeURIComponent(userId)}/teamwork/sendActivityNotification`,
-    { method: 'POST', body: JSON.stringify({ teamsAppId: config.teamsAppId, activityType: 'systemDefault', topic: { source: 'text', value: topic, webUrl }, previewText: { content: previewText } }) },
+    { method: 'POST', body: JSON.stringify({ teamsAppId: config.teamsAppId, activityType: 'ticketCommunication', topic: { source: 'text', value: topic, webUrl }, previewText: { content: previewText }, templateParameters: [{ name: 'notificationText', value: previewText }] }) },
   );
   return { sendEmail, resolveUserId: (email) => resolveGraphUserId(email, graphRequest), sendTeamsActivity };
 }
@@ -806,7 +806,7 @@ git commit -m "feat: dispara convite ao finalizar ticket"
 
 - [ ] **Step 1: Criar manifesto versionado**
 
-Usar o schema oficial estável validado no Developer Portal durante a execução. Não declarar bot, chat ou canal. Declarar somente a permissão RSC de aplicação `TeamsActivity.Send.User`, opção de menor privilégio para o app pessoal instalado. O template versionado será:
+Usar o schema oficial estável validado no Developer Portal durante a execução. Não declarar bot, chat ou canal. Declarar somente a permissão RSC de aplicação `TeamsActivity.Send.User`, opção de menor privilégio para o app pessoal instalado, e o activity type templado `ticketCommunication`; não declarar ícones customizados extras. O template versionado será:
 
 ```json
 {
@@ -847,6 +847,15 @@ Usar o schema oficial estável validado no Developer Portal durante a execução
         }
       ]
     }
+  },
+  "activities": {
+    "activityTypes": [
+      {
+        "type": "ticketCommunication",
+        "description": "Aviso de chamado que requer atenção no Responsum.",
+        "templateText": "{actor} enviou um aviso de chamado: {notificationText}"
+      }
+    ]
   }
 }
 ```
@@ -855,7 +864,7 @@ Validar as URLs legais no Developer Portal. Se o tenant exigir páginas existent
 
 - [ ] **Step 2: Escrever teste RED do contrato do manifesto**
 
-O teste deve carregar e fazer `JSON.parse` do template, validar schema/versão `1.28`, placeholders de IDs, `webApplicationInfo`, exatamente uma permissão RSC `TeamsActivity.Send.User/Application`, ausência de bot/chat/canal e nomes dos dois ícones.
+O teste deve carregar e fazer `JSON.parse` do template, validar schema/versão `1.28`, placeholders de IDs, `webApplicationInfo`, exatamente uma permissão RSC `TeamsActivity.Send.User/Application`, o activity type `ticketCommunication` e allowlist estrita de propriedades de topo. Deve falhar com qualquer capacidade/permissão extra, inclusive bots, tabs, compose extensions, connectors, `permissions` e `devicePermissions`.
 
 Run: `npm test -- api/shared/ticketCommunicationTeamsManifest.test.ts`
 
@@ -865,16 +874,15 @@ Expected: FAIL antes do manifesto existir.
 
 Documentar na ordem:
 
-1. conceder consentimento administrativo no Entra para `Mail.Send` e `User.Read.All`;
-2. restringir `Mail.Send` à caixa `MICROSOFT_NOTIFICATION_SENDER` por Application Access Policy quando disponível no tenant;
+1. preparar projeto Supabase e tenant Teams/Entra de homologação isolados; sem eles, não executar `daily`;
+2. escolher exclusivamente Exchange Application RBAC `Application Mail.Send` escopado (recomendado, sem `Mail.Send` global Entra) ou Entra `Mail.Send` + Application Access Policy (compatibilidade), mantendo `User.Read.All` consentido;
 3. preparar e validar ícones a partir dos ativos oficiais do Responsum;
-4. substituir os dois identificadores do template, criar ZIP e publicar no catálogo da organização;
-5. aprovar `TeamsActivity.Send.User` no manifesto e instalar o app no escopo pessoal dos usuários por política do Teams Admin Center, concedendo o consentimento específico ao recurso;
-6. configurar os seis Edge Function secrets;
-7. aplicar migration e fazer deploy da Function;
-8. criar uma secret key Supabase nomeada `ticket-communications` e o cron `0 12 * * *` chamando `{SUPABASE_URL}/functions/v1/notify-ticket-communications` com body `{ "action": "daily" }` e a secret key armazenada no Vault/painel e enviada somente em `apikey`, nunca no repositório;
-9. realizar smoke test com usuário de homologação e consultas de auditoria na tabela de entregas;
-10. diagnosticar `403` de Graph, app não instalado, UPN não resolvido e `429`.
+4. substituir os dois identificadores do template, validar o activity type e publicar o pacote no catálogo;
+5. aprovar `TeamsActivity.Send.User` e instalar o app pessoal por política;
+6. configurar os seis Edge Function secrets, aplicar migration e fazer deploy da Function em homologação;
+7. criar a secret key `ticket-communications`, executar smoke `daily` somente na homologação isolada e consultar a auditoria; `ticket_resolved` pode ser testado separadamente;
+8. somente após o smoke aprovado, criar/ativar o cron `0 12 * * *` em produção, com a key no Vault/painel e enviada apenas em `apikey`;
+9. diagnosticar `401`/`403` de Graph, app não instalado, UPN não resolvido, `404` e `429`.
 
 - [ ] **Step 4: Ignorar artefatos gerados**
 

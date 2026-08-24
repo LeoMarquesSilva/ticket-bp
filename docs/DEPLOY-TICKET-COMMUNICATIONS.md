@@ -1,87 +1,89 @@
 # Implantação das comunicações de chamados
 
-Este runbook publica o envio de e-mail e o aviso no feed **Atividade** do Teams da Edge Function `notify-ticket-communications`. Ele não cria ícones, não gera o ZIP e não registra valores secretos no repositório.
+Este runbook publica o envio de e-mail e o aviso no feed **Atividade** do Teams da Edge Function `notify-ticket-communications`. Não crie ícones, ZIPs ou valores secretos no repositório.
 
-## Escopo e referências
+## Escopo e pré-requisitos
 
-- O template usa o [schema Teams 1.28](https://developer.microsoft.com/json-schemas/teams/v1.28/MicrosoftTeams.schema.json). Ele contém somente o RSC de aplicação `TeamsActivity.Send.User`, para instalação pessoal; não contém bot, chat, canal nem a permissão ampla `TeamsActivity.Send`.
-- O código chama `POST /users/{id}/teamwork/sendActivityNotification` com `activityType: "systemDefault"`. Esse tipo interno não deve ser declarado como activity no manifesto. Consulte [enviar notificações de atividade](https://learn.microsoft.com/en-us/graph/teams-send-activityfeednotifications) e a [referência da operação para usuário](https://learn.microsoft.com/en-us/graph/api/userteamwork-sendactivitynotification?view=graph-rest-1.0).
-- A Function usa credenciais de aplicação do Microsoft Graph. Consulte a [referência de permissões Microsoft Graph](https://learn.microsoft.com/graph/permissions-reference) e a orientação para [restringir acesso de apps a caixas de correio](https://learn.microsoft.com/exchange/permissions-exo/application-rbac).
+- O template usa o [schema Teams 1.28](https://developer.microsoft.com/json-schemas/teams/v1.28/MicrosoftTeams.schema.json), uma única RSC `TeamsActivity.Send.User`/`Application` e o activity type templado `ticketCommunication`. Não contém bot, chat, canal, conectores, permissões de dispositivo nem `TeamsActivity.Send` amplo.
+- O código envia `POST /users/{id}/teamwork/sendActivityNotification` com `activityType: "ticketCommunication"`, `templateParameters`, tópico textual, `webUrl`, `previewText` e `teamsAppId`. Consulte [notificações de atividade](https://learn.microsoft.com/en-us/graph/teams-send-activityfeednotifications) e a [operação para usuário](https://learn.microsoft.com/en-us/graph/api/userteamwork-sendactivitynotification?view=graph-rest-1.0).
+- A Function usa client credentials para Graph e `User.Read.All` de aplicação para resolver o destinatário. Consulte as [permissões Graph](https://learn.microsoft.com/en-us/graph/permissions-reference), [Exchange Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac) e a [autorização de Edge Functions](https://supabase.com/docs/guides/functions/auth).
 
-Antes do upload, a equipe proprietária deve aprovar as URLs legais e os ícones oficiais. Em particular, confirme que as páginas de privacidade e termos usadas no pacote estão publicadas e aprovadas; se o catálogo do tenant exigir outras páginas corporativas aprovadas, substitua-as **no `manifest.json` do pacote**. Não altere o template versionado sem a aprovação correspondente.
+Antes do upload, o proprietário deve aprovar URLs legais e ícones oficiais. Valide que as páginas de privacidade e termos do pacote estão publicadas e aprovadas; se o tenant exigir URLs corporativas diferentes, altere-as somente no `manifest.json` gerado para o pacote aprovado. Não altere o template versionado sem a aprovação correspondente.
 
-## 1. Conceder permissões Microsoft Entra
+## 1. Preparar homologação isolada
 
-No registro de aplicativo correspondente a `MICROSOFT_CLIENT_ID`, adicione as permissões de **aplicação** Microsoft Graph `Mail.Send` e `User.Read.All`, e execute o consentimento administrativo do tenant. A Function obtém token client-credentials com o escopo `https://graph.microsoft.com/.default`, envia e-mail como `MICROSOFT_NOTIFICATION_SENDER` e resolve o usuário Teams por UPN/e-mail.
+O comando `daily` processa todos os candidatos do projeto: ele **não** aceita destinatário, ticket ou usuário de teste. Antes de qualquer smoke `daily`, use um projeto Supabase e tenant Teams/Entra de homologação isolados, contendo apenas usuários e tickets de teste. Se esse ambiente não existir, não execute `daily`; teste apenas o fluxo dirigido `ticket_resolved` com uma sessão de homologação e um ticket de teste resolvido.
 
-Não solicite `TeamsActivity.Send` amplo. A permissão para atividade é a RSC `TeamsActivity.Send.User` do manifesto Teams, aprovada durante a instalação pessoal descrita no passo 5.
+Não faça uma chamada `daily` em produção para testar um usuário. O cron só será criado/ativado depois de migration, deploy e smoke bem-sucedidos em homologação.
 
-## 2. Restringir a caixa remetente
+## 2. Escolher exatamente um modelo de menor privilégio para e-mail
 
-Quando o tenant disponibilizar Application Access Policy para a aplicação, restrinja `Mail.Send` exclusivamente à caixa definida por `MICROSOFT_NOTIFICATION_SENDER`. A associação deve cobrir somente o grupo/caixa autorizada e o AppId do registro usado pela Function; valide a política com a equipe Exchange antes do smoke test. Isso limita o uso de `Mail.Send` mesmo que o consentimento Graph seja de aplicação. Para tenants que já migraram o controle para RBAC for Applications, aplique o controle equivalente de escopo de caixa segundo a orientação oficial.
+`User.Read.All` continua sendo uma permissão de aplicação Graph com consentimento administrativo nos dois caminhos, pois o código resolve UPN/e-mail. Para envio, escolha **um e somente um** dos caminhos abaixo. Grants são aditivos: nunca configure ambos, nem deixe `Mail.Send` global do Entra ativo junto com RBAC/AAP esperando que o outro o restrinja.
 
-## 3. Preparar os ícones oficiais
+### Caminho A — recomendado: Exchange Online Application RBAC
 
-Parta apenas dos ativos oficiais aprovados do Responsum. Exporte PNGs sem gerar novas artes:
+Não conceda `Mail.Send` global no Microsoft Entra. No Exchange Online, registre o service principal e atribua somente o papel `Application Mail.Send` a um escopo que contenha exclusivamente a mailbox/grupo de `MICROSOFT_NOTIFICATION_SENDER`.
 
-- `color.png`: 192 × 192 pixels, colorido;
-- `outline.png`: 32 × 32 pixels, PNG transparente com contorno branco.
+Em uma sessão Exchange Online administrativa, substitua os placeholders por identificadores do ambiente (nunca os comite):
 
-Valide dimensões, transparência e direitos de uso antes de copiá-los para `teams/responsum-notifications/`. Esses arquivos finais são deliberadamente ignorados pelo Git.
+```powershell
+Connect-ExchangeOnline
+New-ServicePrincipal -AppId <MICROSOFT_CLIENT_ID> -ObjectId <ENTRA_SERVICE_PRINCIPAL_OBJECT_ID> -DisplayName 'Responsum Ticket Communications'
+New-ManagementScope -Name 'ResponsumNotificationSenderScope' -RecipientRestrictionFilter { PrimarySmtpAddress -eq '<MICROSOFT_NOTIFICATION_SENDER>' }
+New-ManagementRoleAssignment -Name 'ResponsumTicketMailSend' -App <EXCHANGE_SERVICE_PRINCIPAL_IDENTITY> -Role 'Application Mail.Send' -CustomResourceScope 'ResponsumNotificationSenderScope'
+Test-ServicePrincipalAuthorization -Identity <EXCHANGE_SERVICE_PRINCIPAL_IDENTITY> -Resource <MICROSOFT_NOTIFICATION_SENDER>
+```
 
-## 4. Montar e publicar o pacote Teams
+Valide que o teste retorna autorização para a mailbox permitida e que uma mailbox fora do escopo não é autorizada. Também confira no registro Entra que não há grant de aplicação `Mail.Send`; mantenha apenas o consentimento de `User.Read.All` necessário à resolução.
 
-1. Copie `teams/responsum-notifications/manifest.template.json` para `teams/responsum-notifications/manifest.json`.
-2. Substitua apenas `${MICROSOFT_TEAMS_APP_ID}` pelo App ID Teams e `${MICROSOFT_CLIENT_ID}` pelo Client ID Entra; ambos devem ser GUIDs do tenant.
-3. Revalide o JSON no Developer Portal e confirme as URLs legais aprovadas, os dois ícones e o RSC. O schema exige `color.png` e `outline.png` no nível raiz do pacote.
-4. Crie um ZIP contendo exatamente `manifest.json`, `color.png` e `outline.png` na raiz, sem diretório-pai. Publique-o no catálogo da organização pelo Teams Admin Center/Developer Portal conforme a política do tenant.
+### Caminho B — compatibilidade: Entra `Mail.Send` + Application Access Policy
 
-Não comite `manifest.json`, os PNGs ou o ZIP; `.gitignore` cobre esses artefatos. Não faça upload até a aprovação formal das URLs legais e dos ícones.
+Use este caminho apenas quando Application RBAC não estiver disponível. Conceda `Mail.Send` de aplicação e o consentimento administrativo no Entra, crie uma Application Access Policy `RestrictAccess` para um grupo que contenha somente a mailbox remetente e teste a política antes do envio.
 
-## 5. Aprovar e instalar o app Teams
+```powershell
+Connect-ExchangeOnline
+New-ApplicationAccessPolicy -AppId <MICROSOFT_CLIENT_ID> -PolicyScopeGroupId <MAIL_ENABLED_SECURITY_GROUP> -AccessRight RestrictAccess -Description 'Responsum ticket sender only'
+Test-ApplicationAccessPolicy -AppId <MICROSOFT_CLIENT_ID> -Identity <MICROSOFT_NOTIFICATION_SENDER>
+```
 
-No Teams Admin Center, revise a permissão RSC `TeamsActivity.Send.User` com tipo `Application`. Publique/aprove o aplicativo e use uma política de instalação para disponibilizá-lo no escopo **pessoal** dos usuários que receberão avisos, concedendo o consentimento específico ao recurso na instalação. A atividade `systemDefault` enviada pelo Graph não cria uma seção `activities` no manifesto.
+O teste deve permitir a mailbox remetente e negar uma mailbox fora do grupo. Não crie uma atribuição `Application Mail.Send` de Exchange RBAC neste caminho; remova/revise grants conflitantes antes de liberar produção.
 
-Para o primeiro teste, instale o app também para o usuário de homologação. Um envio para usuário sem o aplicativo pessoal instalado deve ser tratado como configuração pendente, não como motivo para ampliar a permissão ou criar bot/canal.
+## 3. Preparar o aplicativo Teams
 
-## 6. Configurar os seis secrets da Edge Function
+1. Exporte somente ativos oficiais aprovados: `color.png` (192 × 192 PNG colorido) e `outline.png` (32 × 32 PNG transparente com contorno branco). Valide dimensões, transparência e direitos de uso.
+2. Copie `teams/responsum-notifications/manifest.template.json` para `teams/responsum-notifications/manifest.json`.
+3. Substitua somente `${MICROSOFT_TEAMS_APP_ID}` pelo App ID Teams e `${MICROSOFT_CLIENT_ID}` pelo Client ID Entra; ambos devem ser GUIDs do tenant.
+4. No Developer Portal, valide o JSON, as URLs legais aprovadas, os dois ícones, `ticketCommunication` e a única RSC `TeamsActivity.Send.User`/`Application`. O template de atividade usa apenas `{notificationText}`; o Graph preenche `actor` e a Function fornece o texto de cada um dos três motivos de chamado.
+5. Crie um ZIP com exatamente `manifest.json`, `color.png` e `outline.png` na raiz, sem diretório-pai, e publique-o no catálogo da organização conforme a política do tenant.
 
-No Supabase, em Edge Function Secrets, configure somente os valores de produção destes nomes (também documentados em `.env.example`):
+No Teams Admin Center, aprove a RSC e instale o app por política no escopo **pessoal** dos destinatários, concedendo o consentimento específico ao recurso. Instale-o também para o usuário de homologação. Não substitua instalação ausente por bot, chat, canal ou permissão ampla.
+
+Os PNGs, `manifest.json` e ZIP são ignorados pelo Git. Não faça upload antes da aprovação formal das URLs legais e dos ícones.
+
+## 4. Configurar a Function e o banco em homologação
+
+No projeto Supabase de homologação, configure em Edge Function Secrets somente os valores destes seis nomes, já listados em `.env.example`:
 
 | Secret | Uso |
 | --- | --- |
-| `MICROSOFT_TENANT_ID` | Tenant do Microsoft Entra. |
-| `MICROSOFT_CLIENT_ID` | Registro de aplicativo usado no Graph e no pacote Teams. |
-| `MICROSOFT_CLIENT_SECRET` | Credencial client-secret do registro. |
-| `MICROSOFT_NOTIFICATION_SENDER` | Caixa autorizada como remetente. |
-| `MICROSOFT_TEAMS_APP_ID` | App ID do pacote Teams publicado. |
-| `HELPDESK_APP_BASE_URL` | URL HTTP(S) base do Responsum para links dos avisos. |
+| `MICROSOFT_TENANT_ID` | Tenant Microsoft Entra. |
+| `MICROSOFT_CLIENT_ID` | Registro de aplicativo Graph/Teams. |
+| `MICROSOFT_CLIENT_SECRET` | Credencial client-secret. |
+| `MICROSOFT_NOTIFICATION_SENDER` | Mailbox remetente autorizada no caminho escolhido. |
+| `MICROSOFT_TEAMS_APP_ID` | App ID Teams publicado. |
+| `HELPDESK_APP_BASE_URL` | URL HTTP(S) base dos links dos avisos. |
 
-Não copie valores para `.env.example`, migrations, documentação, logs ou comandos versionados.
+Não copie valores para `.env.example`, migrations, documentação, comandos versionados ou logs. Aplique `supabase/migrations/20260824150304_ticket_communications.sql` pelo fluxo aprovado (por exemplo, `supabase db push`) e publique `supabase/functions/notify-ticket-communications/` (por exemplo, `supabase functions deploy notify-ticket-communications`).
 
-## 7. Aplicar banco e publicar a Function
+Confirme em `supabase/config.toml` que a Function usa `verify_jwt = false`: o handler `@supabase/server` autoriza `auth: ['user', 'secret:ticket-communications']`, portanto a configuração não torna o endpoint público.
 
-1. Aplique a migration `supabase/migrations/20260824150304_ticket_communications.sql` no projeto Supabase de destino (por exemplo, via fluxo aprovado `supabase db push`). Ela cria `app_c009c0e4f1_ticket_notification_deliveries` e as RPCs de fila.
-2. Publique `supabase/functions/notify-ticket-communications/` (por exemplo, `supabase functions deploy notify-ticket-communications`).
-3. Confirme no `supabase/config.toml` que `notify-ticket-communications` está com `verify_jwt = false`. Isto é necessário porque a Function usa `@supabase/server` para aceitar `auth: ['user', 'secret:ticket-communications']`; não torna o endpoint público. Esse uso de secret key no header `apikey` segue a [autorização de Edge Functions](https://supabase.com/docs/guides/functions/auth).
+## 5. Criar a key e executar o smoke antes do cron
 
-O comando `ticket_resolved` exige sessão de usuário e visibilidade RLS do ticket. O comando agendado `daily` exige a secret key do passo seguinte.
+Crie no painel Supabase de homologação uma secret key chamada `ticket-communications`, guardando o valor apenas no Vault/painel seguro. Para o smoke `daily` isolado, envie `POST` a `{SUPABASE_URL}/functions/v1/notify-ticket-communications` com corpo `{ "action": "daily" }` e somente os headers `Content-Type: application/json` e `apikey: <valor seguro da key>`. Não envie `Authorization`, service-role key ou segredo Microsoft.
 
-## 8. Criar a key e o cron diário
+Espere `200` com `ok`, `prepared`, `sent` e `failed` numéricos; confirme o e-mail da mailbox autorizada e a atividade Teams do usuário de homologação. Para testar o fluxo dirigido de interface, faça `ticket_resolved` com sessão de usuário e ticket de homologação resolvido; esse comando exige RLS e não substitui o smoke `daily` isolado.
 
-1. Crie no painel Supabase uma secret key chamada `ticket-communications` e guarde seu valor somente no Vault/painel de segredos aprovado.
-2. Crie no agendador do Supabase um job com cron **`0 12 * * *`** (12:00 UTC), que faça `POST` para `{SUPABASE_URL}/functions/v1/notify-ticket-communications`.
-3. Use corpo JSON exatamente `{ "action": "daily" }` e headers `Content-Type: application/json` e `apikey: <valor da key ticket-communications>`. Não envie `Authorization`, service-role key ou qualquer segredo Microsoft; não grave o valor da key em SQL, Git ou logs.
-
-O horário está alinhado ao processador, que reagenda falhas para a próxima execução diária às 12:00 UTC.
-
-## 9. Smoke test e auditoria
-
-Com um usuário de homologação que tenha e-mail válido, usuário Entra resolvível e o app Teams pessoal instalado:
-
-1. Execute uma chamada controlada ao endpoint com a key segura e `{ "action": "daily" }`; espere `200` com `ok`, `prepared`, `sent` e `failed` numéricos.
-2. Confirme o e-mail vindo exclusivamente de `MICROSOFT_NOTIFICATION_SENDER` e o aviso no feed Atividade do Teams com link para o Responsum.
-3. Em uma sessão administrativa de banco, consulte a auditoria sem expor dados pessoais além do necessário:
+Audite as entregas em sessão administrativa:
 
 ```sql
 select
@@ -98,16 +100,22 @@ order by created_at desc
 limit 50;
 ```
 
-Espere uma linha `sent` por canal elegível. Falhas são registradas e reagendadas para a próxima rotina diária; a fila impede uma segunda entrega pendente para o mesmo ticket, tipo e canal.
+Espere uma linha `sent` por canal elegível. Falhas são registradas e reagendadas para 12:00 UTC do dia seguinte; a fila impede nova entrega pendente do mesmo ticket, tipo e canal.
 
-## 10. Diagnóstico
+## 6. Criar e ativar o cron em produção
+
+Somente após o smoke isolado aprovado, replique a configuração aprovada no ambiente de produção, usando a secret key de produção e os controles Exchange do caminho escolhido. Então crie/ative no agendador Supabase o job **`0 12 * * *`** (12:00 UTC) para `POST {SUPABASE_URL}/functions/v1/notify-ticket-communications`, com corpo `{ "action": "daily" }`, `Content-Type: application/json` e a key de produção somente no header `apikey`.
+
+Não registre essa key em SQL, Git ou logs. A cadência coincide com o reagendamento diário do processador; não aumente a frequência para contornar falhas ou throttling.
+
+## 7. Diagnóstico
 
 | Sintoma | Verificação e ação |
 | --- | --- |
-| HTTP `401` da Function | Confirme que a chamada `daily` enviou exclusivamente a secret key `ticket-communications` no header `apikey`, que a key existe e que não houve valor copiado/truncado. Para `401` do Graph, valide tenant, client ID, client secret e consentimento administrativo sem registrar a credencial. |
-| Graph `403` | Confirme `Mail.Send` e `User.Read.All` como permissões de aplicação com consentimento; valide o escopo de `MICROSOFT_NOTIFICATION_SENDER` na Application Access Policy/RBAC. Para Teams, confirme o RSC `TeamsActivity.Send.User` e o consentimento na instalação pessoal. |
-| App Teams não instalado | Instale/aplique a política no escopo pessoal do destinatário e aguarde a propagação. Não substitua isso por bot, chat, canal ou permissão ampla. |
-| UPN não resolvido ou Graph `404` | Verifique a correspondência entre o e-mail do solicitante e `userPrincipalName`/`mail` no Entra. O código tenta os domínios `bpplaw.com.br` e `bismarchipires.com.br`, depois filtro por `mail`; se não houver único resultado, registra `entra_user_not_found` e tenta novamente no próximo dia. |
-| Graph `429` | Respeite `Retry-After`. A Function tenta até três vezes com backoff; se esgotar, registra `graph_http_429` e agenda a próxima tentativa diária. Não aumente a frequência do cron para contornar throttling. |
+| HTTP `401` da Function | Confirme a secret key `ticket-communications` no header `apikey`, seu ambiente correto e ausência de valor truncado. Para `401` Graph, valide tenant, client ID, client secret e consentimentos sem registrar credenciais. |
+| Graph `403` | Verifique `User.Read.All`; no Caminho A, `Application Mail.Send` e o escopo RBAC; no Caminho B, `Mail.Send` consentido e o teste da AAP. Para Teams, confira RSC, publicação e instalação pessoal. |
+| App Teams não instalado | Aplique a política pessoal ao destinatário e aguarde propagação; não adicione bot/chat/canal nem permissões amplas. |
+| UPN não resolvido ou Graph `404` | Verifique `userPrincipalName`/`mail`. O código tenta os domínios corporativos e filtro por `mail`; sem resultado único, grava `entra_user_not_found` e tenta novamente no próximo dia. |
+| Graph `429` | Respeite `Retry-After`. A Function tenta até três vezes; se esgotar, grava `graph_http_429` e reagenda a próxima execução diária. |
 
-Após o smoke, preserve o pacote e os valores secretos fora do repositório e acompanhe a tabela de entregas nas primeiras execuções diárias.
+Após o rollout, acompanhe a tabela de entregas nas primeiras execuções. Preserve os artefatos e segredos fora do repositório.

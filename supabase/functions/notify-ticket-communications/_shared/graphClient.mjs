@@ -207,9 +207,10 @@ export function createGraphClient(
       method: 'POST',
       body: JSON.stringify({
         teamsAppId: config.teamsAppId,
-        activityType: 'systemDefault',
+        activityType: 'ticketCommunication',
         topic: { source: 'text', value: topic, webUrl },
         previewText: { content: previewText },
+        templateParameters: [{ name: 'notificationText', value: previewText }],
       }),
     },
   );

@@ -36,5 +36,14 @@
         }
       ]
     }
+  },
+  "activities": {
+    "activityTypes": [
+      {
+        "type": "ticketCommunication",
+        "description": "Aviso de chamado que requer atenção no Responsum.",
+        "templateText": "{actor} enviou um aviso de chamado: {notificationText}"
+      }
+    ]
   }
 }

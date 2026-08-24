@@ -134,7 +134,7 @@ describe('createGraphClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
-  it('envia atividade com link do chamado', async () => {
+  it('envia atividade templada com link do chamado', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
@@ -149,13 +149,17 @@ describe('createGraphClient', () => {
     });
     expect(JSON.parse(fetchImpl.mock.calls[1][1].body)).toEqual({
       teamsAppId: 'teams-app-id',
-      activityType: 'systemDefault',
+      activityType: 'ticketCommunication',
       topic: {
         source: 'text',
         value: 'Chamado',
         webUrl: 'https://responsum.example/tickets/1',
       },
       previewText: { content: 'Avaliação pendente' },
+      templateParameters: [{
+        name: 'notificationText',
+        value: 'Avaliação pendente',
+      }],
     });
   });
 
