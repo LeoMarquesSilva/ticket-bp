@@ -2,7 +2,7 @@
   "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.28/MicrosoftTeams.schema.json",
   "manifestVersion": "1.28",
   "version": "1.0.0",
-  "id": "${MICROSOFT_TEAMS_APP_ID}",
+  "id": "${TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID}",
   "developer": {
     "name": "Bismarchi Pires",
     "websiteUrl": "https://www.responsum.com.br",
@@ -23,9 +23,18 @@
   },
   "accentColor": "#D5B170",
   "validDomains": ["www.responsum.com.br"],
+  "staticTabs": [
+    {
+      "entityId": "ticket-detail",
+      "name": "Chamado Responsum",
+      "contentUrl": "${APP_PUBLIC_URL}",
+      "websiteUrl": "${APP_PUBLIC_URL}",
+      "scopes": ["personal"]
+    }
+  ],
   "webApplicationInfo": {
-    "id": "${MICROSOFT_CLIENT_ID}",
-    "resource": "api://www.responsum.com.br/${MICROSOFT_CLIENT_ID}"
+    "id": "${TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID}",
+    "resource": "api://www.responsum.com.br/${TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID}"
   },
   "authorization": {
     "permissions": {
@@ -42,7 +51,7 @@
       {
         "type": "ticketCommunication",
         "description": "Aviso de chamado que requer atenção no Responsum.",
-        "templateText": "{actor} enviou um aviso de chamado: {notificationText}"
+        "templateText": "{actor} enviou um aviso de chamado: {notificationText} {ticketUrl}"
       }
     ]
   }

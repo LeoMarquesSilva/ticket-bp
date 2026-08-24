@@ -3,42 +3,23 @@ import { createCorsHeaders } from './_shared/cors.ts';
 import { createGraphClient } from './_shared/graphClient.mjs';
 import { createTicketCommunicationRepository } from './_shared/repository.ts';
 import { handleTicketCommunicationRequest } from './_shared/requestHandler.mjs';
+import { readTicketCommunicationRuntimeConfig } from './_shared/runtimeConfig.mjs';
 
-const REQUIRED_SECRETS = [
-  'MICROSOFT_TENANT_ID',
-  'MICROSOFT_CLIENT_ID',
-  'MICROSOFT_CLIENT_SECRET',
-  'MICROSOFT_NOTIFICATION_SENDER',
-  'MICROSOFT_TEAMS_APP_ID',
-  'HELPDESK_APP_BASE_URL',
-] as const;
-
-type RequiredSecret = typeof REQUIRED_SECRETS[number];
-type RuntimeConfig = Record<RequiredSecret, string>;
+type RuntimeConfig = NonNullable<ReturnType<typeof readTicketCommunicationRuntimeConfig>>;
 
 let graphClient: ReturnType<typeof createGraphClient> | null = null;
 
 function readRuntimeConfig(): RuntimeConfig | null {
-  const entries = REQUIRED_SECRETS.map((name) => [name, Deno.env.get(name)?.trim() ?? ''] as const);
-  if (entries.some(([, value]) => !value)) return null;
-
-  const config = Object.fromEntries(entries) as RuntimeConfig;
-  try {
-    const appUrl = new URL(config.HELPDESK_APP_BASE_URL);
-    if (appUrl.protocol !== 'https:' && appUrl.protocol !== 'http:') return null;
-  } catch {
-    return null;
-  }
-  return config;
+  return readTicketCommunicationRuntimeConfig((name: string) => Deno.env.get(name));
 }
 
 function getGraphClient(config: RuntimeConfig) {
   graphClient ??= createGraphClient({
-    tenantId: config.MICROSOFT_TENANT_ID,
-    clientId: config.MICROSOFT_CLIENT_ID,
-    clientSecret: config.MICROSOFT_CLIENT_SECRET,
-    sender: config.MICROSOFT_NOTIFICATION_SENDER,
-    teamsAppId: config.MICROSOFT_TEAMS_APP_ID,
+    tenantId: config.tenantId,
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
+    sender: config.sender,
+    teamsAppId: config.teamsAppId,
   });
   return graphClient;
 }
@@ -54,7 +35,7 @@ const fetch = withSupabase(
   {
     auth: ['user', 'secret:ticket-communications'],
     cors: {
-      headers: createCorsHeaders(Deno.env.get('HELPDESK_APP_BASE_URL')),
+      headers: createCorsHeaders(Deno.env.get('APP_PUBLIC_URL')),
     },
   },
   async (req, ctx) => {
@@ -73,11 +54,17 @@ const fetch = withSupabase(
           return {
             repository: createTicketCommunicationRepository(ctx.supabaseAdmin),
             graph: getGraphClient(config),
-            appBaseUrl: config.HELPDESK_APP_BASE_URL,
+            appBaseUrl: config.appPublicUrl,
           };
         },
       },
     });
+
+    if ('budgetExhausted' in result.body && result.body.budgetExhausted === true) {
+      console.info('[ticket-communications] processing budget exhausted', {
+        backlog: 'backlog' in result.body ? result.body.backlog : 0,
+      });
+    }
 
     return json(result.status, result.body);
   },

@@ -10,10 +10,11 @@ import { TicketService } from '@/services/ticketService';
 interface ChatMessage {
   id: string;
   ticket_id: string;
-  user_id: string;
+  user_id: string | null;
   user_name: string;
   message: string;
   created_at: string;
+  is_system?: boolean;
 }
 
 interface TicketChatProps {
@@ -573,10 +574,11 @@ const TicketChat: React.FC<TicketChatProps> = ({
       const systemMessage: ChatMessage = {
         id: `system-${Date.now()}`,
         ticket_id: ticketId,
-        user_id: 'system',
+        user_id: user?.id ?? null,
         user_name: 'Sistema',
         message: `✅ Avaliação realizada. Obrigado pela sua avaliação!`,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        is_system: true,
       };
       
       setMessages(currentMessages => [...currentMessages, systemMessage]);
@@ -659,7 +661,7 @@ const TicketChat: React.FC<TicketChatProps> = ({
           >
             <div 
               className={`max-w-[80%] rounded-lg px-4 py-2 shadow-sm ${
-                msg.user_id === 'system' 
+                msg.is_system === true
                   ? 'bg-[#F69F19]/20 text-slate-800 mx-auto' 
                   : msg.user_id === user?.id 
                     ? 'bg-[#DE5532] text-white' 
@@ -668,7 +670,7 @@ const TicketChat: React.FC<TicketChatProps> = ({
             >
               <div className="flex justify-between items-center mb-1">
                 <span className={`text-xs font-medium ${
-                  msg.user_id === 'system' 
+                  msg.is_system === true
                     ? 'text-[#F69F19]'  
                     : msg.user_id === user?.id 
                       ? 'text-[#F69F19]' 

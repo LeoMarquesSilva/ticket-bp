@@ -410,7 +410,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   };
 
   const handleCategoryChange = async (newCategory: string, newSubcategory: string) => {
-    if (!handleUpdateTicket) return;
+    if (!handleUpdateTicket || !user?.id) return;
 
     const oldCategory = selectedTicket.category || '';
     const oldSubcategory = selectedTicket.subcategory || '';
@@ -425,9 +425,11 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     try {
       await TicketService.sendChatMessage(
         selectedTicket.id,
-        'system',
-        'Sistema',
-        `Categoria alterada de "${oldLabel}" para "${newLabel}"${user?.name ? ` por ${user.name}` : ''}.`
+        user.id,
+        user.name ?? 'Sistema',
+        `Categoria alterada de "${oldLabel}" para "${newLabel}"${user?.name ? ` por ${user.name}` : ''}.`,
+        [],
+        { isSystem: true },
       );
     } catch (error) {
       console.error('Erro ao registrar alteração de categoria no chat:', error);
@@ -901,7 +903,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             {chatMessages.map((message) => {
               const isOwnMessage = user?.id === message.userId;
               const isTemp = message.isTemp;
-              const isSystemMessage = message.userId === 'system' || message.isSystem;
+              const isSystemMessage = message.isSystem === true;
               
               // Renderizar mensagem do sistema
               if (isSystemMessage) {

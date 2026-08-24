@@ -24,6 +24,7 @@ describe('Teams notification app manifest', () => {
       'id',
       'manifestVersion',
       'name',
+      'staticTabs',
       'validDomains',
       'version',
       'webApplicationInfo',
@@ -31,15 +32,22 @@ describe('Teams notification app manifest', () => {
     expect(manifest).toMatchObject({
       $schema: 'https://developer.microsoft.com/json-schemas/teams/v1.28/MicrosoftTeams.schema.json',
       manifestVersion: '1.28',
-      id: '${MICROSOFT_TEAMS_APP_ID}',
+      id: '${TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID}',
       icons: {
         color: 'color.png',
         outline: 'outline.png',
       },
       webApplicationInfo: {
-        id: '${MICROSOFT_CLIENT_ID}',
-        resource: 'api://www.responsum.com.br/${MICROSOFT_CLIENT_ID}',
+        id: '${TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID}',
+        resource: 'api://www.responsum.com.br/${TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID}',
       },
+      staticTabs: [{
+        entityId: 'ticket-detail',
+        name: 'Chamado Responsum',
+        contentUrl: '${APP_PUBLIC_URL}',
+        websiteUrl: '${APP_PUBLIC_URL}',
+        scopes: ['personal'],
+      }],
       authorization: {
         permissions: {
           resourceSpecific: [{
@@ -52,7 +60,7 @@ describe('Teams notification app manifest', () => {
         activityTypes: [{
           type: 'ticketCommunication',
           description: 'Aviso de chamado que requer atenção no Responsum.',
-          templateText: '{actor} enviou um aviso de chamado: {notificationText}',
+          templateText: '{actor} enviou um aviso de chamado: {notificationText} {ticketUrl}',
         }],
       },
     });
@@ -69,6 +77,14 @@ describe('Teams notification app manifest', () => {
       'templateText',
       'type',
     ]);
+    expect(manifest.staticTabs).toHaveLength(1);
+    expect(Object.keys(manifest.staticTabs[0]).sort()).toEqual([
+      'contentUrl',
+      'entityId',
+      'name',
+      'scopes',
+      'websiteUrl',
+    ]);
     for (const forbiddenProperty of [
       'bots',
       'composeExtensions',
@@ -76,7 +92,6 @@ describe('Teams notification app manifest', () => {
       'connectors',
       'devicePermissions',
       'permissions',
-      'staticTabs',
       'subscriptionOffer',
     ]) {
       expect(manifest).not.toHaveProperty(forbiddenProperty);

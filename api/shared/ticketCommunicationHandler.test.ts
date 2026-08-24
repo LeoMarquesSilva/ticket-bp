@@ -218,6 +218,37 @@ describe('handleTicketCommunicationRequest', () => {
     expect(Object.keys(result.body)).toEqual(['ok', 'prepared', 'sent', 'failed']);
   });
 
+  it('expõe backlog sanitizado quando o orçamento diário termina', async () => {
+    const context = handlerDependencies();
+    context.processDeliveries.mockResolvedValueOnce({
+      selected: 500,
+      sent: 499,
+      failed: 1,
+      cancelled: 0,
+      skipped: 0,
+      backlog: 37,
+      budgetExhausted: true,
+    });
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'secret',
+      body: { action: 'daily' },
+      dependencies: context.dependencies,
+    });
+
+    expect(result).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        prepared: 2,
+        sent: 499,
+        failed: 1,
+        backlog: 37,
+        budgetExhausted: true,
+      },
+    });
+  });
+
   it('consulta o ticket pelo cliente RLS e filtra o preparo no modo imediato', async () => {
     const context = handlerDependencies();
 
@@ -308,6 +339,9 @@ describe('handleTicketCommunicationRequest', () => {
           ticket_id: input.ticketId,
           notification_type: input.notificationType,
           channel: input.channel,
+          cycle_key: resolvedTicket.resolved_at,
+          claim_token: '77777777-7777-7777-7777-777777777777',
+          attempt_count: 1,
           nextAttemptAt: input.nextAttemptAt,
           enabledAt: '2026-08-01T00:00:00.000Z',
           ticket: resolvedTicket,
@@ -324,7 +358,14 @@ describe('handleTicketCommunicationRequest', () => {
         && delivery.notification_type === filters.notificationType
         && (delivery.nextAttemptAt as Date) <= at
       ))),
-      complete: vi.fn(async () => undefined),
+      getContext: vi.fn(async () => ({
+        enabledAt: '2026-08-01T00:00:00.000Z',
+        ticket: resolvedTicket,
+        requester,
+        lastHumanMessage: null,
+      })),
+      countReady: vi.fn(async () => 0),
+      complete: vi.fn(async (input) => input),
     };
     const graph = {
       sendEmail: vi.fn(async () => undefined),
@@ -443,7 +484,7 @@ describe('createTicketCommunicationRepository', () => {
     expect(fake.from).not.toHaveBeenCalled();
   });
 
-  it('hidrata entregas reservadas com ticket e solicitante em consultas agrupadas', async () => {
+  it('reserva sem snapshot de contexto e revalida um ticket sob demanda', async () => {
     const delivery = {
       id: '33333333-3333-3333-3333-333333333333',
       ticket_id: TICKET_ID,
@@ -470,6 +511,7 @@ describe('createTicketCommunicationRepository', () => {
       ticketId: TICKET_ID,
       notificationType: 'resolved_feedback_invite',
     });
+    const context = await repository.getContext(TICKET_ID);
 
     expect(fake.rpc).toHaveBeenCalledWith('helpdesk_claim_ticket_notifications', {
       p_limit: 25,
@@ -480,13 +522,13 @@ describe('createTicketCommunicationRepository', () => {
     expect(fake.rpc).toHaveBeenNthCalledWith(2, 'helpdesk_get_ticket_communication_contexts', {
       p_ticket_ids: [TICKET_ID],
     });
-    expect(result).toEqual([{
-      ...delivery,
+    expect(result).toEqual([delivery]);
+    expect(context).toEqual({
       ticket,
       requester,
       enabledAt: '2026-08-01T00:00:00.000Z',
       lastHumanMessage: null,
-    }]);
+    });
   });
 
   it('mapeia enqueue e nextAttemptAt para os nomes exatos das RPCs', async () => {
@@ -507,6 +549,8 @@ describe('createTicketCommunicationRepository', () => {
     });
     await repository.complete({
       id: '33333333-3333-3333-3333-333333333333',
+      claimToken: '44444444-4444-4444-4444-444444444444',
+      attemptCount: 3,
       outcome: 'failed',
       error: 'delivery_error',
       nextAttemptAt: new Date('2026-08-25T12:00:00.000Z'),
@@ -521,6 +565,8 @@ describe('createTicketCommunicationRepository', () => {
     });
     expect(fake.rpc).toHaveBeenNthCalledWith(2, 'helpdesk_complete_ticket_notification', {
       p_delivery_id: '33333333-3333-3333-3333-333333333333',
+      p_claim_token: '44444444-4444-4444-4444-444444444444',
+      p_attempt_count: 3,
       p_outcome: 'failed',
       p_error: 'delivery_error',
       p_next_attempt_at: '2026-08-25T12:00:00.000Z',

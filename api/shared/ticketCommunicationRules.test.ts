@@ -49,6 +49,13 @@ it('localiza a última mensagem persistida, cujos autores são UUIDs', () => {
   ])?.user_id).toBe(requesterId);
 });
 
+it('ignora mensagem automática mais recente sem usar sentinela textual no user_id', () => {
+  expect(latestHumanMessage([
+    { user_id: supportId, created_at: '2026-08-20T12:00:00.000Z', is_system: false },
+    { user_id: requesterId, created_at: '2026-08-24T11:00:00.000Z', is_system: true },
+  ])?.user_id).toBe(supportId);
+});
+
 describe('convite e lembrete de feedback', () => {
   const enabledAt = new Date('2026-08-01T00:00:00.000Z');
   const resolvedTicket = {

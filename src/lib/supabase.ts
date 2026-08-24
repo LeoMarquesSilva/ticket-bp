@@ -81,6 +81,7 @@ export interface DatabaseChatMessage {
   user_id: string;
   user_name: string;
   message: string;
+  is_system?: boolean;
   created_at: string;
 }
 

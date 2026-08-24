@@ -55,6 +55,7 @@ import {
   validatePlanoSaudeForm,
   type PlanoSaudeFormData,
 } from '@/utils/planoSaudeForm';
+import { finishCreatedTicket } from '@/utils/createTicketForUserOrchestration';
 
 interface CreateTicketForUserModalProps {
   isOpen: boolean;
@@ -408,10 +409,10 @@ const CreateTicketForUserModal: React.FC<CreateTicketForUserModalProps> = ({
         );
 
         // Finalizar ticket
-        await TicketService.updateTicket(newTicket.id, {
-          status: 'resolved',
-          resolvedAt: new Date().toISOString(),
-        });
+        await finishCreatedTicket(newTicket.id, {
+          userId: currentUser.id,
+          userName: currentUser.name,
+        }, TicketService);
 
         toast.success('Ticket criado e resolvido com sucesso! O usuário receberá uma notificação para avaliar o atendimento.');
       } else {

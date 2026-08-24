@@ -8,8 +8,29 @@ export function escapeHtml(value) {
   })[char]);
 }
 
+export function normalizeAppPublicUrl(value) {
+  let url;
+  try {
+    url = new URL(String(value ?? '').trim());
+  } catch {
+    throw new TypeError('APP_PUBLIC_URL must be a valid HTTPS URL');
+  }
+  if (
+    url.protocol !== 'https:'
+    || url.username
+    || url.password
+    || url.search
+    || url.hash
+  ) {
+    throw new TypeError('APP_PUBLIC_URL must be HTTPS without userinfo, query, or fragment');
+  }
+
+  const pathname = url.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+  return `${url.origin}${pathname === '/' ? '' : pathname}`;
+}
+
 export function buildTicketUrl(base, ticketId, feedback) {
-  const root = String(base).replace(/\/$/, '');
+  const root = normalizeAppPublicUrl(base);
   return `${root}/tickets/${encodeURIComponent(ticketId)}${feedback ? '?showFeedback=true' : ''}`;
 }
 
@@ -40,6 +61,11 @@ export function buildNotificationContent({ type, ticket, requester, appBaseUrl }
 
   return {
     email: { subject: copy.subject, html, text },
-    teams: { topic: ticket.title, previewText: copy.reason, webUrl },
+    teams: {
+      topic: ticket.title,
+      label: copy.action,
+      previewText: copy.reason,
+      ticketUrl: webUrl,
+    },
   };
 }

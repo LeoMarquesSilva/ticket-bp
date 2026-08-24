@@ -89,15 +89,17 @@ export async function handleTicketCommunicationRequest({ authMode, body, depende
       notificationType,
     });
 
-    return {
-      status: 200,
-      body: {
-        ok: true,
-        prepared: count(prepared?.enqueued),
-        sent: count(processed?.sent),
-        failed: count(processed?.failed),
-      },
+    const responseBody = {
+      ok: true,
+      prepared: count(prepared?.enqueued),
+      sent: count(processed?.sent),
+      failed: count(processed?.failed),
     };
+    if (processed?.budgetExhausted === true) {
+      responseBody.backlog = count(processed?.backlog);
+      responseBody.budgetExhausted = true;
+    }
+    return { status: 200, body: responseBody };
   } catch {
     return response(500, 'internal_error');
   }

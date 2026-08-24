@@ -3,9 +3,9 @@ const FALLBACK_ORIGIN = 'https://configuration.invalid';
 function appOrigin(appBaseUrl: string | undefined): string {
   try {
     const url = new URL(appBaseUrl ?? '');
-    if (url.protocol === 'https:' || url.protocol === 'http:') return url.origin;
+    if (url.protocol === 'https:' && !url.username && !url.password) return url.origin;
   } catch {
-    // A origem reservada falha fechada até HELPDESK_APP_BASE_URL ser configurada.
+    // A origem reservada falha fechada até APP_PUBLIC_URL ser configurada.
   }
   return FALLBACK_ORIGIN;
 }

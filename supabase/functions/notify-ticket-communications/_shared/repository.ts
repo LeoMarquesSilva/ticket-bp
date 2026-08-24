@@ -3,6 +3,7 @@ const RPCS = {
   contexts: 'helpdesk_get_ticket_communication_contexts',
   enqueue: 'helpdesk_enqueue_ticket_notification',
   claim: 'helpdesk_claim_ticket_notifications',
+  countReady: 'helpdesk_count_ready_ticket_notifications',
   complete: 'helpdesk_complete_ticket_notification',
 } as const;
 
@@ -36,10 +37,6 @@ function row(value: unknown): Row | null {
 
 function throwOnError(error: unknown, operation: string): void {
   if (error) throw new Error(`Ticket communication repository failed: ${operation}`);
-}
-
-function uniqueStrings(values: unknown[]): string[] {
-  return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0))];
 }
 
 function mapContext(context: Row) {
@@ -110,31 +107,43 @@ export function createTicketCommunicationRepository(supabaseAdmin: unknown) {
         p_notification_type: filters.notificationType ?? null,
       });
       throwOnError(result.error, 'claim');
-      const deliveries = rows(result.data);
-      const ticketIds = uniqueStrings(deliveries.map((delivery) => delivery.ticket_id));
-      if (ticketIds.length === 0) return deliveries;
+      return rows(result.data);
+    },
 
-      const contextsResult = await client.rpc(RPCS.contexts, { p_ticket_ids: ticketIds });
+    async getContext(ticketId: string) {
+      const contextsResult = await client.rpc(RPCS.contexts, { p_ticket_ids: [ticketId] });
       throwOnError(contextsResult.error, 'hydrate_delivery_contexts');
-      const contexts = new Map(
-        rows(contextsResult.data)
-          .filter((context) => typeof context.ticket_id === 'string')
-          .map((context) => [context.ticket_id as string, mapContext(context)]),
-      );
-      return deliveries.map((delivery) => ({
-        ...delivery,
-        ...(typeof delivery.ticket_id === 'string' ? contexts.get(delivery.ticket_id) : undefined),
-      }));
+      const context = rows(contextsResult.data)
+        .find((item) => item.ticket_id === ticketId);
+      return context ? mapContext(context) : null;
+    },
+
+    async countReady(
+      now: Date,
+      filters: { ticketId?: string; notificationType?: string } = {},
+    ) {
+      const result = await client.rpc(RPCS.countReady, {
+        p_now: now.toISOString(),
+        p_ticket_id: filters.ticketId ?? null,
+        p_notification_type: filters.notificationType ?? null,
+      });
+      throwOnError(result.error, 'count_ready');
+      const count = Number(result.data ?? 0);
+      return Number.isSafeInteger(count) && count >= 0 ? count : 0;
     },
 
     async complete(input: {
       id: string;
+      claimToken: string;
+      attemptCount: number;
       outcome: 'sent' | 'failed' | 'cancelled';
       error: string | null;
       nextAttemptAt: Date | string | null;
     }) {
       const result = await client.rpc(RPCS.complete, {
         p_delivery_id: input.id,
+        p_claim_token: input.claimToken,
+        p_attempt_count: input.attemptCount,
         p_outcome: input.outcome,
         p_error: input.error,
         p_next_attempt_at: input.nextAttemptAt

@@ -219,7 +219,7 @@ const mapMessageFromDatabase = (data: any): ChatMessage => {
     attachments: data.attachments || [],
     createdAt: data.created_at,
     read: data.read || false,
-    isSystem: false
+    isSystem: data.is_system === true
   };
 };
 
@@ -514,53 +514,52 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
     try {
       console.log('Finalizando ticket:', ticketId);
 
-      const { data: currentTicket } = await supabase
-        .from(TABLES.TICKETS)
-        .select(
-          'status, feedback_submitted_at, title, category, subcategory, evidencia_enviada',
-        )
-        .eq('id', ticketId)
-        .single();
-
-      const isNewlyResolved =
-        currentTicket?.status !== 'resolved' && !currentTicket?.feedback_submitted_at;
-      const npsExempt = isNpsExemptTicket(currentTicket?.category, currentTicket?.subcategory);
-
-      if (isNewlyResolved && !npsExempt && finalizedBy?.userId && finalizedBy?.userName) {
-        await this.sendChatMessage(
-          ticketId,
-          finalizedBy.userId,
-          finalizedBy.userName,
-          this.buildNpsRequestMessage(currentTicket?.title)
-        );
-      }
-
-      const updates: UpdateTicketData = { status: 'resolved' };
-
       if (options?.assignToFinalizer) {
         if (!finalizedBy?.userId || !finalizedBy.userName) {
           throw new Error('Usuário finalizador não informado');
         }
-
-        updates.assignedTo = finalizedBy.userId;
-        updates.assignedToName = finalizedBy.userName;
-        updates.assignedAt = new Date().toISOString();
       }
 
-      // Decisão de auditoria FATAL (SIOE) — só nesta subcategoria; não misturar com NPS.
-      if (npsExempt && typeof options?.evidenciaEnviada === 'boolean') {
-        const alreadyDecided = currentTicket?.evidencia_enviada !== null
-          && currentTicket?.evidencia_enviada !== undefined;
-        if (!alreadyDecided) {
-          updates.evidenciaEnviada = options.evidenciaEnviada;
-          updates.evidenciaDecididoEm = new Date().toISOString();
-          if (finalizedBy?.userId) {
-            updates.evidenciaDecididoPor = finalizedBy.userId;
-          }
+      const transitionedAt = new Date().toISOString();
+      const hasEvidenceDecision = typeof options?.evidenciaEnviada === 'boolean';
+      const { data, error } = await supabase.rpc('helpdesk_finish_ticket', {
+        p_ticket_id: ticketId,
+        p_assigned_to: options?.assignToFinalizer ? finalizedBy?.userId ?? null : null,
+        p_assigned_to_name: options?.assignToFinalizer ? finalizedBy?.userName ?? null : null,
+        p_assigned_at: options?.assignToFinalizer ? transitionedAt : null,
+        p_evidencia_enviada: hasEvidenceDecision ? options?.evidenciaEnviada : null,
+        p_evidencia_decidido_por: hasEvidenceDecision ? finalizedBy?.userId ?? null : null,
+        p_evidencia_decidido_em: hasEvidenceDecision ? transitionedAt : null,
+      });
+
+      if (error) throw error;
+
+      const transition = Array.isArray(data) ? data[0] : data;
+      if (!transition || typeof transition !== 'object' || !transition.ticket) {
+        throw new Error('Resposta inválida ao finalizar ticket');
+      }
+
+      const resolvedTicket = mapFromDatabase(transition.ticket);
+      const isNewlyResolved = transition.changed === true;
+      const npsExempt = isNpsExemptTicket(resolvedTicket.category, resolvedTicket.subcategory);
+
+      if (isNewlyResolved && !npsExempt && finalizedBy?.userId && finalizedBy?.userName) {
+        try {
+          await this.sendChatMessage(
+            ticketId,
+            finalizedBy.userId,
+            finalizedBy.userName,
+            this.buildNpsRequestMessage(resolvedTicket.title),
+            [],
+            { isSystem: true },
+          );
+        } catch (chatError) {
+          console.warn('[ticket-communications] mensagem automática não persistida', {
+            ticketId,
+            error: chatError,
+          });
         }
       }
-
-      const resolvedTicket = await this.updateTicket(ticketId, updates);
 
       if (isNewlyResolved) {
         void notifyTicketResolved(ticketId).catch(() => {
@@ -922,6 +921,7 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
     userName: string;
     message: string;
     attachments?: any[];
+    isSystem?: boolean;
   }): Promise<ChatMessage> {
     try {
       console.log('Sending message:', messageData);
@@ -932,6 +932,7 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
         user_name: messageData.userName,
         message: messageData.message,
         attachments: messageData.attachments || [],
+        is_system: messageData.isSystem === true,
         created_at: new Date().toISOString(),
         read: false
       };
@@ -959,7 +960,8 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
   userId: string, 
   userName: string, 
   message: string,
-  attachments: any[] = []
+  attachments: any[] = [],
+  options: { isSystem?: boolean } = {},
 ): Promise<ChatMessage> {
   try {
     console.log('Sending chat message:', { ticketId, userId, userName, message, attachments });
@@ -974,6 +976,7 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
       user_name: userName,
       message: message,
       attachments: attachments.length > 0 ? attachments : null,
+      is_system: options.isSystem === true,
       created_at: new Date().toISOString(),
       read: false
     };
@@ -988,7 +991,8 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
         userId,
         userName,
         message,
-        attachments: attachments.length > 0 ? attachments : null
+        attachments: attachments.length > 0 ? attachments : null,
+        isSystem: options.isSystem === true,
       });
       
       // Retornar uma mensagem temporária para mostrar na UI
@@ -1001,7 +1005,8 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
         createdAt: new Date().toISOString(),
         attachments: attachments.length > 0 ? attachments : [],
         read: false,
-        isTemp: true
+        isTemp: true,
+        isSystem: options.isSystem === true,
       };
     }
 
@@ -1030,7 +1035,8 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
       userId,
       userName,
       message,
-      attachments: attachments.length > 0 ? attachments : null
+      attachments: attachments.length > 0 ? attachments : null,
+      isSystem: options.isSystem === true,
     });
     
     // Retornar uma mensagem temporária para mostrar na UI
@@ -1043,7 +1049,8 @@ static async getPendingFeedbackTickets(): Promise<Ticket[]> {
       createdAt: new Date().toISOString(),
       attachments: attachments.length > 0 ? attachments : [],
       read: false,
-      isTemp: true
+      isTemp: true,
+      isSystem: options.isSystem === true,
     };
   }
 }

@@ -6,6 +6,11 @@ import {
 import { buildNotificationContent } from './templates.mjs';
 
 const DEFAULT_BATCH_SIZE = 100;
+const DEFAULT_BUDGET = Object.freeze({
+  maxDeliveries: 500,
+  maxBatches: 10,
+  maxDurationMs: 45_000,
+});
 const DAILY_RUN_UTC_HOUR = 12;
 const SUPPORTED_CHANNELS = new Set(['email', 'teams']);
 const SUPPORTED_NOTIFICATION_TYPES = new Set([
@@ -39,10 +44,15 @@ function sanitizeError(error) {
   return 'delivery_error';
 }
 
-async function completeDelivery(repository, input) {
+async function completeDelivery(repository, delivery, input) {
   try {
-    await repository.complete(input);
-    return true;
+    const completed = await repository.complete({
+      id: delivery?.id,
+      claimToken: delivery?.claim_token,
+      attemptCount: delivery?.attempt_count,
+      ...input,
+    });
+    return Boolean(completed);
   } catch {
     return false;
   }
@@ -57,9 +67,34 @@ function countCompletion(counts, completed, outcome) {
 
 function isSupportedDelivery(delivery) {
   return delivery?.id
+    && delivery?.ticket_id
+    && delivery?.claim_token
+    && Number.isInteger(delivery?.attempt_count)
     && SUPPORTED_CHANNELS.has(delivery.channel)
     && SUPPORTED_NOTIFICATION_TYPES.has(delivery.notification_type)
     && channelsForNotification(delivery.notification_type).includes(delivery.channel);
+}
+
+function positiveInteger(value, fallback) {
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function deliveryChainId(delivery) {
+  const key = `${delivery.id}:${delivery.cycle_key}`;
+  let hash = 2166136261;
+  for (const character of key) {
+    hash ^= character.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) || 1;
+}
+
+function hasCurrentResolvedCycle(delivery, ticket) {
+  return delivery.notification_type !== 'resolved_feedback_invite'
+    || (
+      typeof ticket?.resolved_at === 'string'
+      && delivery.cycle_key === ticket.resolved_at
+    );
 }
 
 export async function prepareDeliveries({ repository, now, ticketId, notificationType }) {
@@ -106,18 +141,47 @@ export async function processDeliveries({
   ticketId,
   notificationType,
   batchSize = DEFAULT_BATCH_SIZE,
+  budget = DEFAULT_BUDGET,
+  monotonicNow = () => Date.now(),
 }) {
   const claimNow = clock ? clock() : now;
   if (!(claimNow instanceof Date) || Number.isNaN(claimNow.getTime())) {
     throw new TypeError('A valid claim clock is required');
   }
-  const deliveries = await repository.claim(batchSize, claimNow, { ticketId, notificationType });
-  const counts = { selected: deliveries.length, sent: 0, failed: 0, cancelled: 0, skipped: 0 };
+  const effectiveBatchSize = positiveInteger(batchSize, DEFAULT_BATCH_SIZE);
+  const effectiveBudget = {
+    maxDeliveries: positiveInteger(budget?.maxDeliveries, DEFAULT_BUDGET.maxDeliveries),
+    maxBatches: positiveInteger(budget?.maxBatches, DEFAULT_BUDGET.maxBatches),
+    maxDurationMs: positiveInteger(budget?.maxDurationMs, DEFAULT_BUDGET.maxDurationMs),
+  };
+  const startedAt = monotonicNow();
+  const deadline = startedAt + effectiveBudget.maxDurationMs;
+  const counts = {
+    selected: 0,
+    sent: 0,
+    failed: 0,
+    cancelled: 0,
+    skipped: 0,
+    backlog: 0,
+    budgetExhausted: false,
+  };
+  let batches = 0;
+  let queueDrained = false;
 
-  for (const delivery of deliveries) {
+  while (
+    counts.selected < effectiveBudget.maxDeliveries
+    && batches < effectiveBudget.maxBatches
+    && monotonicNow() < deadline
+  ) {
+    const remaining = effectiveBudget.maxDeliveries - counts.selected;
+    const claimLimit = Math.min(effectiveBatchSize, remaining);
+    const deliveries = await repository.claim(claimLimit, claimNow, { ticketId, notificationType });
+    batches += 1;
+    counts.selected += deliveries.length;
+
+    for (const delivery of deliveries) {
     if (!isSupportedDelivery(delivery)) {
-      const completed = await completeDelivery(repository, {
-        id: delivery?.id,
+      const completed = await completeDelivery(repository, delivery, {
         outcome: 'failed',
         error: 'Entrega de comunicação inválida',
         nextAttemptAt: nextDailyAttemptAt(claimNow),
@@ -126,10 +190,15 @@ export async function processDeliveries({
       continue;
     }
 
-    const enabledAt = new Date(delivery.enabledAt);
-    if (!delivery.ticket || Number.isNaN(enabledAt.getTime())) {
-      const completed = await completeDelivery(repository, {
-        id: delivery.id,
+    let context;
+    try {
+      context = await repository.getContext(delivery.ticket_id);
+    } catch {
+      context = null;
+    }
+    const enabledAt = new Date(context?.enabledAt);
+    if (!context?.ticket || Number.isNaN(enabledAt.getTime())) {
+      const completed = await completeDelivery(repository, delivery, {
         outcome: 'failed',
         error: 'Contexto do ticket ausente ou inválido',
         nextAttemptAt: nextDailyAttemptAt(claimNow),
@@ -141,12 +210,14 @@ export async function processDeliveries({
     const eligibleTypes = getEligibleNotificationTypes({
       now: claimNow,
       enabledAt,
-      ticket: delivery.ticket,
-      lastHumanMessage: delivery.lastHumanMessage,
+      ticket: context.ticket,
+      lastHumanMessage: context.lastHumanMessage,
     });
-    if (!eligibleTypes.includes(delivery.notification_type)) {
-      const completed = await completeDelivery(repository, {
-        id: delivery.id,
+    if (
+      !eligibleTypes.includes(delivery.notification_type)
+      || !hasCurrentResolvedCycle(delivery, context.ticket)
+    ) {
+      const completed = await completeDelivery(repository, delivery, {
         outcome: 'cancelled',
         error: 'no_longer_eligible',
         nextAttemptAt: null,
@@ -155,9 +226,8 @@ export async function processDeliveries({
       continue;
     }
 
-    if (!isValidRecipient(delivery.requester)) {
-      const completed = await completeDelivery(repository, {
-        id: delivery.id,
+    if (!isValidRecipient(context.requester)) {
+      const completed = await completeDelivery(repository, delivery, {
         outcome: 'failed',
         error: 'Configuração do destinatário ausente ou e-mail inválido',
         nextAttemptAt: nextDailyAttemptAt(claimNow),
@@ -169,11 +239,11 @@ export async function processDeliveries({
     try {
       const content = buildNotificationContent({
         type: delivery.notification_type,
-        ticket: delivery.ticket,
-        requester: delivery.requester,
+        ticket: context.ticket,
+        requester: context.requester,
         appBaseUrl,
       });
-      const email = delivery.requester.email.trim();
+      const email = context.requester.email.trim();
 
       if (delivery.channel === 'email') {
         await graph.sendEmail({ to: email, ...content.email });
@@ -184,11 +254,14 @@ export async function processDeliveries({
           error.code = 'entra_user_not_found';
           throw error;
         }
-        await graph.sendTeamsActivity({ userId, ...content.teams });
+        await graph.sendTeamsActivity({
+          userId,
+          ...content.teams,
+          chainId: deliveryChainId(delivery),
+        });
       }
     } catch (error) {
-      const completed = await completeDelivery(repository, {
-        id: delivery.id,
+      const completed = await completeDelivery(repository, delivery, {
         outcome: 'failed',
         error: sanitizeError(error),
         nextAttemptAt: nextDailyAttemptAt(claimNow),
@@ -197,13 +270,23 @@ export async function processDeliveries({
       continue;
     }
 
-    const completed = await completeDelivery(repository, {
-      id: delivery.id,
+    const completed = await completeDelivery(repository, delivery, {
       outcome: 'sent',
       error: null,
       nextAttemptAt: null,
     });
     countCompletion(counts, completed, 'sent');
+    }
+
+    if (deliveries.length < claimLimit) {
+      queueDrained = true;
+      break;
+    }
+  }
+
+  if (!queueDrained) {
+    counts.backlog = await repository.countReady(claimNow, { ticketId, notificationType });
+    counts.budgetExhausted = counts.backlog > 0;
   }
 
   return counts;

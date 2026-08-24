@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildNotificationContent,
   escapeHtml,
+  normalizeAppPublicUrl,
 } from '../../supabase/functions/notify-ticket-communications/_shared/templates.mjs';
 
 const ticket = {
@@ -19,7 +20,8 @@ describe('buildNotificationContent', () => {
       appBaseUrl: 'https://responsum.example/',
     });
 
-    expect(content.teams.webUrl).toBe('https://responsum.example/tickets/11111111-1111-1111-1111-111111111111?showFeedback=true');
+    expect(content.teams.ticketUrl).toBe('https://responsum.example/tickets/11111111-1111-1111-1111-111111111111?showFeedback=true');
+    expect(content.teams.label).toBe('Avaliar atendimento');
     expect(content.email.html).toContain('Acesso &lt;urgente&gt;');
     expect(content.email.html).toContain('Ana &amp; Cia');
     expect(content.email.html).not.toContain('Acesso <urgente>');
@@ -33,7 +35,7 @@ describe('buildNotificationContent', () => {
       appBaseUrl: 'https://responsum.example',
     });
 
-    expect(content.teams.webUrl).toBe('https://responsum.example/tickets/11111111-1111-1111-1111-111111111111');
+    expect(content.teams.ticketUrl).toBe('https://responsum.example/tickets/11111111-1111-1111-1111-111111111111');
     expect(content.email.subject).toBe('Seu chamado aguarda uma resposta: Acesso ao sistema');
     expect(content.email.text).toContain('Responder chamado: https://responsum.example/tickets/11111111-1111-1111-1111-111111111111');
   });
@@ -54,4 +56,20 @@ describe('buildNotificationContent', () => {
 
 it('escapa todos os caracteres especiais em HTML', () => {
   expect(escapeHtml('&<>"\'')).toBe('&amp;&lt;&gt;&quot;&#39;');
+});
+
+describe('normalizeAppPublicUrl', () => {
+  it('preserva uma base path e remove barras redundantes', () => {
+    expect(normalizeAppPublicUrl('https://responsum.example/helpdesk///'))
+      .toBe('https://responsum.example/helpdesk');
+  });
+
+  it.each([
+    'http://responsum.example',
+    'https://user@responsum.example',
+    'https://responsum.example/?source=wrong',
+    'https://responsum.example/#wrong',
+  ])('rejeita base pública inválida: %s', (value) => {
+    expect(() => normalizeAppPublicUrl(value)).toThrow('APP_PUBLIC_URL');
+  });
 });

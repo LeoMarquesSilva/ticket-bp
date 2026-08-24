@@ -2,12 +2,26 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(54);
+select plan(75);
 
 select has_table(
   'public',
   'app_c009c0e4f1_ticket_notification_deliveries',
   'a tabela de entregas existe'
+);
+
+select has_column(
+  'public',
+  'app_c009c0e4f1_chat_messages',
+  'is_system',
+  'mensagens automaticas possuem representacao booleana com user_id UUID'
+);
+
+select has_column(
+  'public',
+  'app_c009c0e4f1_ticket_notification_deliveries',
+  'claim_token',
+  'cada lease possui token de fencing'
 );
 
 select has_function(
@@ -27,8 +41,22 @@ select has_function(
 select has_function(
   'public',
   'helpdesk_complete_ticket_notification',
-  array['uuid', 'text', 'text', 'timestamp with time zone'],
+  array['uuid', 'uuid', 'integer', 'text', 'text', 'timestamp with time zone'],
   'a RPC de conclusao existe'
+);
+
+select has_function(
+  'public',
+  'helpdesk_count_ready_ticket_notifications',
+  array['timestamp with time zone', 'uuid', 'text'],
+  'a RPC de backlog existe'
+);
+
+select has_function(
+  'public',
+  'helpdesk_finish_ticket',
+  array['uuid', 'uuid', 'text', 'timestamp with time zone', 'boolean', 'uuid', 'timestamp with time zone'],
+  'a RPC de finalizacao atomica existe'
 );
 
 select has_function(
@@ -67,12 +95,14 @@ select results_eq(
         'helpdesk_enqueue_ticket_notification',
         'helpdesk_claim_ticket_notifications',
         'helpdesk_complete_ticket_notification',
+        'helpdesk_count_ready_ticket_notifications',
+        'helpdesk_finish_ticket',
         'helpdesk_list_ticket_communication_candidates',
         'helpdesk_get_ticket_communication_contexts'
       )
     order by p.proname
   $$,
-  array[true, true, true, true, true],
+  array[true, true, true, true, true, true, true],
   'as RPCs executam com os privilegios do chamador'
 );
 
@@ -155,7 +185,8 @@ insert into public.app_c009c0e4f1_chat_messages (
   message,
   attachments,
   created_at,
-  read
+  read,
+  is_system
 )
 values (
   '40000000-0000-0000-0000-000000000001',
@@ -164,7 +195,17 @@ values (
   'Mensagem UUID valida para a RPC lateral',
   '[]'::jsonb,
   '2099-08-24 11:30:00+00',
+  false,
   false
+), (
+  '40000000-0000-0000-0000-000000000001',
+  '40000000-0000-0000-0000-000000000002',
+  'Sistema',
+  'Mensagem automatica mais recente',
+  '[]'::jsonb,
+  '2099-08-24 11:45:00+00',
+  false,
+  true
 );
 
 alter table public.app_c009c0e4f1_chat_messages enable trigger user;
@@ -175,6 +216,14 @@ create temporary table ticket_communication_test_enqueues (
 ) on commit drop;
 
 grant select, insert on table pg_temp.ticket_communication_test_enqueues to service_role;
+
+create temporary table ticket_communication_test_claims (
+  call_no integer primary key,
+  claim_token uuid not null,
+  attempt_count integer not null
+) on commit drop;
+
+grant select, insert on table pg_temp.ticket_communication_test_claims to service_role;
 
 set local role anon;
 
@@ -200,10 +249,22 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', 'sent', null, null)$$,
+  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', '40000000-0000-0000-0000-000000000097', 1, 'sent', null, null)$$,
   '42501'::char(5),
   null::text,
   'anon nao executa a RPC de conclusao'
+);
+
+select throws_ok(
+  $$select public.helpdesk_count_ready_ticket_notifications('2099-08-24 12:00:00+00', null, null)$$,
+  '42501'::char(5), null::text,
+  'anon nao executa a RPC de backlog'
+);
+
+select throws_ok(
+  $$select public.helpdesk_finish_ticket('40000000-0000-0000-0000-000000000001', null, null, null, null, null, null)$$,
+  '42501'::char(5), null::text,
+  'anon nao executa a RPC de finalizacao'
 );
 
 select throws_ok(
@@ -243,10 +304,19 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', 'sent', null, null)$$,
+  $$select public.helpdesk_complete_ticket_notification('40000000-0000-0000-0000-000000000099', '40000000-0000-0000-0000-000000000097', 1, 'sent', null, null)$$,
   '42501'::char(5),
   null::text,
   'authenticated nao executa a RPC de conclusao'
+);
+
+select ok(
+  pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.helpdesk_finish_ticket(uuid,uuid,text,timestamptz,boolean,uuid,timestamptz)',
+    'execute'
+  ),
+  'authenticated executa a finalizacao central sob RLS'
 );
 
 select throws_ok(
@@ -277,6 +347,15 @@ select results_eq(
   $$,
   array['40000000-0000-0000-0000-000000000002'::uuid],
   'a ultima mensagem preserva user_id UUID sem sentinela textual'
+);
+
+select results_eq(
+  $$
+    select (last_human_message ->> 'created_at')::timestamptz
+    from public.helpdesk_list_ticket_communication_candidates(null, 500, '40000000-0000-0000-0000-000000000001')
+  $$,
+  array['2099-08-24 11:30:00+00'::timestamptz],
+  'a ultima mensagem humana ignora uma mensagem automatica mais recente'
 );
 
 select results_eq(
@@ -436,9 +515,26 @@ select throws_ok(
 );
 
 select results_eq(
+  $$select public.helpdesk_count_ready_ticket_notifications('2099-08-24 12:00:00+00', null, null)$$,
+  array[1::bigint],
+  'o backlog contabiliza a entrega pronta antes da reserva'
+);
+
+select results_eq(
   $$select count(*)::bigint from public.helpdesk_claim_ticket_notifications(1, '2099-08-24 12:00:00+00')$$,
   array[1::bigint],
   'service_role reserva a entrega vencida'
+);
+
+insert into pg_temp.ticket_communication_test_claims (call_no, claim_token, attempt_count)
+select 1, claim_token, attempt_count
+from public.app_c009c0e4f1_ticket_notification_deliveries
+where id = (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1);
+
+select results_eq(
+  $$select public.helpdesk_count_ready_ticket_notifications('2099-08-24 12:00:00+00', null, null)$$,
+  array[0::bigint],
+  'o backlog nao contabiliza um lease ainda valido'
 );
 
 select results_eq(
@@ -465,6 +561,11 @@ select results_eq(
   'uma entrega com lease expirado pode ser reservada novamente'
 );
 
+insert into pg_temp.ticket_communication_test_claims (call_no, claim_token, attempt_count)
+select 2, claim_token, attempt_count
+from public.app_c009c0e4f1_ticket_notification_deliveries
+where id = (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1);
+
 reset role;
 
 select results_eq(
@@ -477,12 +578,49 @@ select results_eq(
   'a nova reserva renova o lease e incrementa a tentativa'
 );
 
+select isnt(
+  (select claim_token from pg_temp.ticket_communication_test_claims where call_no = 1),
+  (select claim_token from pg_temp.ticket_communication_test_claims where call_no = 2),
+  'uma nova reserva renova o token de fencing'
+);
+
 set local role service_role;
+
+select is(
+  (
+    select public.helpdesk_complete_ticket_notification(
+      (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1),
+      (select claim_token from pg_temp.ticket_communication_test_claims where call_no = 1),
+      (select attempt_count from pg_temp.ticket_communication_test_claims where call_no = 1),
+      'sent',
+      null,
+      null
+    )
+  ) is null,
+  true,
+  'um worker antigo nao conclui o lease renovado'
+);
+
+select results_eq(
+  $$
+    select status, claim_token, attempt_count
+    from public.app_c009c0e4f1_ticket_notification_deliveries
+    where id = (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1)
+  $$,
+  $$
+    select 'processing'::text, claim_token, attempt_count
+    from pg_temp.ticket_communication_test_claims
+    where call_no = 2
+  $$,
+  'a conclusao stale nao sobrescreve o claim atual'
+);
 
 select lives_ok(
   $$
     select public.helpdesk_complete_ticket_notification(
       (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1),
+      (select claim_token from pg_temp.ticket_communication_test_claims where call_no = 2),
+      (select attempt_count from pg_temp.ticket_communication_test_claims where call_no = 2),
       'failed',
       repeat('x', 650),
       '2099-08-25 12:00:00+00'
@@ -535,6 +673,16 @@ select lives_ok(
   $$
     select public.helpdesk_complete_ticket_notification(
       (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1),
+      (
+        select claim_token
+        from public.app_c009c0e4f1_ticket_notification_deliveries
+        where id = (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1)
+      ),
+      (
+        select attempt_count
+        from public.app_c009c0e4f1_ticket_notification_deliveries
+        where id = (select id from pg_temp.ticket_communication_test_enqueues where call_no = 1)
+      ),
       'sent',
       null,
       null
@@ -630,6 +778,14 @@ select lives_ok(
         select id from public.app_c009c0e4f1_ticket_notification_deliveries
         where cycle_key = 'cancel-test'
       ),
+      (
+        select claim_token from public.app_c009c0e4f1_ticket_notification_deliveries
+        where cycle_key = 'cancel-test'
+      ),
+      (
+        select attempt_count from public.app_c009c0e4f1_ticket_notification_deliveries
+        where cycle_key = 'cancel-test'
+      ),
       'cancelled',
       'no_longer_eligible',
       null
@@ -685,6 +841,184 @@ select results_eq(
 );
 
 reset role;
+
+alter table public.app_c009c0e4f1_tickets
+  disable trigger notification_push_tickets;
+
+update public.app_c009c0e4f1_tickets
+set status = 'resolved', resolved_at = '2099-08-25 13:00:00+00'
+where id = '40000000-0000-0000-0000-000000000001';
+
+set local role service_role;
+
+select public.helpdesk_enqueue_ticket_notification(
+  '40000000-0000-0000-0000-000000000001',
+  'resolved_feedback_invite',
+  'email',
+  '2099-08-25 13:00:00+00',
+  '2099-08-25 13:00:00+00'
+);
+
+reset role;
+
+update public.app_c009c0e4f1_tickets
+set status = 'open'
+where id = '40000000-0000-0000-0000-000000000001';
+
+set local role service_role;
+
+select results_eq(
+  $$
+    select count(*)::bigint
+    from public.helpdesk_claim_ticket_notifications(
+      1,
+      '2099-08-25 13:01:00+00',
+      '40000000-0000-0000-0000-000000000001',
+      'resolved_feedback_invite'
+    )
+  $$,
+  array[0::bigint],
+  'reabrir cancela o convite do ciclo resolvido antigo'
+);
+
+select results_eq(
+  $$
+    select status, cancellation_reason
+    from public.app_c009c0e4f1_ticket_notification_deliveries
+    where cycle_key = '2099-08-25 13:00:00+00'
+  $$,
+  $$values ('cancelled'::text, 'stale_cycle'::text)$$,
+  'o ciclo antigo fica terminal e auditavel'
+);
+
+reset role;
+
+update public.app_c009c0e4f1_tickets
+set status = 'resolved', resolved_at = '2099-08-25 14:00:00+00'
+where id = '40000000-0000-0000-0000-000000000001';
+
+set local role service_role;
+
+select results_ne(
+  $$
+    select id
+    from public.helpdesk_enqueue_ticket_notification(
+      '40000000-0000-0000-0000-000000000001',
+      'resolved_feedback_invite',
+      'email',
+      '2099-08-25 14:00:00+00',
+      '2099-08-25 14:00:00+00'
+    )
+  $$,
+  $$
+    select id
+    from public.app_c009c0e4f1_ticket_notification_deliveries
+    where cycle_key = '2099-08-25 13:00:00+00'
+  $$,
+  'uma nova resolucao cria convite para o cycle_key atual'
+);
+
+select results_eq(
+  $$
+    select count(*)::bigint
+    from public.helpdesk_claim_ticket_notifications(
+      1,
+      '2099-08-25 14:00:00+00',
+      '40000000-0000-0000-0000-000000000001',
+      'resolved_feedback_invite'
+    )
+  $$,
+  array[1::bigint],
+  'somente o convite do resolved_at atual e reservado'
+);
+
+select lives_ok(
+  $$
+    select public.helpdesk_complete_ticket_notification(
+      (select id from public.app_c009c0e4f1_ticket_notification_deliveries where cycle_key = '2099-08-25 14:00:00+00'),
+      (select claim_token from public.app_c009c0e4f1_ticket_notification_deliveries where cycle_key = '2099-08-25 14:00:00+00'),
+      (select attempt_count from public.app_c009c0e4f1_ticket_notification_deliveries where cycle_key = '2099-08-25 14:00:00+00'),
+      'sent',
+      null,
+      null
+    )
+  $$,
+  'o convite do novo ciclo conclui normalmente'
+);
+
+select results_eq(
+  $$
+    select id
+    from public.helpdesk_enqueue_ticket_notification(
+      '40000000-0000-0000-0000-000000000001',
+      'resolved_feedback_invite',
+      'email',
+      '2099-08-25 14:00:00+00',
+      '2099-08-25 14:01:00+00'
+    )
+  $$,
+  $$
+    select id
+    from public.app_c009c0e4f1_ticket_notification_deliveries
+    where cycle_key = '2099-08-25 14:00:00+00'
+  $$,
+  'um prepare posterior deduplica o convite enviado do ciclo atual'
+);
+
+reset role;
+
+update public.app_c009c0e4f1_tickets
+set status = 'open'
+where id = '40000000-0000-0000-0000-000000000001';
+
+create temporary table ticket_communication_finish_results (
+  call_no integer primary key,
+  changed boolean not null,
+  resolved_at timestamptz not null
+) on commit drop;
+
+grant select, insert on table pg_temp.ticket_communication_finish_results to service_role;
+
+set local role service_role;
+
+insert into pg_temp.ticket_communication_finish_results (call_no, changed, resolved_at)
+select
+  1,
+  (finish_result.value ->> 'changed')::boolean,
+  (finish_result.value #>> '{ticket,resolved_at}')::timestamptz
+from (
+  select public.helpdesk_finish_ticket(
+    '40000000-0000-0000-0000-000000000001', null, null, null, null, null, null
+  ) as value
+) finish_result;
+
+insert into pg_temp.ticket_communication_finish_results (call_no, changed, resolved_at)
+select
+  2,
+  (finish_result.value ->> 'changed')::boolean,
+  (finish_result.value #>> '{ticket,resolved_at}')::timestamptz
+from (
+  select public.helpdesk_finish_ticket(
+    '40000000-0000-0000-0000-000000000001', null, null, null, null, null, null
+  ) as value
+) finish_result;
+
+select results_eq(
+  $$select changed from pg_temp.ticket_communication_finish_results order by call_no$$,
+  $$values (true), (false)$$,
+  'apenas uma chamada vence a transicao para resolvido'
+);
+
+select is(
+  (select count(distinct resolved_at) from pg_temp.ticket_communication_finish_results),
+  1::bigint,
+  'a chamada perdedora preserva o resolved_at atomico do vencedor'
+);
+
+reset role;
+
+alter table public.app_c009c0e4f1_tickets
+  enable trigger notification_push_tickets;
 
 select * from finish();
 rollback;

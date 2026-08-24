@@ -26,8 +26,12 @@ const awaitingRequesterCandidate = {
 };
 const emailDelivery = {
   id: 'delivery-email',
+  ticket_id: ticket.id,
   notification_type: 'awaiting_requester',
   channel: 'email',
+  cycle_key: '2026-08-24',
+  claim_token: '44444444-4444-4444-4444-444444444444',
+  attempt_count: 1,
   ticket,
   requester,
   enabledAt: awaitingRequesterCandidate.enabledAt,
@@ -35,8 +39,12 @@ const emailDelivery = {
 };
 const teamsDelivery = {
   id: 'delivery-teams',
+  ticket_id: ticket.id,
   notification_type: 'awaiting_requester',
   channel: 'teams',
+  cycle_key: '2026-08-24',
+  claim_token: '55555555-5555-5555-5555-555555555555',
+  attempt_count: 1,
   ticket,
   requester,
   enabledAt: awaitingRequesterCandidate.enabledAt,
@@ -46,6 +54,7 @@ const teamsDelivery = {
 function fakeRepository({ candidates = [], claimed = [], completeError, completeErrors = [] } = {}) {
   const enqueued: Record<string, unknown>[] = [];
   const completed: Record<string, unknown>[] = [];
+  const claimQueue = [...claimed];
   let completeAttempt = 0;
   return {
     enqueued,
@@ -55,12 +64,23 @@ function fakeRepository({ candidates = [], claimed = [], completeError, complete
       enqueued.push(row);
       return row;
     }),
-    claim: vi.fn(async () => claimed),
+    claim: vi.fn(async (limit: number) => claimQueue.splice(0, limit)),
+    getContext: vi.fn(async (ticketId: string) => {
+      const source = claimed.find((delivery) => delivery.ticket_id === ticketId) ?? claimed[0];
+      return source ? {
+        enabledAt: source.enabledAt,
+        ticket: source.ticket,
+        requester: source.requester,
+        lastHumanMessage: source.lastHumanMessage,
+      } : null;
+    }),
+    countReady: vi.fn(async () => claimQueue.length),
     complete: vi.fn(async (row) => {
       completed.push(row);
       const error = completeErrors[completeAttempt] ?? completeError;
       completeAttempt += 1;
       if (error) throw error;
+      return row;
     }),
   };
 }
@@ -175,6 +195,180 @@ describe('prepareDeliveries', () => {
 });
 
 describe('processDeliveries', () => {
+  it('drena 102 entregas em mais de um lote dentro do orçamento explícito', async () => {
+    const deliveries = Array.from({ length: 102 }, (_, index) => ({
+      ...emailDelivery,
+      id: `delivery-${index + 1}`,
+      claim_token: `claim-${index + 1}`,
+    }));
+    const repository = fakeRepository({ claimed: deliveries });
+    const graph = fakeGraph();
+
+    const result = await processDeliveries({
+      repository,
+      graph,
+      appBaseUrl: 'https://responsum.example',
+      now,
+      batchSize: 100,
+      budget: { maxDeliveries: 200, maxBatches: 4, maxDurationMs: 30_000 },
+      monotonicNow: () => 0,
+    });
+
+    expect(repository.claim).toHaveBeenCalledTimes(2);
+    expect(repository.claim.mock.calls.map(([limit]) => limit)).toEqual([100, 100]);
+    expect(graph.sendEmail).toHaveBeenCalledTimes(102);
+    expect(result).toEqual({
+      selected: 102,
+      sent: 102,
+      failed: 0,
+      cancelled: 0,
+      skipped: 0,
+      backlog: 0,
+      budgetExhausted: false,
+    });
+  });
+
+  it('encerra no orçamento e informa o backlog sem deixar loop infinito', async () => {
+    const deliveries = Array.from({ length: 3 }, (_, index) => ({
+      ...emailDelivery,
+      id: `budget-delivery-${index + 1}`,
+      claim_token: `budget-claim-${index + 1}`,
+    }));
+    const repository = fakeRepository({ claimed: deliveries });
+
+    const result = await processDeliveries({
+      repository,
+      graph: fakeGraph(),
+      appBaseUrl: 'https://responsum.example',
+      now,
+      batchSize: 2,
+      budget: { maxDeliveries: 2, maxBatches: 1, maxDurationMs: 30_000 },
+      monotonicNow: () => 0,
+    });
+
+    expect(repository.claim).toHaveBeenCalledTimes(1);
+    expect(repository.countReady).toHaveBeenCalled();
+    expect(result).toEqual({
+      selected: 2,
+      sent: 2,
+      failed: 0,
+      cancelled: 0,
+      skipped: 0,
+      backlog: 1,
+      budgetExhausted: true,
+    });
+  });
+
+  it('revalida o contexto antes de cada canal e cancela Teams após resposta intercalada', async () => {
+    const repository = fakeRepository({ claimed: [emailDelivery, teamsDelivery] });
+    repository.getContext
+      .mockResolvedValueOnce({
+        enabledAt: awaitingRequesterCandidate.enabledAt,
+        ticket,
+        requester,
+        lastHumanMessage: awaitingRequesterCandidate.lastHumanMessage,
+      })
+      .mockResolvedValueOnce({
+        enabledAt: awaitingRequesterCandidate.enabledAt,
+        ticket,
+        requester,
+        lastHumanMessage: { user_id: requesterId, created_at: '2026-08-24T12:00:01.000Z' },
+      });
+    const graph = fakeGraph();
+
+    const result = await processDeliveries({ repository, graph, appBaseUrl: 'https://responsum.example', now });
+
+    expect(repository.getContext).toHaveBeenCalledTimes(2);
+    expect(graph.sendEmail).toHaveBeenCalledTimes(1);
+    expect(graph.sendTeamsActivity).not.toHaveBeenCalled();
+    expect(repository.completed.at(-1)).toEqual(expect.objectContaining({
+      id: teamsDelivery.id,
+      outcome: 'cancelled',
+      error: 'no_longer_eligible',
+    }));
+    expect(result.cancelled).toBe(1);
+  });
+
+  it('cancela convite de ciclo antigo mesmo que o ticket tenha sido resolvido novamente', async () => {
+    const oldCycleDelivery = {
+      ...emailDelivery,
+      notification_type: 'resolved_feedback_invite',
+      cycle_key: '2026-08-20T12:00:00.000Z',
+      ticket: {
+        ...ticket,
+        status: 'resolved',
+        resolved_at: '2026-08-24T12:00:00.000Z',
+      },
+      lastHumanMessage: null,
+    };
+    const repository = fakeRepository({ claimed: [oldCycleDelivery] });
+    repository.getContext.mockResolvedValue({
+      enabledAt: '2026-08-01T00:00:00.000Z',
+      ticket: {
+        ...ticket,
+        status: 'resolved',
+        resolved_at: '2026-08-24T12:00:00.000Z',
+      },
+      requester,
+      lastHumanMessage: null,
+    });
+    const graph = fakeGraph();
+
+    const result = await processDeliveries({ repository, graph, appBaseUrl: 'https://responsum.example', now });
+
+    expect(graph.sendEmail).not.toHaveBeenCalled();
+    expect(repository.completed[0]).toEqual(expect.objectContaining({ outcome: 'cancelled' }));
+    expect(result.cancelled).toBe(1);
+  });
+
+  it('envia chainId determinístico derivado da entrega e do ciclo', async () => {
+    const run = async () => {
+      const repository = fakeRepository({ claimed: [teamsDelivery] });
+      const graph = fakeGraph();
+      await processDeliveries({ repository, graph, appBaseUrl: 'https://responsum.example', now });
+      return graph.sendTeamsActivity.mock.calls[0][0].chainId;
+    };
+
+    const first = await run();
+    const second = await run();
+    expect(first).toBe(second);
+    expect(Number.isSafeInteger(first)).toBe(true);
+    expect(first).toBeGreaterThan(0);
+  });
+
+  it('conclui somente com token e versão recebidos no claim', async () => {
+    const repository = fakeRepository({ claimed: [emailDelivery] });
+
+    await processDeliveries({
+      repository,
+      graph: fakeGraph(),
+      appBaseUrl: 'https://responsum.example',
+      now,
+    });
+
+    expect(repository.completed[0]).toEqual(expect.objectContaining({
+      id: emailDelivery.id,
+      claimToken: emailDelivery.claim_token,
+      attemptCount: emailDelivery.attempt_count,
+      outcome: 'sent',
+    }));
+  });
+
+  it('classifica como skipped a conclusão rejeitada por fencing', async () => {
+    const repository = fakeRepository({ claimed: [emailDelivery] });
+    repository.complete.mockResolvedValueOnce(null);
+
+    const result = await processDeliveries({
+      repository,
+      graph: fakeGraph(),
+      appBaseUrl: 'https://responsum.example',
+      now,
+    });
+
+    expect(result.sent).toBe(0);
+    expect(result.skipped).toBe(1);
+  });
+
   it('reclama somente o ticket e tipo do disparo imediato usando relógio lido após o preparo', async () => {
     const repository = fakeRepository({ claimed: [emailDelivery] });
     const claimNow = new Date('2026-08-24T12:00:01.000Z');
@@ -206,11 +400,13 @@ describe('processDeliveries', () => {
     expect(graph.sendEmail).not.toHaveBeenCalled();
     expect(repository.completed).toEqual([{
       id: emailDelivery.id,
+      claimToken: emailDelivery.claim_token,
+      attemptCount: emailDelivery.attempt_count,
       outcome: 'cancelled',
       error: 'no_longer_eligible',
       nextAttemptAt: null,
     }]);
-    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 1, skipped: 0 });
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 1, skipped: 0, backlog: 0, budgetExhausted: false });
   });
 
   it.each([
@@ -230,11 +426,13 @@ describe('processDeliveries', () => {
     expect(graph.resolveUserId).not.toHaveBeenCalled();
     expect(repository.completed).toEqual([{
       id: emailDelivery.id,
+      claimToken: emailDelivery.claim_token,
+      attemptCount: emailDelivery.attempt_count,
       outcome: 'cancelled',
       error: 'no_longer_eligible',
       nextAttemptAt: null,
     }]);
-    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 1, skipped: 0 });
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 1, skipped: 0, backlog: 0, budgetExhausted: false });
   });
 
   it('cancela convite quando a avaliação foi enviada depois do enqueue, sem chamar Graph', async () => {
@@ -284,7 +482,7 @@ describe('processDeliveries', () => {
         nextAttemptAt: new Date('2026-08-25T12:00:00.000Z'),
       }),
     ]);
-    expect(result).toEqual({ selected: 2, sent: 1, failed: 1, cancelled: 0, skipped: 0 });
+    expect(result).toEqual({ selected: 2, sent: 1, failed: 1, cancelled: 0, skipped: 0, backlog: 0, budgetExhausted: false });
   });
 
   it('registra falha de configuração sem enviar quando o destinatário está ausente', async () => {
@@ -305,12 +503,14 @@ describe('processDeliveries', () => {
     expect(repository.completed).toEqual([
       {
         id: emailDelivery.id,
+        claimToken: emailDelivery.claim_token,
+        attemptCount: emailDelivery.attempt_count,
         outcome: 'failed',
         error: 'Configuração do destinatário ausente ou e-mail inválido',
         nextAttemptAt: new Date('2026-08-25T12:00:00.000Z'),
       },
     ]);
-    expect(result).toEqual({ selected: 1, sent: 0, failed: 1, cancelled: 0, skipped: 0 });
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 1, cancelled: 0, skipped: 0, backlog: 0, budgetExhausted: false });
   });
 
   it('recusa combinação de tipo e canal que não pertence à política de entrega', async () => {
@@ -338,7 +538,7 @@ describe('processDeliveries', () => {
         error: 'Entrega de comunicação inválida',
       }),
     ]);
-    expect(result).toEqual({ selected: 1, sent: 0, failed: 1, cancelled: 0, skipped: 0 });
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 1, cancelled: 0, skipped: 0, backlog: 0, budgetExhausted: false });
   });
 
   it('persiste apenas a categoria HTTP normalizada, sem a mensagem bruta do Graph', async () => {
@@ -362,7 +562,7 @@ describe('processDeliveries', () => {
     expect(completion.error).not.toContain('secret-token-value');
     expect(completion.error.length).toBeLessThanOrEqual(500);
     expect(completion.nextAttemptAt).toEqual(new Date('2026-08-25T12:00:00.000Z'));
-    expect(result).toEqual({ selected: 1, sent: 0, failed: 1, cancelled: 0, skipped: 0 });
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 1, cancelled: 0, skipped: 0, backlog: 0, budgetExhausted: false });
   });
 
   it.each([
@@ -412,7 +612,7 @@ describe('processDeliveries', () => {
     expect(repository.completed).toEqual([
       expect.objectContaining({ id: emailDelivery.id, outcome: 'sent' }),
     ]);
-    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 0, skipped: 1 });
+    expect(result).toEqual({ selected: 1, sent: 0, failed: 0, cancelled: 0, skipped: 1, backlog: 0, budgetExhausted: false });
   });
 
   it('continua o lote quando a conclusão da falha Graph da primeira entrega é rejeitada', async () => {
@@ -435,7 +635,7 @@ describe('processDeliveries', () => {
       expect.objectContaining({ id: emailDelivery.id, outcome: 'failed', error: 'delivery_error' }),
       expect.objectContaining({ id: teamsDelivery.id, outcome: 'sent' }),
     ]);
-    expect(result).toEqual({ selected: 2, sent: 1, failed: 0, cancelled: 0, skipped: 1 });
+    expect(result).toEqual({ selected: 2, sent: 1, failed: 0, cancelled: 0, skipped: 1, backlog: 0, budgetExhausted: false });
   });
 
   it('continua o lote depois de rejeições de conclusão para entrega inválida e destinatário ausente', async () => {
@@ -445,6 +645,19 @@ describe('processDeliveries', () => {
       claimed: [invalidDelivery, missingRequesterDelivery, teamsDelivery],
       completeErrors: [new Error('database unavailable'), new Error('database unavailable')],
     });
+    repository.getContext
+      .mockResolvedValueOnce({
+        enabledAt: missingRequesterDelivery.enabledAt,
+        ticket: missingRequesterDelivery.ticket,
+        requester: null,
+        lastHumanMessage: missingRequesterDelivery.lastHumanMessage,
+      })
+      .mockResolvedValueOnce({
+        enabledAt: teamsDelivery.enabledAt,
+        ticket: teamsDelivery.ticket,
+        requester: teamsDelivery.requester,
+        lastHumanMessage: teamsDelivery.lastHumanMessage,
+      });
     const graph = fakeGraph();
 
     const result = await processDeliveries({
@@ -457,7 +670,7 @@ describe('processDeliveries', () => {
     expect(graph.sendEmail).not.toHaveBeenCalled();
     expect(graph.sendTeamsActivity).toHaveBeenCalledTimes(1);
     expect(repository.complete).toHaveBeenCalledTimes(3);
-    expect(result).toEqual({ selected: 3, sent: 1, failed: 0, cancelled: 0, skipped: 2 });
+    expect(result).toEqual({ selected: 3, sent: 1, failed: 0, cancelled: 0, skipped: 2, backlog: 0, budgetExhausted: false });
   });
 
   it('retorna somente contadores quando não há entregas no lote', async () => {
@@ -473,7 +686,7 @@ describe('processDeliveries', () => {
     });
 
     expect(repository.completed).toEqual([]);
-    expect(result).toEqual({ selected: 0, sent: 0, failed: 0, cancelled: 0, skipped: 0 });
+    expect(result).toEqual({ selected: 0, sent: 0, failed: 0, cancelled: 0, skipped: 0, backlog: 0, budgetExhausted: false });
     expect(JSON.stringify(result)).not.toContain(requester.email);
     expect(JSON.stringify(result)).not.toContain(requester.name);
   });

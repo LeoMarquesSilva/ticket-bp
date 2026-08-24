@@ -67,13 +67,54 @@ function isRetryable(response) {
   return [408, 429].includes(response.status) || response.status >= 500;
 }
 
-function retryDelayMs(response, attempt) {
+function retryDelayMs(response, attempt, maxRetryDelayMs) {
   const retryAfterHeader = response.headers.get('Retry-After');
   const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader);
-  return Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : 250 * 2 ** (attempt - 1);
+  const requestedDelay = Number.isFinite(retryAfterSeconds)
+    ? Math.max(0, retryAfterSeconds * 1000)
+    : 250 * 2 ** (attempt - 1);
+  return Math.min(requestedDelay, maxRetryDelayMs);
 }
 
-async function requestToken(config, fetchImpl, sleep) {
+function timeoutError(operation) {
+  const error = new Error(`Microsoft Graph ${operation} timeout`);
+  error.code = 'network_timeout';
+  return error;
+}
+
+async function fetchWithTimeout(fetchImpl, url, init, timeoutMs, operation) {
+  const controller = new AbortController();
+  let timer;
+  try {
+    return await Promise.race([
+      fetchImpl(url, { ...init, signal: controller.signal }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(timeoutError(operation));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function networkError(error, operation) {
+  if (error?.code === 'network_timeout') return error;
+  const sanitized = new Error(`Microsoft Graph ${operation} network error`);
+  sanitized.code = 'network_error';
+  return sanitized;
+}
+
+async function requestToken(config, dependencies) {
+  const {
+    fetchImpl,
+    sleep,
+    now,
+    tokenTimeoutMs,
+    maxRetryDelayMs,
+  } = dependencies;
   const body = new URLSearchParams({
     client_id: config.clientId,
     client_secret: config.clientSecret,
@@ -82,16 +123,28 @@ async function requestToken(config, fetchImpl, sleep) {
   });
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const response = await fetchImpl(
-      `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
-      {
+    let response;
+    try {
+      response = await fetchWithTimeout(
+        fetchImpl,
+        `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
+        {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
-      },
-    );
+        },
+        tokenTimeoutMs,
+        'token request',
+      );
+    } catch (error) {
+      if (attempt < 3) {
+        await sleep(Math.min(250 * 2 ** (attempt - 1), maxRetryDelayMs));
+        continue;
+      }
+      throw networkError(error, 'token request');
+    }
     if (isRetryable(response) && attempt < 3) {
-      await sleep(retryDelayMs(response, attempt));
+      await sleep(retryDelayMs(response, attempt, maxRetryDelayMs));
       continue;
     }
 
@@ -99,7 +152,15 @@ async function requestToken(config, fetchImpl, sleep) {
     if (!response.ok || !json.access_token) {
       throw new Error(`Falha ao autenticar no Microsoft Graph (${response.status})`);
     }
-    return String(json.access_token);
+    const expiresInSeconds = Number(json.expires_in);
+    const lifetimeMs = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+      ? expiresInSeconds * 1000
+      : 5 * 60 * 1000;
+    const refreshSkewMs = Math.min(60_000, lifetimeMs / 2);
+    return {
+      accessToken: String(json.access_token),
+      expiresAt: now() + lifetimeMs - refreshSkewMs,
+    };
   }
 
   throw new Error('Falha ao autenticar no Microsoft Graph');
@@ -129,20 +190,19 @@ function emailVariants(email) {
 
 async function resolveGraphUserId(email, graphRequest) {
   const variants = emailVariants(email);
-  for (const variant of variants) {
+  const resolveExact = async (variant) => {
     const direct = await graphRequest(
       `/users/${encodeURIComponent(variant)}?$select=id,userPrincipalName,mail`,
       {},
       { allowNotFound: true },
     );
-    if (!direct.ok) continue;
-    const user = await direct.json();
-    if (user?.id && String(user.userPrincipalName ?? '').trim().toLowerCase() === variant) {
-      return String(user.id);
+    if (direct.ok) {
+      const user = await direct.json();
+      const exactUpn = String(user?.userPrincipalName ?? '').trim().toLowerCase() === variant;
+      const exactMail = String(user?.mail ?? '').trim().toLowerCase() === variant;
+      if (user?.id && (exactUpn || exactMail)) return String(user.id);
     }
-  }
 
-  for (const variant of variants) {
     const escaped = variant.replace(/'/g, "''");
     const filter = encodeURIComponent(`mail eq '${escaped}'`);
     const filtered = await graphRequest(`/users?$filter=${filter}&$select=id,mail,userPrincipalName&$top=2`);
@@ -152,8 +212,20 @@ async function resolveGraphUserId(email, graphRequest) {
       : [];
     if (matches.length === 1) return String(matches[0].id);
     if (matches.length > 1) return null;
+    return undefined;
+  };
+
+  for (const variant of variants) {
+    const result = await resolveExact(variant);
+    if (result !== undefined) return result;
   }
   return null;
+}
+
+function teamsDeepLink(teamsAppId, ticketUrl, label) {
+  const url = new URL(ticketUrl);
+  if (url.protocol !== 'https:') throw new TypeError('Teams ticketUrl must use HTTPS');
+  return `https://teams.microsoft.com/l/entity/${encodeURIComponent(teamsAppId)}/ticket-detail?webUrl=${encodeURIComponent(url.toString())}&label=${encodeURIComponent(label)}`;
 }
 
 export function createGraphClient(
@@ -161,36 +233,87 @@ export function createGraphClient(
   {
     fetchImpl = fetch,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now = () => Date.now(),
+    tokenTimeoutMs = 10_000,
+    requestTimeoutMs = 10_000,
+    maxRetryDelayMs = 30_000,
   } = {},
 ) {
+  let tokenRecord;
   let tokenPromise;
-  const getToken = () => {
+  const getToken = (forceRefresh = false) => {
+    if (forceRefresh) {
+      tokenRecord = undefined;
+      tokenPromise = undefined;
+    }
+    if (tokenRecord && now() < tokenRecord.expiresAt) {
+      return Promise.resolve(tokenRecord.accessToken);
+    }
     if (!tokenPromise) {
-      tokenPromise = requestToken(config, fetchImpl, sleep).catch((error) => {
+      tokenPromise = requestToken(config, {
+        fetchImpl,
+        sleep,
+        now,
+        tokenTimeoutMs,
+        maxRetryDelayMs,
+      }).then((record) => {
+        tokenRecord = record;
+        return record;
+      }).finally(() => {
         tokenPromise = undefined;
-        throw error;
       });
     }
-    return tokenPromise;
+    return tokenPromise.then((record) => record.accessToken);
   };
 
-  const graphRequest = async (path, init = {}, options = {}, attempt = 1) => {
-    const token = await getToken();
-    const response = await fetchImpl(`https://graph.microsoft.com/v1.0${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...(init.headers ?? {}),
-      },
-    });
-    if (isRetryable(response) && attempt < 3) {
-      await sleep(retryDelayMs(response, attempt));
-      return graphRequest(path, init, options, attempt + 1);
+  const graphRequest = async (path, init = {}, options = {}) => {
+    let attempt = 1;
+    let refreshedAfterUnauthorized = false;
+
+    while (attempt <= 3) {
+      const token = await getToken(refreshedAfterUnauthorized);
+      refreshedAfterUnauthorized = false;
+      let response;
+      try {
+        response = await fetchWithTimeout(
+          fetchImpl,
+          `https://graph.microsoft.com/v1.0${path}`,
+          {
+            ...init,
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              ...(init.headers ?? {}),
+            },
+          },
+          requestTimeoutMs,
+          'request',
+        );
+      } catch (error) {
+        if (attempt < 3) {
+          await sleep(Math.min(250 * 2 ** (attempt - 1), maxRetryDelayMs));
+          attempt += 1;
+          continue;
+        }
+        throw networkError(error, 'request');
+      }
+
+      if (response.status === 401 && !options.didRefreshToken) {
+        options = { ...options, didRefreshToken: true };
+        refreshedAfterUnauthorized = true;
+        continue;
+      }
+      if (isRetryable(response) && attempt < 3) {
+        await sleep(retryDelayMs(response, attempt, maxRetryDelayMs));
+        attempt += 1;
+        continue;
+      }
+      if (options.allowNotFound && response.status === 404) return response;
+      if (!response.ok) throw await sanitizedGraphError(response);
+      return response;
     }
-    if (options.allowNotFound && response.status === 404) return response;
-    if (!response.ok) throw await sanitizedGraphError(response);
-    return response;
+
+    throw new Error('Microsoft Graph request exhausted retries');
   };
 
   const sendEmail = ({ to, subject, html, text }) => graphRequest(
@@ -201,16 +324,24 @@ export function createGraphClient(
       body: buildMimeBase64({ from: config.sender, to, subject, html, text }),
     },
   );
-  const sendTeamsActivity = ({ userId, topic, previewText, webUrl }) => graphRequest(
+  const sendTeamsActivity = ({ userId, topic, label, previewText, ticketUrl, chainId }) => graphRequest(
     `/users/${encodeURIComponent(userId)}/teamwork/sendActivityNotification`,
     {
       method: 'POST',
       body: JSON.stringify({
         teamsAppId: config.teamsAppId,
         activityType: 'ticketCommunication',
-        topic: { source: 'text', value: topic, webUrl },
-        previewText: { content: previewText },
-        templateParameters: [{ name: 'notificationText', value: previewText }],
+        topic: {
+          source: 'text',
+          value: topic,
+          webUrl: teamsDeepLink(config.teamsAppId, ticketUrl, label),
+        },
+        previewText: { content: `${previewText}\n${ticketUrl}` },
+        templateParameters: [
+          { name: 'notificationText', value: previewText },
+          { name: 'ticketUrl', value: ticketUrl },
+        ],
+        chainId,
       }),
     },
   );
