@@ -6,6 +6,7 @@ import ticketEventService from './ticketEventService';
 import { notifyDetractorFeedback, notifyUnfulfilledRequest } from './webhookService';
 import { CategoryService } from './categoryService';
 import { notifyTicketWhatsApp } from './evolutionEdgeService';
+import { notifyTicketResolved } from './ticketCommunicationService';
 import { submitSharepointTreinamento } from './sharepointTreinamentosService';
 import type { SharepointTreinamentoPayload } from '@/utils/desenvolvimentoContinuoForm';
 import { FrenteAccessService } from './frenteAccessService';
@@ -559,7 +560,15 @@ static async getTicket(ticketId: string): Promise<Ticket | null> {
         }
       }
 
-      return await this.updateTicket(ticketId, updates);
+      const resolvedTicket = await this.updateTicket(ticketId, updates);
+
+      if (isNewlyResolved) {
+        void notifyTicketResolved(ticketId).catch(() => {
+          console.warn('[ticket-communications] convite pendente para retry', { ticketId });
+        });
+      }
+
+      return resolvedTicket;
     } catch (error) {
       console.error('Error in finishTicket:', error);
       throw error;
