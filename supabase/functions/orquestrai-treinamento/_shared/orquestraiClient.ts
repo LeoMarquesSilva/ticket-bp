@@ -17,9 +17,21 @@ export type OrquestraiTreinamentoPayload = {
   duracaoMinutos: string;
   precisaAjustePpt: boolean;
   linkPpt?: string;
+  sendMode?: "ppt" | "certificados" | "ppt_e_certificados";
+};
+
+export type OrquestraiSendMode = "ppt" | "certificados" | "ppt_e_certificados";
+export type OrquestraiRequestType = "PPT" | "Certificados";
+
+export type OrquestraiCardResult = {
+  requestType: OrquestraiRequestType;
+  created: boolean;
+  marketingRequestId: string;
 };
 
 const DEFAULT_DESIGNER = "Valentina Iacovacci";
+const PRESENCA_LIST_URL =
+  "https://bpplaw2.sharepoint.com/sites/CONTROLADORIAJURDICA/Lists/TREINAMENTOS%20%20OPERAES%20LEGAIS?env=WebViewList";
 
 export async function resolveOrquestraiConfig(
   admin: SupabaseClient,
@@ -82,10 +94,34 @@ export function brDateToIsoDate(value: string): string | null {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/** Data do workshop + 1 dia civil. */
+export function certificadosDeadlineIso(value: string): string | null {
+  const iso = brDateToIsoDate(value);
+  if (!iso) return null;
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+export function sendModesFor(mode: OrquestraiSendMode): OrquestraiRequestType[] {
+  if (mode === "ppt") return ["PPT"];
+  if (mode === "certificados") return ["Certificados"];
+  return ["PPT", "Certificados"];
+}
+
+export function normalizeSendMode(value: unknown, precisaAjustePpt: boolean): OrquestraiSendMode {
+  if (value === "ppt" || value === "certificados" || value === "ppt_e_certificados") {
+    return value;
+  }
+  return precisaAjustePpt ? "ppt" : "certificados";
+}
+
 export function buildMarketingDescription(
   payload: OrquestraiTreinamentoPayload,
   ticketId: string,
   ticketAppUrl?: string,
+  requestType: OrquestraiRequestType = "PPT",
 ): string {
   const lines = [
     "Origem: Responsum — Desenvolvimento Contínuo da Equipe",
@@ -100,16 +136,31 @@ export function buildMarketingDescription(
     `Data da realização: ${payload.dataRealizacao}`,
     `Duração: ${payload.duracaoMinutos} minutos`,
     `Área: ${payload.area}`,
-    `Precisa de ajuste em PPT?: ${payload.precisaAjustePpt ? "Sim" : "Não"}`,
-    payload.precisaAjustePpt && payload.linkPpt
+    requestType === "PPT"
+      ? `Precisa de ajuste em PPT?: ${payload.precisaAjustePpt ? "Sim" : "Não"}`
+      : null,
+    requestType === "PPT" && payload.precisaAjustePpt && payload.linkPpt
       ? `Link do PPT: ${payload.linkPpt}`
+      : null,
+    requestType === "Certificados"
+      ? `Lista de presença: ${PRESENCA_LIST_URL}`
+      : null,
+    requestType === "Certificados"
+      ? "Consultar após o workshop quem preencheu o registro de presença."
       : null,
   ];
 
   return lines.filter((line): line is string => line !== null).join("\n");
 }
 
-export function buildMarketingTitle(payload: OrquestraiTreinamentoPayload): string {
+export function buildMarketingTitle(
+  payload: OrquestraiTreinamentoPayload,
+  requestType: OrquestraiRequestType = "PPT",
+): string {
+  if (requestType === "Certificados") {
+    const title = `[DC] Certificados — ${payload.tema.trim()}`;
+    return title.length > 180 ? `${title.slice(0, 177)}...` : title;
+  }
   const tipo = payload.subcategory?.trim() || "Desenvolvimento Contínuo";
   const title = `[DC] ${tipo} — ${payload.tema.trim()}`;
   return title.length > 180 ? `${title.slice(0, 177)}...` : title;
@@ -118,14 +169,19 @@ export function buildMarketingTitle(payload: OrquestraiTreinamentoPayload): stri
 export async function findExistingRequestId(
   orquestrai: SupabaseClient,
   ticketId: string,
+  requestType?: OrquestraiRequestType,
 ): Promise<string | null> {
-  const { data } = await orquestrai
+  let query = orquestrai
     .from("marketing_requests")
     .select("id")
-    .ilike("description", `%Ticket ID: ${ticketId}%`)
-    .limit(1)
-    .maybeSingle();
-  return data?.id ?? null;
+    .ilike("description", `%Ticket ID: ${ticketId}%`);
+
+  if (requestType) {
+    query = query.eq("request_type", requestType);
+  }
+
+  const { data } = await query.limit(1);
+  return data?.[0]?.id ?? null;
 }
 
 export async function resolveUserByEmail(
@@ -162,53 +218,70 @@ export async function resolveDesigner(
   return { id: data.id, name: data.name };
 }
 
-export async function createMarketingRequestForTreinamento(
+async function insertMarketingRequest(
   orquestrai: SupabaseClient,
   config: OrquestraiConfig,
   input: {
     ticketId: string;
     ticketAppUrl?: string;
     payload: OrquestraiTreinamentoPayload;
+    requestType: OrquestraiRequestType;
+    parentRequestId?: string | null;
+    solicitante: { id: string; name: string; department: string | null } | null;
+    designer: { id: string; name: string } | null;
   },
-): Promise<{ marketingRequestId: string; created: boolean }> {
-  const existingId = await findExistingRequestId(orquestrai, input.ticketId);
+): Promise<OrquestraiCardResult> {
+  const existingId = await findExistingRequestId(
+    orquestrai,
+    input.ticketId,
+    input.requestType,
+  );
   if (existingId) {
-    return { marketingRequestId: existingId, created: false };
+    return {
+      requestType: input.requestType,
+      marketingRequestId: existingId,
+      created: false,
+    };
   }
 
-  const solicitante = await resolveUserByEmail(
-    orquestrai,
-    input.payload.responsavelEmail,
-  );
-  const designer = await resolveDesigner(orquestrai, config.defaultDesignerName);
-
-  const requestType = input.payload.precisaAjustePpt ? "PPT" : "Evento";
-  const deadline = brDateToIsoDate(input.payload.dataRealizacao);
-  const pptLink = input.payload.linkPpt?.trim() || null;
   const ticketLink = input.ticketAppUrl?.trim() || null;
+  const pptLink = input.payload.linkPpt?.trim() || null;
+  const deadline = input.requestType === "Certificados"
+    ? certificadosDeadlineIso(input.payload.dataRealizacao)
+    : brDateToIsoDate(input.payload.dataRealizacao);
+  const cardLink = input.requestType === "Certificados"
+    ? PRESENCA_LIST_URL
+    : pptLink || ticketLink;
+  const referencias = input.requestType === "Certificados"
+    ? ticketLink
+    : pptLink && ticketLink
+      ? ticketLink
+      : null;
 
   const { data, error } = await orquestrai
     .from("marketing_requests")
     .insert({
-      title: buildMarketingTitle(input.payload),
+      title: buildMarketingTitle(input.payload, input.requestType),
       description: buildMarketingDescription(
         input.payload,
         input.ticketId,
         ticketLink || undefined,
+        input.requestType,
       ),
-      requesting_area: input.payload.area?.trim() || solicitante?.department || "Marketing",
-      request_type: requestType,
+      requesting_area: input.payload.area?.trim() || input.solicitante?.department || "Marketing",
+      request_type: input.requestType,
       status: "pending",
       workflow_stage: "tarefas",
       priority: "normal",
       deadline,
       deadline_time: null,
-      link: pptLink || ticketLink,
-      referencias: pptLink && ticketLink ? ticketLink : null,
-      assignee: designer?.name ?? config.defaultDesignerName,
-      assignee_id: designer?.id ?? null,
-      solicitante: solicitante?.name ?? input.payload.responsavelName ?? null,
-      solicitante_id: solicitante?.id ?? null,
+      link: cardLink,
+      referencias,
+      parent_request_id: input.parentRequestId ?? null,
+      assignee: input.designer?.name ?? config.defaultDesignerName,
+      assignee_id: input.designer?.id ?? null,
+      solicitante: input.solicitante?.name ?? input.payload.responsavelName ?? null,
+      solicitante_id: input.solicitante?.id ?? null,
       created_by: "Responsum",
       created_by_id: null,
       nome_advogado: input.payload.responsavelName || null,
@@ -217,5 +290,59 @@ export async function createMarketingRequestForTreinamento(
     .single();
 
   if (error) throw new Error(error.message);
-  return { marketingRequestId: data.id, created: true };
+  return {
+    requestType: input.requestType,
+    marketingRequestId: data.id,
+    created: true,
+  };
+}
+
+export async function createMarketingRequestForTreinamento(
+  orquestrai: SupabaseClient,
+  config: OrquestraiConfig,
+  input: {
+    ticketId: string;
+    ticketAppUrl?: string;
+    payload: OrquestraiTreinamentoPayload;
+    sendMode?: OrquestraiSendMode;
+  },
+): Promise<{
+  marketingRequestId: string;
+  created: boolean;
+  results: OrquestraiCardResult[];
+}> {
+  const sendMode = normalizeSendMode(
+    input.sendMode ?? input.payload.sendMode,
+    input.payload.precisaAjustePpt,
+  );
+  const types = sendModesFor(sendMode);
+  const solicitante = await resolveUserByEmail(
+    orquestrai,
+    input.payload.responsavelEmail,
+  );
+  const designer = await resolveDesigner(orquestrai, config.defaultDesignerName);
+
+  const results: OrquestraiCardResult[] = [];
+  let pptId = await findExistingRequestId(orquestrai, input.ticketId, "PPT");
+
+  for (const requestType of types) {
+    const result = await insertMarketingRequest(orquestrai, config, {
+      ticketId: input.ticketId,
+      ticketAppUrl: input.ticketAppUrl,
+      payload: input.payload,
+      requestType,
+      parentRequestId: requestType === "Certificados" ? pptId : null,
+      solicitante,
+      designer,
+    });
+    results.push(result);
+    if (requestType === "PPT") pptId = result.marketingRequestId;
+  }
+
+  const created = results.some((item) => item.created);
+  return {
+    marketingRequestId: results[results.length - 1]?.marketingRequestId ?? "",
+    created,
+    results,
+  };
 }

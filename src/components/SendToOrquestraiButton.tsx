@@ -31,6 +31,15 @@ import {
   enrichResponsavelEmail,
   parseDesenvolvimentoContinuoPayload,
 } from '@/utils/orquestraiTreinamentoPreview';
+import {
+  certificadosDeadlineIso,
+  defaultSendMode,
+  includesPpt,
+  isoDateFromBr,
+  sendModeLabel,
+  sendModesFor,
+  type OrquestraiSendMode,
+} from '@/utils/orquestraiSendMode';
 import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
 
 type Props = {
@@ -71,6 +80,7 @@ const SendToOrquestraiButton: React.FC<Props> = ({
   const [parseError, setParseError] = useState<string | null>(null);
   const [payload, setPayload] = useState<SharepointTreinamentoPayload>(emptyPayload());
   const [ticketUrl, setTicketUrl] = useState('');
+  const [sendMode, setSendMode] = useState<OrquestraiSendMode>('certificados');
 
   const visible = useMemo(
     () =>
@@ -104,6 +114,7 @@ const SendToOrquestraiButton: React.FC<Props> = ({
               ...emptyPayload(),
               subcategory: subcategoryLabel,
             });
+            setSendMode('certificados');
             setParseError(
               'Não foi possível ler todos os campos automaticamente. Preencha ou ajuste manualmente antes de enviar.',
             );
@@ -116,6 +127,7 @@ const SendToOrquestraiButton: React.FC<Props> = ({
               ...enriched,
               linkPpt: enriched.linkPpt || '',
             });
+            setSendMode(defaultSendMode(enriched.precisaAjustePpt));
           }
         }
 
@@ -147,30 +159,50 @@ const SendToOrquestraiButton: React.FC<Props> = ({
     setPayload((prev) => ({ ...prev, ...patch }));
   };
 
-  const requestType = payload.precisaAjustePpt ? 'PPT' : 'Evento';
-  const previewTitle = `[DC] ${payload.subcategory || 'Desenvolvimento Contínuo'} — ${payload.tema || '…'}`;
+  const requestTypes = sendModesFor(sendMode);
+  const pptDeadline = isoDateFromBr(payload.dataRealizacao) || payload.dataRealizacao || '—';
+  const certDeadline = certificadosDeadlineIso(payload.dataRealizacao) || '—';
+  const needsPptLink = includesPpt(sendMode) && payload.precisaAjustePpt;
   const canSubmit =
     Boolean(payload.tema.trim()) &&
     Boolean(payload.dataRealizacao.trim()) &&
-    (!payload.precisaAjustePpt || Boolean(payload.linkPpt?.trim()));
+    (!needsPptLink || Boolean(payload.linkPpt?.trim()));
 
   const handleConfirm = async () => {
     if (!canSubmit) {
-      toast.error('Preencha pelo menos tema, data e (se PPT) o link do PPT');
+      toast.error(
+        needsPptLink
+          ? 'Preencha tema, data e o link do PPT'
+          : 'Preencha pelo menos tema e data',
+      );
       return;
     }
     setSending(true);
     try {
       const result = await submitOrquestraiTreinamento(ticket.id, {
         ...payload,
-        linkPpt: payload.precisaAjustePpt ? payload.linkPpt?.trim() || undefined : undefined,
+        sendMode,
+        linkPpt: needsPptLink ? payload.linkPpt?.trim() || undefined : undefined,
       });
       if (!result.ok) {
         toast.error(result.error || 'Falha ao enviar para o ORQESTRAI');
         return;
       }
-      if (result.created === false) {
-        toast.info('Já existe um card deste ticket no ORQESTRAI');
+      const results = result.results ?? [];
+      const created = results.filter((item) => item.created);
+      const existing = results.filter((item) => !item.created);
+      if (created.length && existing.length) {
+        toast.success(
+          `Criado: ${created.map((item) => item.requestType).join(', ')}. Já existia: ${existing.map((item) => item.requestType).join(', ')}`,
+        );
+      } else if (created.length) {
+        toast.success(
+          created.length > 1
+            ? 'Cards criados no ORQESTRAI'
+            : `Card ${created[0].requestType} criado no ORQESTRAI`,
+        );
+      } else if (result.created === false || existing.length) {
+        toast.info('Já existe um card deste tipo no ORQESTRAI');
       } else {
         toast.success('Card criado no ORQESTRAI');
       }
@@ -223,14 +255,56 @@ const SendToOrquestraiButton: React.FC<Props> = ({
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                   Prévia no ORQESTRAI
                 </p>
-                <p className="font-medium text-[#2C2D2F] break-words">{previewTitle}</p>
+                {requestTypes.map((type) => (
+                  <p key={type} className="font-medium text-[#2C2D2F] break-words">
+                    {type === 'Certificados'
+                      ? `[DC] Certificados — ${payload.tema || '…'}`
+                      : `[DC] ${payload.subcategory || 'Desenvolvimento Contínuo'} — ${payload.tema || '…'}`}
+                  </p>
+                ))}
                 <p className="text-xs text-slate-500">
-                  Tipo: <span className="text-[#2C2D2F] font-medium">{requestType}</span>
+                  Tipo:{' '}
+                  <span className="text-[#2C2D2F] font-medium">
+                    {requestTypes.join(' + ')}
+                  </span>
                   {' · '}
                   Estágio: <span className="text-[#2C2D2F] font-medium">Tarefas</span>
                   {' · '}
                   Assignee: <span className="text-[#2C2D2F] font-medium">Valentina Iacovacci</span>
                 </p>
+                <p className="text-xs text-slate-500">
+                  Prazo:{' '}
+                  <span className="text-[#2C2D2F] font-medium">
+                    {requestTypes
+                      .map((type) =>
+                        type === 'Certificados'
+                          ? `Certificados ${certDeadline}`
+                          : `PPT ${pptDeadline}`,
+                      )
+                      .join(' · ')}
+                  </span>
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>O que enviar</Label>
+                <Select
+                  value={sendMode}
+                  onValueChange={(value) => setSendMode(value as OrquestraiSendMode)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ppt">{sendModeLabel('ppt')}</SelectItem>
+                    <SelectItem value="certificados">
+                      {sendModeLabel('certificados')}
+                    </SelectItem>
+                    <SelectItem value="ppt_e_certificados">
+                      {sendModeLabel('ppt_e_certificados')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -327,28 +401,30 @@ const SendToOrquestraiButton: React.FC<Props> = ({
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label>Precisa de ajuste em PPT?</Label>
-                  <Select
-                    value={payload.precisaAjustePpt ? 'sim' : 'nao'}
-                    onValueChange={(value) =>
-                      update({
-                        precisaAjustePpt: value === 'sim',
-                        linkPpt: value === 'sim' ? payload.linkPpt : '',
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sim">Sim → cria como PPT</SelectItem>
-                      <SelectItem value="nao">Não → cria como Evento</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {includesPpt(sendMode) && (
+                  <div className="space-y-1.5">
+                    <Label>Precisa de ajuste em PPT?</Label>
+                    <Select
+                      value={payload.precisaAjustePpt ? 'sim' : 'nao'}
+                      onValueChange={(value) =>
+                        update({
+                          precisaAjustePpt: value === 'sim',
+                          linkPpt: value === 'sim' ? payload.linkPpt : '',
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sim">Sim → cria como PPT</SelectItem>
+                        <SelectItem value="nao">Não → PPT sem link</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-                {payload.precisaAjustePpt && (
+                {needsPptLink && (
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor="orq-ppt">Link do PPT</Label>
                     <Input

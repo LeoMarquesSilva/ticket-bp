@@ -220,6 +220,7 @@ export interface SharepointTreinamentoPayload {
   duracaoMinutos: string;
   precisaAjustePpt: boolean;
   linkPpt?: string;
+  sendMode?: 'ppt' | 'certificados' | 'ppt_e_certificados';
 }
 
 export function buildSharepointTreinamentoPayload(

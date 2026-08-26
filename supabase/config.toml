@@ -12,6 +12,9 @@ verify_jwt = true
 [functions.orquestrai-treinamento]
 verify_jwt = true
 
+[functions.orquestrai-certificados-presenca]
+verify_jwt = false
+
 [functions.notify-stale-tickets]
 verify_jwt = true
 

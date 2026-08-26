@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as {
       ticketId?: string;
       ticketAppUrl?: string;
+      sendMode?: "ppt" | "certificados" | "ppt_e_certificados";
       payload?: OrquestraiTreinamentoPayload;
     };
 
@@ -128,6 +129,7 @@ Deno.serve(async (req) => {
       ticketId: body.ticketId,
       ticketAppUrl: body.ticketAppUrl,
       payload: body.payload,
+      sendMode: body.sendMode ?? body.payload.sendMode,
     });
 
     return new Response(
@@ -135,6 +137,7 @@ Deno.serve(async (req) => {
         ok: true,
         created: result.created,
         marketingRequestId: result.marketingRequestId,
+        results: result.results,
       }),
       {
         status: 200,

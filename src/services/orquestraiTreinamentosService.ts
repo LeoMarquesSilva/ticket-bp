@@ -10,10 +10,17 @@ function buildTicketAppUrl(ticketId: string): string | undefined {
   return base ? `${base}/tickets/${ticketId}` : undefined;
 }
 
+export type OrquestraiSubmitCardResult = {
+  requestType: string;
+  created: boolean;
+  marketingRequestId: string;
+};
+
 export type OrquestraiSubmitResult = {
   ok: boolean;
   created?: boolean;
   marketingRequestId?: string;
+  results?: OrquestraiSubmitCardResult[];
   skipped?: boolean;
   error?: string;
 };
@@ -28,6 +35,7 @@ export async function submitOrquestraiTreinamento(
     body: {
       ticketId,
       payload,
+      sendMode: payload.sendMode ?? 'certificados',
       ticketAppUrl: ticketAppUrl ?? buildTicketAppUrl(ticketId),
     },
   });
@@ -41,6 +49,7 @@ export async function submitOrquestraiTreinamento(
     skipped?: boolean;
     created?: boolean;
     marketingRequestId?: string;
+    results?: OrquestraiSubmitCardResult[];
     ok?: boolean;
   } | null;
 
@@ -52,6 +61,7 @@ export async function submitOrquestraiTreinamento(
     ok: true,
     created: result?.created,
     marketingRequestId: result?.marketingRequestId,
+    results: result?.results,
     skipped: result?.skipped,
   };
 }

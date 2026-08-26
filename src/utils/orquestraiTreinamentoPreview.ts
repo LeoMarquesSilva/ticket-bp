@@ -1,4 +1,10 @@
 import type { SharepointTreinamentoPayload } from '@/utils/desenvolvimentoContinuoForm';
+import {
+  certificadosDeadlineIso,
+  isoDateFromBr,
+  sendModesFor,
+  type OrquestraiSendMode,
+} from '@/utils/orquestraiSendMode';
 
 function extractField(text: string, labels: string[]): string {
   for (const label of labels) {
@@ -66,15 +72,37 @@ export type OrquestraiPreviewRow = {
 export function buildOrquestraiPreviewRows(
   payload: SharepointTreinamentoPayload,
   ticketAppUrl?: string,
+  sendMode: OrquestraiSendMode = payload.sendMode ?? 'certificados',
 ): OrquestraiPreviewRow[] {
-  const requestType = payload.precisaAjustePpt ? 'PPT' : 'Evento';
+  const types = sendModesFor(sendMode);
   const title = `[DC] ${payload.subcategory || 'Desenvolvimento Contínuo'} — ${payload.tema}`;
+  const certificadosTitle = `[DC] Certificados — ${payload.tema}`;
+  const pptDeadline = isoDateFromBr(payload.dataRealizacao) || payload.dataRealizacao || '—';
+  const certDeadline =
+    certificadosDeadlineIso(payload.dataRealizacao) || pptDeadline;
 
   const rows: OrquestraiPreviewRow[] = [
-    { label: 'Título no ORQESTRAI', value: title },
-    { label: 'Tipo de solicitação', value: requestType },
+    {
+      label: 'Título no ORQESTRAI',
+      value: types.includes('Certificados') && types.includes('PPT')
+        ? `${title} + ${certificadosTitle}`
+        : types.includes('Certificados')
+          ? certificadosTitle
+          : title,
+    },
+    { label: 'Tipo de solicitação', value: types.join(' + ') },
     { label: 'Estágio', value: 'Tarefas' },
     { label: 'Designer (assignee)', value: 'Valentina Iacovacci' },
+    {
+      label: 'Prazo',
+      value: types
+        .map((type) =>
+          type === 'Certificados'
+            ? `Certificados: ${certDeadline}`
+            : `PPT: ${pptDeadline}`,
+        )
+        .join(' · '),
+    },
     { label: 'Área solicitante', value: payload.area || '—' },
     {
       label: 'Responsável (gerente)',
@@ -91,11 +119,14 @@ export function buildOrquestraiPreviewRows(
       label: 'Duração',
       value: payload.duracaoMinutos ? `${payload.duracaoMinutos} minutos` : '—',
     },
-    {
+  ];
+
+  if (types.includes('PPT')) {
+    rows.push({
       label: 'Precisa de ajuste em PPT?',
       value: payload.precisaAjustePpt ? 'Sim' : 'Não',
-    },
-  ];
+    });
+  }
 
   if (payload.precisaAjustePpt && payload.linkPpt) {
     rows.push({ label: 'Link do PPT', value: payload.linkPpt });
