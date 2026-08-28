@@ -23,9 +23,11 @@ async function responseJson(response) {
 async function providerError(response, operation) {
   const body = await responseJson(response);
   const code = String(body?.error?.code ?? body?.error ?? 'unknown_error').slice(0, 100);
+  const graphMessage = String(body?.error?.message ?? '').replace(/\s+/g, ' ').slice(0, 240);
   const error = new Error(`Microsoft ${operation} failed (${response.status}, ${code})`);
   error.status = response.status;
   error.code = code;
+  error.graphMessage = graphMessage;
   return error;
 }
 
@@ -182,7 +184,7 @@ export function createTeamsChatClient({
     return responseJson(response);
   }
 
-  async function sendChat({ recipientUserId, previewText, ticketUrl }) {
+  async function sendChat({ recipientUserId, previewText, ticketUrl, html, chatHtml, card }) {
     const credential = await store.get();
     if (!credential) {
       const error = new Error('Teams account is not connected');
@@ -201,14 +203,30 @@ export function createTeamsChatClient({
       }),
     });
     if (typeof chat.id !== 'string' || !chat.id) throw new Error('Microsoft Graph returned an invalid chat');
+    const payload = card
+      ? {
+          body: {
+            contentType: 'html',
+            content: `${typeof chatHtml === 'string' ? chatHtml : ''}<attachment id="responsum-card"></attachment>`,
+          },
+          attachments: [{
+            id: 'responsum-card',
+            contentType: 'application/vnd.microsoft.card.adaptive',
+            contentUrl: null,
+            content: JSON.stringify(card),
+          }],
+        }
+      : {
+          body: {
+            contentType: 'html',
+            content: typeof html === 'string' && html
+              ? html
+              : `<p>${escapeHtml(previewText)}</p><p><a href="${escapeHtml(ticketUrl)}">Abrir chamado no Responsum</a></p>`,
+          },
+        };
     await graphRequest(`/chats/${encodeURIComponent(chat.id)}/messages`, {
       method: 'POST',
-      body: JSON.stringify({
-        body: {
-          contentType: 'html',
-          content: `<p>${escapeHtml(previewText)}</p><p><a href="${escapeHtml(ticketUrl)}">Abrir chamado no Responsum</a></p>`,
-        },
-      }),
+      body: JSON.stringify(payload),
     });
   }
 

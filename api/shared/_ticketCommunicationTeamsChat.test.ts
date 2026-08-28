@@ -123,10 +123,55 @@ describe('createTeamsChatClient', () => {
       contentType: 'html',
       content: '<p>Avalie &lt;agora&gt;</p><p><a href="https://www.responsum.com.br/tickets/ticket-id?showFeedback=true&amp;source=teams">Abrir chamado no Responsum</a></p>',
     });
+    expect(messageBody.attachments).toBeUndefined();
     expect(store.save).toHaveBeenCalledWith(expect.objectContaining({
       encryptedRefreshToken: { ciphertext: expect.any(String), iv: expect.any(String) },
     }));
     expect(JSON.stringify(store.save.mock.calls)).not.toContain('rotated-refresh-token');
+  });
+
+  it('envia o cartão Adaptive Card e o HTML rico quando o template fornece o layout', async () => {
+    const encryptedRefreshToken = await encryptRefreshToken('old-refresh-token', {
+      encryptionKey: KEY,
+      cryptoImpl: webcrypto,
+    });
+    const store = {
+      get: vi.fn(async () => ({ ...ACCOUNT, encryptedRefreshToken })),
+      save: vi.fn(async (value) => ({ ...value, updatedAt: ACCOUNT.updatedAt })),
+      disconnect: vi.fn(),
+    };
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.includes('/token')) {
+        return jsonResponse(200, { access_token: 'fresh-access', refresh_token: 'rotated-refresh-token', expires_in: 3600 });
+      }
+      if (url.endsWith('/chats')) return jsonResponse(201, { id: 'chat-id' });
+      if (url.endsWith('/chats/chat-id/messages')) return jsonResponse(201, { id: 'message-id' });
+      return jsonResponse(404, {});
+    });
+    const client = createTeamsChatClient({ config: CONFIG, store, fetchImpl, cryptoImpl: webcrypto });
+
+    await client.sendChat({
+      recipientUserId: '22222222-2222-2222-2222-222222222222',
+      previewText: 'Avalie <agora>',
+      ticketUrl: 'https://www.responsum.com.br/tickets/ticket-id',
+      html: '<p>Cartão <strong>Responsum</strong></p>',
+      chatHtml: '<p><strong>RESPONSUM</strong> · Avaliar atendimento</p><p>Avalie &lt;agora&gt;.</p>',
+      card: { type: 'AdaptiveCard', version: '1.4', body: [{ type: 'TextBlock', text: 'RESPONSUM' }] },
+    });
+
+    const messageBody = JSON.parse(String(calls.find((call) => call.url.endsWith('/messages'))?.init?.body));
+    expect(messageBody.body).toEqual({
+      contentType: 'html',
+      content: '<p><strong>RESPONSUM</strong> · Avaliar atendimento</p><p>Avalie &lt;agora&gt;.</p><attachment id="responsum-card"></attachment>',
+    });
+    expect(messageBody.attachments).toEqual([{
+      id: 'responsum-card',
+      contentType: 'application/vnd.microsoft.card.adaptive',
+      contentUrl: null,
+      content: JSON.stringify({ type: 'AdaptiveCard', version: '1.4', body: [{ type: 'TextBlock', text: 'RESPONSUM' }] }),
+    }]);
   });
 
   it('informa status da conta sem devolver material de autenticação', async () => {

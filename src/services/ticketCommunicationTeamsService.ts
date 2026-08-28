@@ -7,9 +7,13 @@ export type TicketCommunicationTeamsStatus = {
   connectedAt: string | null;
 };
 
-async function invoke(action: string, failureMessage: string): Promise<Record<string, unknown>> {
+async function invoke(
+  action: string,
+  failureMessage: string,
+  extra: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
   const { data, error } = await supabase.functions.invoke('notify-ticket-communications', {
-    body: { action },
+    body: { action, ...extra },
   });
   const body = data as Record<string, unknown> | null;
   if (error || !body || body.error) throw new Error(failureMessage);
@@ -44,6 +48,14 @@ export class TicketCommunicationTeamsService {
     await invoke(
       'teams_oauth_disconnect',
       'Não foi possível desconectar a conta do Teams.',
+    );
+  }
+
+  static async sendTestMessage(email: string, type?: string): Promise<void> {
+    await invoke(
+      'teams_test_send',
+      'Não foi possível enviar a mensagem de teste do Teams.',
+      { email, ...(type ? { type } : {}) },
     );
   }
 }

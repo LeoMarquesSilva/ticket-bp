@@ -14,7 +14,7 @@ export function createCorsHeaders(appBaseUrl: string | undefined): Record<string
   return {
     'Access-Control-Allow-Origin': appOrigin(appBaseUrl),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-app-instance',
     Vary: 'Origin',
   };
 }

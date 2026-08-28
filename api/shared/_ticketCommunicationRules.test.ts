@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   channelsForNotification,
+  formatScheduleCaption,
   getEligibleNotificationTypes,
   latestHumanMessage,
   localCycleKey,
+  normalizeSchedule,
   NPS_EXEMPT_CATEGORY_KEY,
   NPS_EXEMPT_SUBCATEGORY_KEY,
+  SCHEDULE_DEFAULTS,
 } from '../../supabase/functions/notify-ticket-communications/_shared/rules.mjs';
 
 const now = new Date('2026-08-24T12:00:00.000Z');
@@ -114,6 +117,101 @@ describe('convite e lembrete de feedback', () => {
       },
       lastHumanMessage: null,
     })).toEqual([]);
+  });
+});
+
+describe('prazos configuráveis', () => {
+  const enabledAt = new Date('2026-08-01T00:00:00.000Z');
+  const openTicket = {
+    status: 'in_progress',
+    created_by: requesterId,
+    resolved_at: null,
+    feedback_submitted_at: null,
+    category: 'ti',
+    subcategory: 'acesso',
+  };
+  const resolvedTicket = {
+    status: 'resolved',
+    created_by: requesterId,
+    resolved_at: '2026-08-23T12:00:00.000Z',
+    feedback_submitted_at: null,
+    category: 'ti',
+    subcategory: 'acesso',
+  };
+
+  it('usa 0/48/72 horas quando a configuração está ausente', () => {
+    expect(normalizeSchedule(undefined)).toEqual(SCHEDULE_DEFAULTS);
+    expect(normalizeSchedule({ awaiting_requester: { delayHours: -1, enabled: 'sim' } })).toEqual(SCHEDULE_DEFAULTS);
+  });
+
+  it('respeita um prazo menor para o lembrete ao solicitante', () => {
+    const schedule = normalizeSchedule({
+      awaiting_requester: { enabled: true, delayHours: 24 },
+    });
+    expect(getEligibleNotificationTypes({
+      now: new Date('2026-08-23T12:00:00.000Z'),
+      enabledAt,
+      ticket: openTicket,
+      lastHumanMessage: { user_id: supportId, created_at: '2026-08-22T12:00:00.000Z' },
+      schedule,
+    })).toEqual(['awaiting_requester']);
+    expect(getEligibleNotificationTypes({
+      now: new Date('2026-08-23T11:59:59.999Z'),
+      enabledAt,
+      ticket: openTicket,
+      lastHumanMessage: { user_id: supportId, created_at: '2026-08-22T12:00:00.000Z' },
+      schedule,
+    })).toEqual([]);
+  });
+
+  it('não emite comunicação desativada mesmo depois do prazo', () => {
+    const schedule = normalizeSchedule({
+      resolved_feedback_invite: { enabled: false, delayHours: 0 },
+      awaiting_requester: { enabled: false, delayHours: 1 },
+      awaiting_feedback: { enabled: false, delayHours: 1 },
+    });
+    expect(getEligibleNotificationTypes({
+      now,
+      enabledAt,
+      ticket: openTicket,
+      lastHumanMessage: { user_id: supportId, created_at: '2026-08-20T12:00:00.000Z' },
+      schedule,
+    })).toEqual([]);
+    expect(getEligibleNotificationTypes({
+      now,
+      enabledAt,
+      ticket: resolvedTicket,
+      lastHumanMessage: null,
+      schedule,
+    })).toEqual([]);
+  });
+
+  it('atrasa o convite de avaliação quando o prazo deixa de ser imediato', () => {
+    const schedule = normalizeSchedule({
+      resolved_feedback_invite: { enabled: true, delayHours: 12 },
+    });
+    expect(getEligibleNotificationTypes({
+      now: new Date('2026-08-24T00:00:00.000Z'),
+      enabledAt,
+      ticket: resolvedTicket,
+      lastHumanMessage: null,
+      schedule,
+    })).toEqual(['resolved_feedback_invite']);
+    expect(getEligibleNotificationTypes({
+      now: new Date('2026-08-23T23:59:59.999Z'),
+      enabledAt,
+      ticket: resolvedTicket,
+      lastHumanMessage: null,
+      schedule,
+    })).toEqual([]);
+  });
+
+  it('descreve o prazo para a interface', () => {
+    expect(formatScheduleCaption('resolved_feedback_invite', { enabled: true, delayHours: 0 })).toBe(
+      'Assim que o chamado é finalizado',
+    );
+    expect(formatScheduleCaption('awaiting_requester', { enabled: true, delayHours: 48 })).toBe('Após 48 horas');
+    expect(formatScheduleCaption('awaiting_feedback', { enabled: false, delayHours: 72 })).toBe('Desativada');
   });
 });
 

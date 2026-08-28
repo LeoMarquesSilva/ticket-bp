@@ -52,16 +52,34 @@ export const EMAIL_TEMPLATE_DEFAULTS = Object.freeze({
   }),
 });
 
-const EMAIL_FIELD_LIMITS = Object.freeze({ subject: 140, reason: 320, action: 48 });
+export const TEAMS_TEMPLATE_DEFAULTS = Object.freeze({
+  resolved_feedback_invite: Object.freeze({
+    subject: 'Avalie o atendimento: {title}',
+    reason: 'Seu chamado foi finalizado.',
+    action: 'Avaliar atendimento',
+  }),
+  awaiting_requester: Object.freeze({
+    subject: 'Seu chamado aguarda uma resposta: {title}',
+    reason: 'O suporte aguarda sua resposta há mais de 48 horas.',
+    action: 'Responder chamado',
+  }),
+  awaiting_feedback: Object.freeze({
+    subject: 'Avaliação pendente: {title}',
+    reason: 'Seu chamado foi finalizado há mais de 72 horas e ainda não foi avaliado.',
+    action: 'Avaliar atendimento',
+  }),
+});
 
-export function normalizeEmailTemplateOverrides(value) {
+const TEMPLATE_FIELD_LIMITS = Object.freeze({ subject: 140, reason: 320, action: 48 });
+
+function normalizeTemplateOverrides(value, defaults) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const normalized = {};
-  for (const type of Object.keys(EMAIL_TEMPLATE_DEFAULTS)) {
+  for (const type of Object.keys(defaults)) {
     const input = value[type];
     if (!input || typeof input !== 'object' || Array.isArray(input)) continue;
     const fields = {};
-    for (const [field, limit] of Object.entries(EMAIL_FIELD_LIMITS)) {
+    for (const [field, limit] of Object.entries(TEMPLATE_FIELD_LIMITS)) {
       const text = typeof input[field] === 'string' ? input[field].trim() : '';
       if (text && text.length <= limit && !/[\r\n]/.test(text)) fields[field] = text;
     }
@@ -70,15 +88,31 @@ export function normalizeEmailTemplateOverrides(value) {
   return normalized;
 }
 
-function resolveCopy(type, ticketTitle, overrides) {
-  const defaults = EMAIL_TEMPLATE_DEFAULTS[type];
-  if (!defaults) throw new TypeError(`Unsupported ticket communication type: ${type}`);
-  const custom = normalizeEmailTemplateOverrides(overrides)[type] ?? {};
-  const copy = { ...defaults, ...custom };
+export function normalizeEmailTemplateOverrides(value) {
+  return normalizeTemplateOverrides(value, EMAIL_TEMPLATE_DEFAULTS);
+}
+
+export function normalizeTeamsTemplateOverrides(value) {
+  return normalizeTemplateOverrides(value, TEAMS_TEMPLATE_DEFAULTS);
+}
+
+function resolveCopy(type, ticketTitle, overrides, defaults = EMAIL_TEMPLATE_DEFAULTS) {
+  const base = defaults[type];
+  if (!base) throw new TypeError(`Unsupported ticket communication type: ${type}`);
+  const custom = normalizeTemplateOverrides(overrides, defaults)[type] ?? {};
+  const copy = { ...base, ...custom };
   return {
     ...copy,
     subject: copy.subject.replaceAll('{title}', ticketTitle),
   };
+}
+
+function communicationState(type) {
+  return type === 'awaiting_requester'
+    ? { label: 'RESPOSTA NECESSÁRIA', color: '#DE5532', intro: 'Precisamos de você para continuar' }
+    : type === 'awaiting_feedback'
+      ? { label: 'AVALIAÇÃO PENDENTE', color: '#BD2D29', intro: 'Sua opinião faz diferença' }
+      : { label: 'CHAMADO FINALIZADO', color: '#F69F19', intro: 'Atendimento concluído' };
 }
 
 function renderEmailHtml({ name, title, reason, action, webUrl, type }) {
@@ -87,11 +121,7 @@ function renderEmailHtml({ name, title, reason, action, webUrl, type }) {
   const safeReason = escapeHtml(reason);
   const safeAction = escapeHtml(action);
   const safeUrl = escapeHtml(webUrl);
-  const state = type === 'awaiting_requester'
-    ? { label: 'RESPOSTA NECESSÁRIA', color: '#DE5532', intro: 'Precisamos de você para continuar' }
-    : type === 'awaiting_feedback'
-      ? { label: 'AVALIAÇÃO PENDENTE', color: '#BD2D29', intro: 'Sua opinião faz diferença' }
-      : { label: 'CHAMADO FINALIZADO', color: '#F69F19', intro: 'Atendimento concluído' };
+  const state = communicationState(type);
 
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${safeTitle}</title></head>
@@ -133,15 +163,137 @@ function renderEmailHtml({ name, title, reason, action, webUrl, type }) {
 </td></tr></table></body></html>`;
 }
 
-export function buildNotificationContent({ type, ticket, requester, appBaseUrl, emailTemplateOverrides }) {
+function renderTeamsHtml({ name, title, reason, action, webUrl, type, subject }) {
+  const safeName = escapeHtml(name);
+  const safeTitle = escapeHtml(title);
+  const safeReason = escapeHtml(reason);
+  const safeAction = escapeHtml(action);
+  const safeUrl = escapeHtml(webUrl);
+  const safeSubject = escapeHtml(subject);
+  const state = communicationState(type);
+
+  return `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeSubject}</title></head>
+<body style="margin:0;padding:0;background:#F1F3F5;color:#2C2D2F;font-family:Montserrat,Arial,sans-serif;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;background:#F1F3F5;"><tr><td align="center" style="padding:16px 10px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="520" style="width:100%;max-width:520px;background:#FFFFFF;border:1px solid #E2E5E9;border-radius:16px;overflow:hidden;">
+<tr><td style="height:5px;font-size:0;line-height:0;background:linear-gradient(90deg,#F69F19 0%,#DE5532 52%,#BD2D29 100%);">&nbsp;</td></tr>
+<tr><td style="padding:20px 24px;background:#2C2D2F;">
+<div style="font-size:18px;line-height:22px;font-weight:700;letter-spacing:2px;color:#FFFFFF;">RESPONSUM</div>
+<div style="margin-top:4px;font-size:11px;letter-spacing:1.2px;color:#BFC3C8;">BIS MARCHI PIRES · AVISO DE CHAMADO</div>
+</td></tr>
+<tr><td style="padding:24px 24px 10px;">
+<div style="display:inline-block;padding:6px 10px;border-radius:999px;background:${state.color}18;color:${state.color};font-size:11px;font-weight:700;letter-spacing:.8px;">${state.label}</div>
+<h1 style="margin:14px 0 8px;font-size:22px;line-height:28px;font-weight:700;color:#2C2D2F;">${state.intro}</h1>
+<p style="margin:0;font-size:15px;line-height:24px;color:#5C6168;">Olá, <strong style="color:#2C2D2F;">${safeName}</strong>.</p>
+<p style="margin:12px 0 0;font-size:15px;line-height:24px;color:#5C6168;">${safeReason}</p>
+</td></tr>
+<tr><td style="padding:14px 24px 8px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border:1px solid #E5E7EA;border-left:4px solid ${state.color};border-radius:10px;background:#FAFAFB;"><tr><td style="padding:14px 16px;">
+<div style="font-size:11px;color:#8A9098;letter-spacing:.8px;font-weight:700;">CHAMADO</div>
+<div style="margin-top:6px;font-size:16px;line-height:22px;color:#2C2D2F;font-weight:600;word-break:break-word;">${safeTitle}</div>
+</td></tr></table>
+</td></tr>
+<tr><td align="center" style="padding:18px 24px 22px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#F69F19" style="border-radius:9px;background:#F69F19;">
+<a href="${safeUrl}" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#2C2D2F;text-decoration:none;">${safeAction} &nbsp;→</a>
+</td></tr></table>
+</td></tr>
+</table>
+</td></tr></table></body></html>`;
+}
+
+function adaptiveStatusColor(type) {
+  return type === 'awaiting_requester'
+    ? 'Attention'
+    : type === 'awaiting_feedback'
+      ? 'Warning'
+      : 'Good';
+}
+
+function renderTeamsChatHtml({ action, reason }) {
+  return `<p><strong>RESPONSUM</strong> · ${escapeHtml(action)}</p><p>${escapeHtml(reason)}</p>`;
+}
+
+function renderTeamsCard({ name, title, reason, action, webUrl, type, subject }) {
+  const state = communicationState(type);
+  const statusColor = adaptiveStatusColor(type);
+  return {
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    type: 'AdaptiveCard',
+    version: '1.4',
+    msteams: { width: 'Full' },
+    body: [
+      {
+        type: 'Container',
+        style: 'accent',
+        bleed: true,
+        items: [
+          { type: 'TextBlock', text: 'RESPONSUM', weight: 'Bolder', color: 'Light', spacing: 'None' },
+          { type: 'TextBlock', text: 'BIS MARCHI PIRES · AVISO DE CHAMADO', size: 'Small', color: 'Light', isSubtle: true, spacing: 'None' },
+        ],
+      },
+      {
+        type: 'ColumnSet',
+        spacing: 'Medium',
+        columns: [
+          {
+            type: 'Column',
+            width: 'auto',
+            items: [
+              { type: 'TextBlock', text: '▌', size: 'Large', weight: 'Bolder', color: statusColor, spacing: 'None' },
+            ],
+          },
+          {
+            type: 'Column',
+            width: 'stretch',
+            items: [
+              { type: 'TextBlock', text: state.label, weight: 'Bolder', size: 'Small', color: statusColor, spacing: 'None' },
+              { type: 'TextBlock', text: state.intro, weight: 'Bolder', size: 'Large', wrap: true },
+            ],
+          },
+        ],
+      },
+      { type: 'TextBlock', text: `Olá, ${name}.`, wrap: true, spacing: 'Medium' },
+      { type: 'TextBlock', text: reason, wrap: true },
+      {
+        type: 'Container',
+        style: 'emphasis',
+        items: [
+          {
+            type: 'FactSet',
+            facts: [
+              { title: 'Chamado', value: title },
+              { title: 'Aviso', value: subject },
+            ],
+          },
+        ],
+      },
+    ],
+    actions: [
+      { type: 'Action.OpenUrl', title: action, url: webUrl },
+    ],
+  };
+}
+
+export function buildNotificationContent({ type, ticket, requester, appBaseUrl, emailTemplateOverrides, teamsTemplateOverrides }) {
   const feedback = type !== 'awaiting_requester';
   const webUrl = buildTicketUrl(appBaseUrl, ticket.id, feedback);
   const copy = resolveCopy(type, ticket.title, emailTemplateOverrides);
-  const teamsCopy = resolveCopy(type, ticket.title, {});
+  const teamsCopy = resolveCopy(type, ticket.title, teamsTemplateOverrides, TEAMS_TEMPLATE_DEFAULTS);
   const html = renderEmailHtml({
     name: requester.name, title: ticket.title, reason: copy.reason,
     action: copy.action, webUrl, type,
   });
+  const teamsPayload = {
+    name: requester.name,
+    title: ticket.title,
+    reason: teamsCopy.reason,
+    action: teamsCopy.action,
+    webUrl,
+    type,
+    subject: teamsCopy.subject,
+  };
   const text = `RESPONSUM | AVISO DE CHAMADO\n\nOlá, ${requester.name}.\n\n${copy.reason}\n\nChamado: ${ticket.title}\n\n${copy.action}: ${webUrl}\n\nBismarchi Pires · Operações Jurídicas`;
 
   return {
@@ -151,6 +303,9 @@ export function buildNotificationContent({ type, ticket, requester, appBaseUrl, 
       label: teamsCopy.action,
       previewText: teamsCopy.reason,
       ticketUrl: webUrl,
+      html: renderTeamsHtml(teamsPayload),
+      chatHtml: renderTeamsChatHtml(teamsPayload),
+      card: renderTeamsCard(teamsPayload),
     },
   };
 }

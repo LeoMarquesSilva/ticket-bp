@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildNotificationContent,
   EMAIL_TEMPLATE_DEFAULTS,
+  TEAMS_TEMPLATE_DEFAULTS,
   escapeHtml,
   normalizeEmailTemplateOverrides,
+  normalizeTeamsTemplateOverrides,
   normalizeAppPublicUrl,
 } from '../../supabase/functions/notify-ticket-communications/_shared/templates.mjs';
 
@@ -54,6 +56,44 @@ describe('buildNotificationContent', () => {
       label: 'Responder chamado',
       previewText: 'O suporte aguarda sua resposta há mais de 48 horas.',
     });
+    expect(content.teams.html).not.toContain('Continuar atendimento');
+  });
+
+  it('aplica textos saneados do Teams sem misturar com o e-mail nem aceitar URL', () => {
+    const teamsOverrides = normalizeTeamsTemplateOverrides({
+      awaiting_requester: {
+        subject: 'Responsum precisa de você: {title}',
+        reason: 'Responda no Teams <agora>.',
+        action: 'Abrir no Responsum',
+        ticketUrl: 'https://malicioso.example',
+      },
+    });
+    const content = buildNotificationContent({
+      type: 'awaiting_requester',
+      ticket,
+      requester,
+      appBaseUrl: 'https://responsum.example',
+      teamsTemplateOverrides: teamsOverrides,
+    });
+
+    expect(content.email.subject).toBe('Seu chamado aguarda uma resposta: Acesso ao sistema');
+    expect(content.teams.previewText).toBe('Responda no Teams <agora>.');
+    expect(content.teams.label).toBe('Abrir no Responsum');
+    expect(content.teams.html).toContain('RESPONSUM');
+    expect(content.teams.html).toContain('Responda no Teams &lt;agora&gt;.');
+    expect(content.teams.html).toContain('Abrir no Responsum');
+    expect(content.teams.html).toContain('https://responsum.example/tickets/11111111-1111-1111-1111-111111111111');
+    expect(content.teams.html).not.toContain('malicioso.example');
+    expect(content.teams.chatHtml).toBe('<p><strong>RESPONSUM</strong> · Abrir no Responsum</p><p>Responda no Teams &lt;agora&gt;.</p>');
+    expect(content.teams.card.msteams).toEqual({ width: 'Full' });
+    expect(content.teams.card.body[0]).toEqual(expect.objectContaining({
+      type: 'Container',
+      style: 'accent',
+      bleed: true,
+    }));
+    expect(JSON.stringify(content.teams.card)).toContain('FactSet');
+    expect(JSON.stringify(content.teams.card)).toContain('Abrir no Responsum');
+    expect(JSON.stringify(content.teams.card)).not.toContain('malicioso.example');
   });
 
   it('descarta configuração inválida por campo e preserva os defaults versionados', () => {
@@ -67,7 +107,11 @@ describe('buildNotificationContent', () => {
     });
 
     expect(overrides).toEqual({});
+    expect(normalizeTeamsTemplateOverrides({
+      resolved_feedback_invite: { subject: 'x'.repeat(141), action: 'y'.repeat(49) },
+    })).toEqual({});
     expect(EMAIL_TEMPLATE_DEFAULTS.awaiting_feedback.action).toBe('Avaliar atendimento');
+    expect(TEAMS_TEMPLATE_DEFAULTS.awaiting_feedback.action).toBe('Avaliar atendimento');
   });
 
   it('cria link de avaliação para convite e lembrete de feedback', () => {

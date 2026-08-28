@@ -51,7 +51,7 @@ const teamsDelivery = {
   lastHumanMessage: awaitingRequesterCandidate.lastHumanMessage,
 };
 
-function fakeRepository({ candidates = [], claimed = [], completeError, completeErrors = [], emailTemplateOverrides = {} } = {}) {
+function fakeRepository({ candidates = [], claimed = [], completeError, completeErrors = [], emailTemplateOverrides = {}, teamsTemplateOverrides = {}, schedule = {} } = {}) {
   const enqueued: Record<string, unknown>[] = [];
   const completed: Record<string, unknown>[] = [];
   const released: Record<string, unknown>[] = [];
@@ -63,6 +63,8 @@ function fakeRepository({ candidates = [], claimed = [], completeError, complete
     released,
     listCandidates: vi.fn(async () => candidates),
     getEmailTemplateOverrides: vi.fn(async () => emailTemplateOverrides),
+    getTeamsTemplateOverrides: vi.fn(async () => teamsTemplateOverrides),
+    getSchedule: vi.fn(async () => schedule),
     enqueue: vi.fn(async (row) => {
       enqueued.push(row);
       return row;
@@ -131,6 +133,19 @@ describe('prepareDeliveries', () => {
       },
     ]);
     expect(result).toEqual({ candidates: 1, enqueued: 2 });
+  });
+
+  it('respeita o prazo salvo e não enfileira antes da hora configurada', async () => {
+    const repository = fakeRepository({
+      candidates: [awaitingRequesterCandidate],
+      schedule: { awaiting_requester: { enabled: true, delayHours: 96 } },
+    });
+
+    const result = await prepareDeliveries({ repository, now });
+
+    expect(repository.getSchedule).toHaveBeenCalledTimes(1);
+    expect(repository.enqueued).toEqual([]);
+    expect(result).toEqual({ candidates: 1, enqueued: 0 });
   });
 
   it('usa a resolução como ciclo do convite único e não inclui NPS isento', async () => {
@@ -401,6 +416,29 @@ describe('processDeliveries', () => {
     expect(graph.sendTeamsChat).toHaveBeenCalledWith(expect.objectContaining({
       recipientUserId: 'entra-user-id',
       ticketUrl: 'https://responsum.example/tickets/11111111-1111-1111-1111-111111111111',
+    }));
+  });
+
+  it('carrega a configuração do Teams uma vez e aplica os textos saneados ao chat', async () => {
+    const repository = fakeRepository({
+      claimed: [teamsDelivery],
+      teamsTemplateOverrides: {
+        awaiting_requester: { reason: 'Falta sua resposta no Teams.', action: 'Responder agora' },
+      },
+    });
+    const graph = fakeGraph();
+
+    await processDeliveries({
+      repository, graph, appBaseUrl: 'https://responsum.example', now,
+      monotonicNow: () => 0,
+    });
+
+    expect(repository.getTeamsTemplateOverrides).toHaveBeenCalledTimes(1);
+    expect(graph.sendTeamsChat).toHaveBeenCalledWith(expect.objectContaining({
+      recipientUserId: 'entra-user-id',
+      previewText: 'Falta sua resposta no Teams.',
+      label: 'Responder agora',
+      html: expect.stringContaining('Responder agora'),
     }));
   });
 

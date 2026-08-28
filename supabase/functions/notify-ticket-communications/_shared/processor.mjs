@@ -2,6 +2,7 @@ import {
   channelsForNotification,
   getEligibleNotificationTypes,
   localCycleKey,
+  normalizeSchedule,
 } from './rules.mjs';
 import { buildNotificationContent } from './templates.mjs';
 
@@ -101,8 +102,17 @@ function hasCurrentResolvedCycle(delivery, ticket) {
     );
 }
 
+async function loadSchedule(repository) {
+  try {
+    return normalizeSchedule(await repository.getSchedule());
+  } catch {
+    return normalizeSchedule({});
+  }
+}
+
 export async function prepareDeliveries({ repository, now, ticketId, notificationType }) {
   const candidates = await repository.listCandidates(ticketId);
+  const schedule = await loadSchedule(repository);
   let enqueued = 0;
 
   for (const candidate of candidates) {
@@ -111,6 +121,7 @@ export async function prepareDeliveries({ repository, now, ticketId, notificatio
       enabledAt: new Date(candidate.enabledAt),
       ticket: candidate.ticket,
       lastHumanMessage: candidate.lastHumanMessage,
+      schedule,
     });
     const types = notificationType
       ? eligibleTypes.filter((type) => type === notificationType)
@@ -173,11 +184,18 @@ export async function processDeliveries({
   let queueDrained = false;
   let deadlineReached = false;
   let emailTemplateOverrides = {};
+  let teamsTemplateOverrides = {};
+  const schedule = await loadSchedule(repository);
   try {
     emailTemplateOverrides = await repository.getEmailTemplateOverrides();
   } catch {
     // Configuração visual nunca deve bloquear uma comunicação operacional.
     emailTemplateOverrides = {};
+  }
+  try {
+    teamsTemplateOverrides = await repository.getTeamsTemplateOverrides();
+  } catch {
+    teamsTemplateOverrides = {};
   }
 
   while (
@@ -235,6 +253,7 @@ export async function processDeliveries({
       enabledAt,
       ticket: context.ticket,
       lastHumanMessage: context.lastHumanMessage,
+      schedule,
     });
     if (
       !eligibleTypes.includes(delivery.notification_type)
@@ -266,6 +285,7 @@ export async function processDeliveries({
         requester: context.requester,
         appBaseUrl,
         emailTemplateOverrides,
+        teamsTemplateOverrides,
       });
       const email = context.requester.email.trim();
 

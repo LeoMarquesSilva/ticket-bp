@@ -4,6 +4,7 @@ import { createTeamsOAuthState } from '../../supabase/functions/notify-ticket-co
 import {
   handleTeamsOAuthAction,
   handleTeamsOAuthCallback,
+  handleTeamsTestSend,
 } from '../../supabase/functions/notify-ticket-communications/_shared/teamsOAuthHandler.mjs';
 
 const KEY = Buffer.alloc(32, 11).toString('base64');
@@ -141,5 +142,94 @@ describe('handleTeamsOAuthCallback', () => {
       cryptoImpl: webcrypto,
     })).resolves.toEqual({ status: 400, body: { error: 'invalid_oauth_state' } });
     expect(teamsClient.exchangeCode).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleTeamsTestSend', () => {
+  it('envia o cartão configurado para um e-mail corporativo escolhido', async () => {
+    const resolveUserId = vi.fn(async () => 'entra-user-1');
+    const sendChat = vi.fn(async () => undefined);
+
+    await expect(handleTeamsTestSend({
+      authMode: 'user',
+      isAdmin: true,
+      email: 'samuel.silva@bpplaw.com.br',
+      type: 'awaiting_requester',
+      appPublicUrl: CONFIG.appPublicUrl,
+      resolveUserId,
+      sendChat,
+      teamsTemplateOverrides: {
+        awaiting_requester: { reason: 'Responda no teste.', action: 'Abrir teste' },
+      },
+    })).resolves.toEqual({ status: 200, body: { ok: true } });
+    expect(resolveUserId).toHaveBeenCalledWith('samuel.silva@bpplaw.com.br');
+    expect(sendChat).toHaveBeenCalledWith(expect.objectContaining({
+      recipientUserId: 'entra-user-1',
+      previewText: 'Responda no teste.',
+      label: 'Abrir teste',
+      html: expect.stringContaining('RESPONSUM'),
+      card: expect.objectContaining({ type: 'AdaptiveCard' }),
+    }));
+  });
+
+  it('recusa destinatário externo, secret key ou ausência no Entra sem vazar o provedor', async () => {
+    const resolveUserId = vi.fn(async () => null);
+    const sendChat = vi.fn();
+
+    await expect(handleTeamsTestSend({
+      authMode: 'secret',
+      isAdmin: true,
+      email: 'leonardo.marques@bismarchipires.com.br',
+      appPublicUrl: CONFIG.appPublicUrl,
+      resolveUserId,
+      sendChat,
+    })).resolves.toEqual({ status: 403, body: { error: 'forbidden' } });
+    await expect(handleTeamsTestSend({
+      authMode: 'user',
+      isAdmin: true,
+      email: 'alguem@gmail.com',
+      appPublicUrl: CONFIG.appPublicUrl,
+      resolveUserId,
+      sendChat,
+    })).resolves.toEqual({ status: 400, body: { error: 'invalid_recipient' } });
+    await expect(handleTeamsTestSend({
+      authMode: 'user',
+      isAdmin: true,
+      email: 'nao-e-email',
+      appPublicUrl: CONFIG.appPublicUrl,
+      resolveUserId,
+      sendChat,
+    })).resolves.toEqual({ status: 400, body: { error: 'invalid_recipient' } });
+    await expect(handleTeamsTestSend({
+      authMode: 'user',
+      isAdmin: true,
+      email: 'leonardo.marques@bismarchipires.com.br',
+      appPublicUrl: CONFIG.appPublicUrl,
+      resolveUserId,
+      sendChat,
+    })).resolves.toEqual({ status: 404, body: { error: 'entra_user_not_found' } });
+    expect(sendChat).not.toHaveBeenCalled();
+  });
+
+  it('devolve o código sanitizado do Graph quando a entrega falha', async () => {
+    const error = Object.assign(new Error('Microsoft Graph failed'), {
+      status: 403,
+      code: 'ErrorAccessDenied',
+      graphMessage: 'Missing scope permissions on the request.',
+    });
+
+    await expect(handleTeamsTestSend({
+      authMode: 'user',
+      isAdmin: true,
+      email: 'leonardo.marques@bismarchipires.com.br',
+      appPublicUrl: CONFIG.appPublicUrl,
+      resolveUserId: async () => 'entra-user-1',
+      sendChat: async () => {
+        throw error;
+      },
+    })).resolves.toEqual({
+      status: 502,
+      body: { error: 'delivery_error', code: 'ErrorAccessDenied', detail: 'Missing scope permissions on the request.' },
+    });
   });
 });

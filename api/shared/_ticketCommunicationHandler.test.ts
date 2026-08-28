@@ -587,6 +587,36 @@ describe('createTicketCommunicationRepository', () => {
     });
     expect(fake.rpc).toHaveBeenCalledWith('helpdesk_get_ticket_communication_email_templates', {});
   });
+
+  it('lê somente o envelope versionado dos textos do Teams', async () => {
+    const fake = fakeSupabase({ rpcs: {
+      helpdesk_get_ticket_communication_teams_templates: {
+        data: '{"version":1,"templates":{"awaiting_requester":{"action":"Abrir no Teams"}}}',
+        error: null,
+      },
+    }});
+    const repository = createTicketCommunicationRepository(fake.client);
+
+    await expect(repository.getTeamsTemplateOverrides()).resolves.toEqual({
+      awaiting_requester: { action: 'Abrir no Teams' },
+    });
+    expect(fake.rpc).toHaveBeenCalledWith('helpdesk_get_ticket_communication_teams_templates', {});
+  });
+
+  it('lê somente o envelope versionado dos prazos automáticos', async () => {
+    const fake = fakeSupabase({ rpcs: {
+      helpdesk_get_ticket_communication_schedule: {
+        data: '{"version":1,"schedule":{"awaiting_requester":{"enabled":false,"delayHours":24}}}',
+        error: null,
+      },
+    }});
+    const repository = createTicketCommunicationRepository(fake.client);
+
+    await expect(repository.getSchedule()).resolves.toEqual({
+      awaiting_requester: { enabled: false, delayHours: 24 },
+    });
+    expect(fake.rpc).toHaveBeenCalledWith('helpdesk_get_ticket_communication_schedule', {});
+  });
 });
 
 describe('createCorsHeaders', () => {
@@ -594,7 +624,7 @@ describe('createCorsHeaders', () => {
     expect(createCorsHeaders('https://responsum.example/tickets')).toEqual({
       'Access-Control-Allow-Origin': 'https://responsum.example',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
+      'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-app-instance',
       Vary: 'Origin',
     });
   });

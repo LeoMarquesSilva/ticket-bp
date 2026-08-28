@@ -7,6 +7,8 @@ const RPCS = {
   complete: 'helpdesk_complete_ticket_notification',
   release: 'helpdesk_release_ticket_notification',
   emailTemplates: 'helpdesk_get_ticket_communication_email_templates',
+  teamsTemplates: 'helpdesk_get_ticket_communication_teams_templates',
+  schedule: 'helpdesk_get_ticket_communication_schedule',
 } as const;
 
 const PAGE_SIZE = 500;
@@ -41,6 +43,25 @@ function throwOnError(error: unknown, operation: string): void {
   if (error) throw new Error(`Ticket communication repository failed: ${operation}`);
 }
 
+async function readVersionedObject(
+  client: SupabaseClientLike,
+  rpcName: string,
+  operation: string,
+  field: 'templates' | 'schedule',
+) {
+  const result = await client.rpc(rpcName, {});
+  throwOnError(result.error, operation);
+  if (typeof result.data !== 'string' || !result.data.trim()) return {};
+  try {
+    const parsed = JSON.parse(result.data);
+    return parsed?.version === 1 && parsed[field] && typeof parsed[field] === 'object'
+      ? parsed[field]
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 function mapContext(context: Row) {
   return {
     enabledAt: context.enabled_at,
@@ -55,17 +76,15 @@ export function createTicketCommunicationRepository(supabaseAdmin: unknown) {
 
   return {
     async getEmailTemplateOverrides() {
-      const result = await client.rpc(RPCS.emailTemplates, {});
-      throwOnError(result.error, 'email_templates');
-      if (typeof result.data !== 'string' || !result.data.trim()) return {};
-      try {
-        const parsed = JSON.parse(result.data);
-        return parsed?.version === 1 && parsed.templates && typeof parsed.templates === 'object'
-          ? parsed.templates
-          : {};
-      } catch {
-        return {};
-      }
+      return readVersionedObject(client, RPCS.emailTemplates, 'email_templates', 'templates');
+    },
+
+    async getTeamsTemplateOverrides() {
+      return readVersionedObject(client, RPCS.teamsTemplates, 'teams_templates', 'templates');
+    },
+
+    async getSchedule() {
+      return readVersionedObject(client, RPCS.schedule, 'schedule', 'schedule');
     },
 
     async listCandidates(ticketId?: string) {

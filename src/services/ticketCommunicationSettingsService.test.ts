@@ -10,7 +10,9 @@ vi.mock('./integrationSettingsService', () => ({
 }));
 
 import {
+  parseTicketCommunicationSchedule,
   parseTicketCommunicationSettings,
+  parseTicketCommunicationTeamsSettings,
   TicketCommunicationSettingsService,
 } from './ticketCommunicationSettingsService';
 
@@ -55,6 +57,57 @@ describe('ticket communication settings', () => {
 
     await expect(TicketCommunicationSettingsService.get()).resolves.toEqual({
       resolved_feedback_invite: { action: 'Dar minha opinião' },
+    });
+  });
+
+  it('persiste e carrega os textos do Teams em chave própria', async () => {
+    expect(parseTicketCommunicationTeamsSettings(null)).toEqual({});
+    expect(parseTicketCommunicationTeamsSettings('{"version":1,"templates":{"awaiting_requester":{"action":"Abrir no Teams","html":"<script>"}}}')).toEqual({
+      awaiting_requester: { action: 'Abrir no Teams' },
+    });
+
+    await TicketCommunicationSettingsService.saveTeams({
+      awaiting_feedback: { subject: 'Avalie no Teams', reason: 'Sua opinião ajuda.', action: 'Avaliar' },
+    });
+
+    expect(setValue).toHaveBeenCalledWith(
+      'ticket_communication_teams_templates_v1',
+      '{"version":1,"templates":{"awaiting_feedback":{"subject":"Avalie no Teams","reason":"Sua opinião ajuda.","action":"Avaliar"}}}',
+    );
+
+    getValue.mockResolvedValue('{"version":1,"templates":{"resolved_feedback_invite":{"reason":"Chamado encerrado."}}}');
+    await expect(TicketCommunicationSettingsService.getTeams()).resolves.toEqual({
+      resolved_feedback_invite: { reason: 'Chamado encerrado.' },
+    });
+  });
+
+  it('persiste e carrega os prazos das mensagens automáticas', async () => {
+    expect(parseTicketCommunicationSchedule(null)).toEqual({
+      resolved_feedback_invite: { enabled: true, delayHours: 0 },
+      awaiting_requester: { enabled: true, delayHours: 48 },
+      awaiting_feedback: { enabled: true, delayHours: 72 },
+    });
+    expect(parseTicketCommunicationSchedule('{"version":1,"schedule":{"awaiting_requester":{"enabled":false,"delayHours":24,"cron":"*"}}}')).toEqual({
+      resolved_feedback_invite: { enabled: true, delayHours: 0 },
+      awaiting_requester: { enabled: false, delayHours: 24 },
+      awaiting_feedback: { enabled: true, delayHours: 72 },
+    });
+
+    await TicketCommunicationSettingsService.saveSchedule({
+      awaiting_requester: { enabled: false, delayHours: 24 },
+      awaiting_feedback: { enabled: true, delayHours: 96, extra: true },
+    });
+
+    expect(setValue).toHaveBeenCalledWith(
+      'ticket_communication_schedule_v1',
+      '{"version":1,"schedule":{"resolved_feedback_invite":{"enabled":true,"delayHours":0},"awaiting_requester":{"enabled":false,"delayHours":24},"awaiting_feedback":{"enabled":true,"delayHours":96}}}',
+    );
+
+    getValue.mockResolvedValue('{"version":1,"schedule":{"awaiting_feedback":{"enabled":true,"delayHours":12}}}');
+    await expect(TicketCommunicationSettingsService.getSchedule()).resolves.toEqual({
+      resolved_feedback_invite: { enabled: true, delayHours: 0 },
+      awaiting_requester: { enabled: true, delayHours: 48 },
+      awaiting_feedback: { enabled: true, delayHours: 12 },
     });
   });
 });

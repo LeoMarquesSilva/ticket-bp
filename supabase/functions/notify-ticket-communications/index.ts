@@ -1,8 +1,11 @@
-import { withSupabase } from 'npm:@supabase/server@1.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createCorsHeaders } from './_shared/cors.ts';
 import { createGraphClient } from './_shared/graphClient.mjs';
 import { createTicketCommunicationRepository } from './_shared/repository.ts';
+import {
+  readNamedSecret,
+  resolveTicketCommunicationAuth,
+} from './_shared/requestAuth.mjs';
 import { handleTicketCommunicationRequest } from './_shared/requestHandler.mjs';
 import { readTicketCommunicationRuntimeConfig } from './_shared/runtimeConfig.mjs';
 import { createTeamsChatClient } from './_shared/teamsChatClient.mjs';
@@ -10,7 +13,9 @@ import { createTeamsDelegatedStore } from './_shared/teamsDelegatedStore.ts';
 import {
   handleTeamsOAuthAction,
   handleTeamsOAuthCallback,
+  handleTeamsTestSend,
   TEAMS_OAUTH_ACTIONS,
+  TEAMS_TEST_ACTION,
 } from './_shared/teamsOAuthHandler.mjs';
 
 type RuntimeConfig = NonNullable<ReturnType<typeof readTicketCommunicationRuntimeConfig>>;
@@ -40,73 +45,131 @@ function getTeamsClient(config: RuntimeConfig, supabaseAdmin: unknown) {
   });
 }
 
+function corsHeaders(): Record<string, string> {
+  return createCorsHeaders(Deno.env.get('APP_PUBLIC_URL'));
+}
+
 function json(status: number, body: unknown): Response {
   return Response.json(body, {
     status,
-    headers: { 'Cache-Control': 'no-store' },
+    headers: { ...corsHeaders(), 'Cache-Control': 'no-store' },
   });
 }
 
-const authenticatedFetch = withSupabase(
-  {
-    auth: ['user', 'secret:ticket-communications'],
-    cors: {
-      headers: createCorsHeaders(Deno.env.get('APP_PUBLIC_URL')),
-    },
-  },
-  async (req, ctx) => {
-    if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
+function createUserClient(authorization: string) {
+  return createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
-    const body = await req.json().catch(() => null);
-    if (body && typeof body === 'object' && TEAMS_OAUTH_ACTIONS.has(body.action)) {
-      const config = readRuntimeConfig();
-      if (!config) return json(503, { error: 'service_unavailable' });
-      const { data: isAdmin, error: permissionError } = await ctx.supabase
-        .rpc('helpdesk_has_manage_categories');
-      if (permissionError) return json(500, { error: 'internal_error' });
-      const result = await handleTeamsOAuthAction({
-        authMode: ctx.authMode,
-        body,
+function createAdminClient() {
+  return createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+}
+
+async function authenticatedFetch(req: Request): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() });
+  if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
+
+  const authorization = req.headers.get('Authorization');
+  const auth = await resolveTicketCommunicationAuth({
+    authorization,
+    apikey: req.headers.get('apikey'),
+    namedSecret: readNamedSecret(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '', 'ticket-communications'),
+    getUser: async (token: string) => {
+      try {
+        const { data } = await createUserClient(`Bearer ${token}`).auth.getUser(token);
+        return data.user ?? null;
+      } catch {
+        return null;
+      }
+    },
+  });
+  if (!auth) return json(401, { error: 'unauthorized' });
+
+  const supabaseAdmin = createAdminClient();
+  const supabase = auth.authMode === 'user' && authorization
+    ? createUserClient(authorization)
+    : supabaseAdmin;
+
+  const body = await req.json().catch(() => null);
+  if (
+    body
+    && typeof body === 'object'
+    && (TEAMS_OAUTH_ACTIONS.has(body.action) || body.action === TEAMS_TEST_ACTION)
+  ) {
+    const config = readRuntimeConfig();
+    if (!config) return json(503, { error: 'service_unavailable' });
+    const { data: isAdmin, error: permissionError } = await supabase
+      .rpc('helpdesk_has_manage_categories');
+    if (permissionError) return json(500, { error: 'internal_error' });
+    const teamsClient = getTeamsClient(config, supabaseAdmin);
+    if (body.action === TEAMS_TEST_ACTION) {
+      const repository = createTicketCommunicationRepository(supabaseAdmin);
+      let teamsTemplateOverrides = {};
+      try {
+        teamsTemplateOverrides = await repository.getTeamsTemplateOverrides();
+      } catch {
+        teamsTemplateOverrides = {};
+      }
+      const result = await handleTeamsTestSend({
+        authMode: auth.authMode,
         isAdmin: isAdmin === true,
-        config,
-        teamsClient: getTeamsClient(config, ctx.supabaseAdmin),
+        email: body.email,
+        type: body.type,
+        appPublicUrl: config.appPublicUrl,
+        resolveUserId: getGraphClient(config).resolveUserId,
+        sendChat: teamsClient.sendChat,
+        teamsTemplateOverrides,
       });
       return json(result.status, result.body);
     }
-
-    const result = await handleTicketCommunicationRequest({
-      authMode: ctx.authMode,
+    const result = await handleTeamsOAuthAction({
+      authMode: auth.authMode,
       body,
-      dependencies: {
-        supabase: ctx.supabase,
-        clock: () => new Date(),
-        createRuntimeDependencies: () => {
-          const config = readRuntimeConfig();
-          if (!config) return null;
-          const appGraph = getGraphClient(config);
-          const teamsClient = getTeamsClient(config, ctx.supabaseAdmin);
-          return {
-            repository: createTicketCommunicationRepository(ctx.supabaseAdmin),
-            graph: {
-              sendEmail: appGraph.sendEmail,
-              resolveUserId: appGraph.resolveUserId,
-              sendTeamsChat: teamsClient.sendChat,
-            },
-            appBaseUrl: config.appPublicUrl,
-          };
-        },
-      },
+      isAdmin: isAdmin === true,
+      config,
+      teamsClient,
     });
-
-    if ('budgetExhausted' in result.body && result.body.budgetExhausted === true) {
-      console.info('[ticket-communications] processing budget exhausted', {
-        backlog: 'backlog' in result.body ? result.body.backlog : 0,
-      });
-    }
-
     return json(result.status, result.body);
-  },
-);
+  }
+
+  const result = await handleTicketCommunicationRequest({
+    authMode: auth.authMode,
+    body,
+    dependencies: {
+      supabase,
+      clock: () => new Date(),
+      createRuntimeDependencies: () => {
+        const config = readRuntimeConfig();
+        if (!config) return null;
+        const appGraph = getGraphClient(config);
+        const teamsClient = getTeamsClient(config, supabaseAdmin);
+        return {
+          repository: createTicketCommunicationRepository(supabaseAdmin),
+          graph: {
+            sendEmail: appGraph.sendEmail,
+            resolveUserId: appGraph.resolveUserId,
+            sendTeamsChat: teamsClient.sendChat,
+          },
+          appBaseUrl: config.appPublicUrl,
+        };
+      },
+    },
+  });
+
+  if ('budgetExhausted' in result.body && result.body.budgetExhausted === true) {
+    console.info('[ticket-communications] processing budget exhausted', {
+      backlog: 'backlog' in result.body ? result.body.backlog : 0,
+    });
+  }
+
+  return json(result.status, result.body);
+}
 
 async function oauthCallback(req: Request): Promise<Response> {
   const config = readRuntimeConfig();
