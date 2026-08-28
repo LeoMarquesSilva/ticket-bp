@@ -9,6 +9,7 @@ const RPCS = {
   emailTemplates: 'helpdesk_get_ticket_communication_email_templates',
   teamsTemplates: 'helpdesk_get_ticket_communication_teams_templates',
   schedule: 'helpdesk_get_ticket_communication_schedule',
+  listDeliveries: 'helpdesk_list_ticket_communication_deliveries',
 } as const;
 
 const PAGE_SIZE = 500;
@@ -85,6 +86,25 @@ export function createTicketCommunicationRepository(supabaseAdmin: unknown) {
 
     async getSchedule() {
       return readVersionedObject(client, RPCS.schedule, 'schedule', 'schedule');
+    },
+
+    async listDeliveries(limit = 200) {
+      const result = await client.rpc(RPCS.listDeliveries, {
+        p_limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200,
+      });
+      throwOnError(result.error, 'list_deliveries');
+      return rows(result.data).map((item) => ({
+        ticketId: item.ticket_id,
+        ticketTitle: typeof item.ticket_title === 'string' ? item.ticket_title : '',
+        requesterName: typeof item.requester_name === 'string' ? item.requester_name : '',
+        requesterEmail: typeof item.requester_email === 'string' ? item.requester_email : '',
+        notificationType: item.notification_type,
+        channel: item.channel,
+        cycleKey: item.cycle_key,
+        status: item.status,
+        sentAt: typeof item.sent_at === 'string' ? item.sent_at : null,
+        lastError: typeof item.last_error === 'string' ? item.last_error : null,
+      }));
     },
 
     async listCandidates(ticketId?: string) {

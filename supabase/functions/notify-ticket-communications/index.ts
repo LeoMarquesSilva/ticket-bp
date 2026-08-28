@@ -158,8 +158,22 @@ async function authenticatedFetch(req: Request): Promise<Response> {
     return json(result.status, result.body);
   }
 
+  let isAdmin = false;
+  if (
+    auth.authMode === 'user'
+    && body
+    && typeof body === 'object'
+    && (body.action === 'queue_status' || body.action === 'run_pending')
+  ) {
+    const { data: adminFlag, error: permissionError } = await supabase
+      .rpc('helpdesk_has_manage_categories');
+    if (permissionError) return json(500, { error: 'internal_error' });
+    isAdmin = adminFlag === true;
+  }
+
   const result = await handleTicketCommunicationRequest({
     authMode: auth.authMode,
+    isAdmin,
     body,
     dependencies: {
       supabase,

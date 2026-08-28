@@ -25,6 +25,15 @@ vi.mock('@/services/userService', () => ({
 vi.mock('@/components/UserAssigneePicker', () => ({
   default: () => 'Escolher usuário',
 }));
+vi.mock('@/services/ticketCommunicationService', () => ({
+  getTicketCommunicationQueue: vi.fn(async () => ({
+    nextRunAt: '2026-08-29T12:00:00.000Z',
+    next: [],
+    sent: [],
+    counts: { next: 0, sent: 0 },
+  })),
+  runPendingTicketCommunications: vi.fn(),
+}));
 vi.mock('@/services/ticketCommunicationTeamsService', () => ({
   TicketCommunicationTeamsService: {
     getStatus: vi.fn(async () => ({
@@ -39,7 +48,7 @@ vi.mock('@/services/ticketCommunicationTeamsService', () => ({
   },
 }));
 
-import TicketCommunicationsTab, { TeamsConnectionCard } from './TicketCommunicationsTab';
+import TicketCommunicationsTab, { TeamsConnectionCard, TicketCommunicationQueueCard } from './TicketCommunicationsTab';
 
 describe('TicketCommunicationsTab', () => {
   it('oferece as três comunicações, editor seguro e preview do e-mail', () => {
@@ -93,6 +102,42 @@ describe('TicketCommunicationsTab', () => {
     expect(html).toContain('Enviar teste');
     expect(html).toContain('Desconectar');
     expect(html).not.toContain('refresh');
+  });
+
+  it('distingue fila vazia de falha ao carregar os avisos', () => {
+    const errorHtml = renderToStaticMarkup(React.createElement(TicketCommunicationQueueCard, {
+      loading: false,
+      busy: false,
+      queue: null,
+      onRefresh: () => undefined,
+      onRunPending: () => undefined,
+    }));
+    const emptyHtml = renderToStaticMarkup(React.createElement(TicketCommunicationQueueCard, {
+      loading: false,
+      busy: false,
+      queue: {
+        nextRunAt: '2026-08-29T12:00:00.000Z',
+        next: [],
+        sent: [],
+        counts: { next: 0, sent: 0 },
+      },
+      onRefresh: () => undefined,
+      onRunPending: () => undefined,
+    }));
+
+    expect(errorHtml).toContain('Não foi possível carregar a próxima rodada');
+    expect(emptyHtml).toContain('Nenhum aviso pendente agora');
+    expect(emptyHtml).toContain('Nenhum envio recente');
+    expect(emptyHtml).not.toContain('Não foi possível carregar a próxima rodada');
+  });
+
+  it('mostra a fila de avisos enviados, a próxima rodada e o envio manual', () => {
+    const html = renderToStaticMarkup(React.createElement(TicketCommunicationsTab));
+
+    expect(html).toContain('Fila de avisos');
+    expect(html).toContain('Próxima rodada');
+    expect(html).toContain('Enviados');
+    expect(html).toContain('Enviar pendentes agora');
   });
 
   it('permite configurar quando cada mensagem automática é enviada', () => {

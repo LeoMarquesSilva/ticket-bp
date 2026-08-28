@@ -412,6 +412,133 @@ describe('handleTicketCommunicationRequest', () => {
     expect(JSON.stringify(result)).not.toContain('ana@bpplaw.com.br');
     expect(JSON.stringify(result)).not.toContain('token-secret');
   });
+
+  it('recusa queue_status sem sessão de administrador', async () => {
+    const context = handlerDependencies();
+    const previewQueue = vi.fn(async () => ({ next: [], sent: [], counts: { next: 0, sent: 0 } }));
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      isAdmin: false,
+      body: { action: 'queue_status' },
+      dependencies: { ...context.dependencies, previewQueue },
+    });
+
+    expect(result).toEqual({ status: 403, body: { error: 'forbidden' } });
+    expect(previewQueue).not.toHaveBeenCalled();
+    expect(context.prepareDeliveries).not.toHaveBeenCalled();
+  });
+
+  it('recusa queue_status pela secret do cron', async () => {
+    const context = handlerDependencies();
+    const previewQueue = vi.fn();
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'secret',
+      isAdmin: true,
+      body: { action: 'queue_status' },
+      dependencies: { ...context.dependencies, previewQueue },
+    });
+
+    expect(result).toEqual({ status: 403, body: { error: 'forbidden' } });
+    expect(previewQueue).not.toHaveBeenCalled();
+  });
+
+  it('devolve a fila sanitizada sem enfileirar nem enviar', async () => {
+    const context = handlerDependencies();
+    const previewQueue = vi.fn(async () => ({
+      nextRunAt: '2026-08-29T12:00:00.000Z',
+      next: [{
+        ticketId: TICKET_ID,
+        ticketTitle: 'Acesso',
+        requesterName: 'Samuel',
+        requesterEmail: 'samuel.silva@bpplaw.com.br',
+        notificationType: 'awaiting_requester',
+        channel: 'teams',
+        cycleKey: '2026-08-28',
+        status: 'pending',
+        sentAt: null,
+        lastError: null,
+      }],
+      sent: [],
+      counts: { next: 1, sent: 0 },
+    }));
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      isAdmin: true,
+      body: { action: 'queue_status' },
+      dependencies: { ...context.dependencies, previewQueue },
+    });
+
+    expect(previewQueue).toHaveBeenCalledWith({
+      repository: context.dependencies.repository,
+      now: NOW,
+    });
+    expect(context.prepareDeliveries).not.toHaveBeenCalled();
+    expect(context.processDeliveries).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        nextRunAt: '2026-08-29T12:00:00.000Z',
+        next: [{
+          ticketId: TICKET_ID,
+          ticketTitle: 'Acesso',
+          requesterName: 'Samuel',
+          requesterEmail: 'samuel.silva@bpplaw.com.br',
+          notificationType: 'awaiting_requester',
+          channel: 'teams',
+          cycleKey: '2026-08-28',
+          status: 'pending',
+          sentAt: null,
+          lastError: null,
+        }],
+        sent: [],
+        counts: { next: 1, sent: 0 },
+      },
+    });
+  });
+
+  it('recusa run_pending sem administrador e não dispara a rotina', async () => {
+    const context = handlerDependencies();
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      isAdmin: false,
+      body: { action: 'run_pending' },
+      dependencies: context.dependencies,
+    });
+
+    expect(result).toEqual({ status: 403, body: { error: 'forbidden' } });
+    expect(context.prepareDeliveries).not.toHaveBeenCalled();
+  });
+
+  it('envia a fila pendente com a mesma orquestração do daily', async () => {
+    const context = handlerDependencies();
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      isAdmin: true,
+      body: { action: 'run_pending' },
+      dependencies: context.dependencies,
+    });
+
+    expect(context.prepareDeliveries).toHaveBeenCalledWith({
+      repository: context.dependencies.repository,
+      now: NOW,
+      ticketId: undefined,
+      notificationType: undefined,
+    });
+    expect(context.processDeliveries).toHaveBeenCalledWith(expect.objectContaining({
+      ticketId: undefined,
+      notificationType: undefined,
+    }));
+    expect(result).toEqual({
+      status: 200,
+      body: { ok: true, prepared: 2, sent: 1, failed: 1 },
+    });
+  });
 });
 
 describe('createTicketCommunicationRepository', () => {
@@ -616,6 +743,45 @@ describe('createTicketCommunicationRepository', () => {
       awaiting_requester: { enabled: false, delayHours: 24 },
     });
     expect(fake.rpc).toHaveBeenCalledWith('helpdesk_get_ticket_communication_schedule', {});
+  });
+
+  it('lista entregas recentes pela RPC de serviço', async () => {
+    const fake = fakeSupabase({ rpcs: {
+      helpdesk_list_ticket_communication_deliveries: {
+        data: [{
+          id: 'delivery-1',
+          ticket_id: TICKET_ID,
+          ticket_title: 'Acesso',
+          requester_name: 'Ana',
+          requester_email: 'ana@bpplaw.com.br',
+          notification_type: 'awaiting_requester',
+          channel: 'teams',
+          cycle_key: '2026-08-28',
+          status: 'sent',
+          sent_at: '2026-08-28T12:05:00.000Z',
+          last_error: null,
+          updated_at: '2026-08-28T12:05:00.000Z',
+        }],
+        error: null,
+      },
+    }});
+    const repository = createTicketCommunicationRepository(fake.client);
+
+    await expect(repository.listDeliveries()).resolves.toEqual([{
+      ticketId: TICKET_ID,
+      ticketTitle: 'Acesso',
+      requesterName: 'Ana',
+      requesterEmail: 'ana@bpplaw.com.br',
+      notificationType: 'awaiting_requester',
+      channel: 'teams',
+      cycleKey: '2026-08-28',
+      status: 'sent',
+      sentAt: '2026-08-28T12:05:00.000Z',
+      lastError: null,
+    }]);
+    expect(fake.rpc).toHaveBeenCalledWith('helpdesk_list_ticket_communication_deliveries', {
+      p_limit: 200,
+    });
   });
 });
 

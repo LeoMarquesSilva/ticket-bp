@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, CheckCircle2, Clock3, Eye, Link2, Loader2, Mail, MessageSquare, MessageSquareText, Monitor, RotateCcw, Save, Smartphone, Unplug } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Clock3, Eye, Inbox, Link2, ListChecks, Loader2, Mail, MessageSquare, MessageSquareText, Monitor, RefreshCw, RotateCcw, Save, Send, Smartphone, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -30,6 +40,12 @@ import {
   TicketCommunicationTeamsService,
   type TicketCommunicationTeamsStatus,
 } from '@/services/ticketCommunicationTeamsService';
+import {
+  getTicketCommunicationQueue,
+  runPendingTicketCommunications,
+  type TicketCommunicationQueue,
+  type TicketCommunicationQueueItem,
+} from '@/services/ticketCommunicationService';
 import { TeamsAdaptiveCardPreview } from './TeamsAdaptiveCardPreview';
 import UserAssigneePicker from '@/components/UserAssigneePicker';
 import { UserService } from '@/services/userService';
@@ -146,6 +162,155 @@ export function TeamsConnectionCard({
   );
 }
 
+const TYPE_LABELS: Record<TicketCommunicationType, string> = {
+  resolved_feedback_invite: 'Chamado finalizado',
+  awaiting_requester: 'Aguardando resposta',
+  awaiting_feedback: 'Avaliação pendente',
+};
+
+function formatDateTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Sao_Paulo',
+  }).format(date);
+}
+
+function deliveryErrorLabel(code: string | null): string | null {
+  if (!code) return null;
+  if (code === 'entra_user_not_found') return 'Usuário não encontrado no Microsoft 365';
+  return 'Falha no envio';
+}
+
+function QueueRow({ item, showSentAt }: { item: TicketCommunicationQueueItem; showSentAt?: boolean }) {
+  const sentAt = formatDateTime(item.sentAt);
+  const error = deliveryErrorLabel(item.lastError);
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <a href={`/tickets/${item.ticketId}`} className="truncate text-sm font-semibold text-[#2C2D2F] hover:text-[#DE5532]">
+          {item.ticketTitle}
+        </a>
+        <p className="mt-0.5 truncate text-xs text-slate-500">
+          {item.requesterName || 'Solicitante'}
+          {item.requesterEmail ? ` · ${item.requesterEmail}` : ''}
+        </p>
+        <p className="mt-1 text-xs text-slate-400">{TYPE_LABELS[item.notificationType]}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline">{item.channel === 'teams' ? 'Teams' : 'E-mail'}</Badge>
+        {item.status === 'failed' && <Badge variant="warning">{error ?? 'Falhou'}</Badge>}
+        {item.status === 'processing' && <Badge variant="secondary">Enviando</Badge>}
+        {item.status === 'pending' && <Badge variant="secondary">Pendente</Badge>}
+        {showSentAt && sentAt && <span className="text-[11px] text-slate-400">{sentAt}</span>}
+      </div>
+    </div>
+  );
+}
+
+export function TicketCommunicationQueueCard({
+  loading,
+  busy,
+  queue,
+  onRefresh,
+  onRunPending,
+}: {
+  loading: boolean;
+  busy: boolean;
+  queue: TicketCommunicationQueue | null;
+  onRefresh: () => void;
+  onRunPending: () => void;
+}) {
+  const nextRunAt = formatDateTime(queue?.nextRunAt);
+  const pendingCount = queue?.counts.next ?? 0;
+  const sentCount = queue?.counts.sent ?? 0;
+
+  return (
+    <Card className="overflow-hidden border-slate-200 shadow-sm">
+      <div className="h-1 bg-gradient-to-r from-[#F69F19] via-[#DE5532] to-[#BD2D29]" />
+      <CardHeader className="pb-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg text-[#2C2D2F]">
+              <span className="rounded-lg bg-[#2C2D2F] p-2 text-white"><Inbox className="h-4 w-4" /></span>
+              Fila de avisos
+            </CardTitle>
+            <CardDescription className="mt-1.5">
+              Veja o que já saiu e o que entra na próxima rotina
+              {nextRunAt ? ` (${nextRunAt})` : ' (por volta das 9h, Brasília)'}.
+              O botão envia agora para quem já venceu o prazo e ainda não recebeu.
+            </CardDescription>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={onRefresh} disabled={loading || busy}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Atualizar
+            </Button>
+            <Button type="button" onClick={onRunPending} disabled={loading || busy || pendingCount === 0}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Enviar pendentes agora
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 lg:grid-cols-2">
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-[#2C2D2F]">
+              <ListChecks className="h-4 w-4 text-[#DE5532]" />
+              Próxima rodada
+            </h3>
+            <Badge variant="secondary">{pendingCount}</Badge>
+          </div>
+          {loading && !queue ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Carregando fila...</p>
+          ) : !queue ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Não foi possível carregar a próxima rodada. Clique em Atualizar.</p>
+          ) : queue.next.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Nenhum aviso pendente agora.</p>
+          ) : (
+            <div className="max-h-[480px] space-y-2 overflow-y-auto pr-1">
+              {queue!.next.map((item) => (
+                <QueueRow key={`${item.ticketId}-${item.notificationType}-${item.channel}`} item={item} />
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-[#2C2D2F]">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              Enviados
+            </h3>
+            <Badge variant="secondary">{sentCount}</Badge>
+          </div>
+          {loading && !queue ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Carregando histórico...</p>
+          ) : !queue ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Não foi possível carregar os envios. Clique em Atualizar.</p>
+          ) : queue.sent.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Nenhum envio recente.</p>
+          ) : (
+            <div className="max-h-[480px] space-y-2 overflow-y-auto pr-1">
+              {queue!.sent.map((item) => (
+                <QueueRow
+                  key={`${item.ticketId}-${item.notificationType}-${item.channel}-${item.cycleKey}`}
+                  item={item}
+                  showSentAt
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function TicketCommunicationsTab() {
   const [activeType, setActiveType] = useState<TicketCommunicationType>('resolved_feedback_invite');
   const [teamsType, setTeamsType] = useState<TicketCommunicationType>('resolved_feedback_invite');
@@ -163,6 +328,10 @@ export default function TicketCommunicationsTab() {
   const [teamsBusy, setTeamsBusy] = useState(false);
   const [testUsers, setTestUsers] = useState<User[]>([]);
   const [testUserId, setTestUserId] = useState<string | undefined>();
+  const [queue, setQueue] = useState<TicketCommunicationQueue | null>(null);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const [confirmRun, setConfirmRun] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -202,6 +371,27 @@ export default function TicketCommunicationsTab() {
       .then((value) => { if (alive) setTeamsStatus(value); })
       .catch(() => toast.error('Não foi possível consultar a conexão do Teams.'))
       .finally(() => { if (alive) setTeamsLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  async function loadQueue() {
+    setQueueLoading(true);
+    try {
+      setQueue(await getTicketCommunicationQueue());
+    } catch {
+      toast.error('Não foi possível carregar a fila de avisos.');
+    } finally {
+      setQueueLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    setQueueLoading(true);
+    getTicketCommunicationQueue()
+      .then((value) => { if (alive) setQueue(value); })
+      .catch(() => { if (alive) toast.error('Não foi possível carregar a fila de avisos.'); })
+      .finally(() => { if (alive) setQueueLoading(false); });
     return () => { alive = false; };
   }, []);
 
@@ -348,6 +538,24 @@ export default function TicketCommunicationsTab() {
   const testUser = testUsers.find((user) => user.id === testUserId);
   const canSendTest = Boolean(testUser?.email);
 
+  async function runPending() {
+    setConfirmRun(false);
+    setQueueBusy(true);
+    try {
+      const result = await runPendingTicketCommunications();
+      await loadQueue();
+      if (result.sent === 0 && result.failed === 0) {
+        toast.success('Não havia avisos pendentes para enviar.');
+      } else {
+        toast.success(`Enviados: ${result.sent}. Falhas: ${result.failed}.`);
+      }
+    } catch {
+      toast.error('Não foi possível enviar os avisos pendentes.');
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
   async function sendTeamsTest(type?: TicketCommunicationType) {
     if (!testUser?.email) {
       toast.error('Escolha um usuário para enviar o teste.');
@@ -375,6 +583,30 @@ export default function TicketCommunicationsTab() {
         onSendTest={() => void sendTeamsTest()}
         canSendTest={canSendTest}
       />
+      <TicketCommunicationQueueCard
+        loading={queueLoading}
+        busy={queueBusy}
+        queue={queue}
+        onRefresh={() => void loadQueue()}
+        onRunPending={() => setConfirmRun(true)}
+      />
+      <AlertDialog open={confirmRun} onOpenChange={setConfirmRun}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar avisos pendentes agora?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso envia e-mail e Teams reais para quem já venceu o prazo e ainda não recebeu neste ciclo.
+              {queue?.counts.next ? ` Há ${queue.counts.next} aviso(s) na fila.` : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={queueBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void runPending()} disabled={queueBusy}>
+              Enviar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Card className="border-slate-200 shadow-sm">
         <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-end">
           <div className="min-w-0 flex-1 space-y-1.5">

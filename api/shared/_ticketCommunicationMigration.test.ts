@@ -10,6 +10,10 @@ const delegatedTeamsMigration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260828184213_ticket_communications_delegated_teams.sql'),
   'utf8',
 );
+const queuePreviewMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260828214500_ticket_communication_queue_preview.sql'),
+  'utf8',
+);
 
 describe('ticket communications migration contract', () => {
   it('fences completion with the active claim token, attempt and processing state', () => {
@@ -70,5 +74,14 @@ describe('delegated Teams credential migration contract', () => {
     expect(delegatedTeamsMigration).toMatch(/enable row level security/);
     expect(delegatedTeamsMigration).toMatch(/revoke all[\s\S]+from anon, authenticated/);
     expect(delegatedTeamsMigration).not.toMatch(/create policy/i);
+  });
+});
+
+describe('ticket communication queue preview migration contract', () => {
+  it('expõe a lista de entregas somente para service_role', () => {
+    expect(queuePreviewMigration).toMatch(/create function public\.helpdesk_list_ticket_communication_deliveries/);
+    expect(queuePreviewMigration).toMatch(/grant execute\s+on function public\.helpdesk_list_ticket_communication_deliveries\(integer\)\s+to service_role/);
+    expect(queuePreviewMigration).toMatch(/revoke all[\s\S]+from public, anon, authenticated, service_role/);
+    expect(queuePreviewMigration).not.toMatch(/grant execute[\s\S]+to authenticated/);
   });
 });
