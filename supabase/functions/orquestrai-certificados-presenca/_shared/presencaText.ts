@@ -64,8 +64,12 @@ export function resolveColaboradorName(
     return emailToName[email]?.trim() || email;
   }
   const fallbackEmail = createdByEmail?.trim().toLowerCase() ?? "";
-  if (fallbackEmail && fallbackEmail !== CONTROLADORIA_EMAIL && createdByName?.trim()) {
-    return createdByName.trim();
+  const fallbackName = createdByName?.trim() ?? "";
+  if (
+    fallbackName &&
+    !(fallbackEmail === CONTROLADORIA_EMAIL && /controladoria/i.test(fallbackName))
+  ) {
+    return fallbackName;
   }
   return null;
 }

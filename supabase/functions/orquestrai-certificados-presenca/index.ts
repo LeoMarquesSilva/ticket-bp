@@ -41,11 +41,22 @@ function parseJsonValue(raw: unknown): Record<string, unknown> | null {
 function isAuthorized(req: Request): boolean {
   const serviceRole = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim();
   const cronSecret = (Deno.env.get("ORQUESTRAI_PRESENCA_CRON_SECRET") ?? "").trim();
+  const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
   const auth = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
   const apikey = req.headers.get("apikey")?.trim() ?? "";
   if (serviceRole && (auth === serviceRole || apikey === serviceRole)) return true;
   if (cronSecret && (auth === cronSecret || apikey === cronSecret)) return true;
+  // O cron diário reutiliza a anon key no header Authorization, como os outros jobs.
+  if (anonKey && (auth === anonKey || apikey === anonKey)) return true;
   return false;
+}
+
+function parseTicketIdFromBody(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "";
+  const ticketId = (raw as { ticketId?: unknown }).ticketId;
+  if (typeof ticketId !== "string") return "";
+  const trimmed = ticketId.trim();
+  return /^[0-9a-f-]{36}$/i.test(trimmed) ? trimmed : "";
 }
 
 async function resolveOrquestrai(admin: SupabaseClient) {
@@ -110,6 +121,14 @@ Deno.serve(async (req) => {
     });
   }
 
+  let requestBody: unknown = {};
+  try {
+    requestBody = await req.json();
+  } catch {
+    requestBody = {};
+  }
+  const onlyTicketId = parseTicketIdFromBody(requestBody);
+
   try {
     const admin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -158,18 +177,23 @@ Deno.serve(async (req) => {
     });
 
     const today = todayIsoSaoPaulo();
-    const { data: cards, error: cardsError } = await orquestrai
+    let cardsQuery = orquestrai
       .from("marketing_requests")
       .select("id, title, description, deadline, request_type")
       .eq("request_type", "Certificados")
-      .ilike("description", "%Origem: Responsum%")
-      .lt("deadline", today);
+      .ilike("description", "%Origem: Responsum%");
+    cardsQuery = onlyTicketId
+      ? cardsQuery.ilike("description", `%Ticket ID: ${onlyTicketId}%`)
+      : cardsQuery.lt("deadline", today);
+
+    const { data: cards, error: cardsError } = await cardsQuery;
 
     if (cardsError) throw new Error(cardsError.message);
 
     const pending = ((cards ?? []) as MarketingCard[]).filter((card) => {
       const description = card.description ?? "";
       if (descriptionAlreadyHasPresenca(description)) return false;
+      if (onlyTicketId) return true;
       const deadline = String(card.deadline ?? "").slice(0, 10);
       return isPresencaDue(deadline, today);
     });
