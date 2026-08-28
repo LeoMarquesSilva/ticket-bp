@@ -45,8 +45,18 @@ function getTeamsClient(config: RuntimeConfig, supabaseAdmin: unknown) {
   });
 }
 
+const TEAMS_HEADER_ORANGE_PNG = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAQAAAAAgCAIAAAByyzGzAAACd0lEQVR4nO3T6VpMcRwH8G5DNc2mMXPOzDlzRrJkKYwsiexbQqRIlKVki0SJkAhZrkSRJIQKIWH2aabZmpbXnt//nLkFr77P87mFT9LM81kzz8j002TyhOlInu5ImXqcMvWIeUgm21PJA+Z+6mSbKt6mit9jWlXx1rSJu2kTd5jbTIs61qKO3WJuqmPNmmizJnqDadJEm7TRRm2kURu5ro1cYxp04QZd+CpTrwvX68NX9KHLTJ0+VDc7dImMX2QupI+fJ8FzTG16sNYQPGsI1hgCNYZAtSFQPSdwhoydZk4Zx04yVUZ/ldFfafRXmvwniO+4yVdh8lVwvmNMOect57xHeXKE95bxnjLeU8p7Ss2ew0yJ2V1idh+yuA8yxRZXscV1QCD7Bdc+4iwSnEWicy9TKDoKRcceq2M3s4v83SmRHcx26c82G9mq+L0lYbNtlEijm6RfsgIyUiCNbFT83JCQL/3It5L11u+yPDKcZx1ep/i2ViZ+XZOwWvwiyyVDueLQKjIoswuDdmHALgysVHxekbBc+CTLET7mWEg26c+29C9TfFiqeL8kYbH5nSyL9GWZ+xYp3i5U9C6Q8b3z+TeyTNKTyffMI69lGaQ7g+ueq3hlS5C4lzIr1yUTuS7R1CmaOgXFCwtJQgAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAEQAAE+D8B/gFRMYwVZHWA/AAAAABJRU5ErkJggg=='),
+  (char) => char.charCodeAt(0),
+);
+
 function corsHeaders(): Record<string, string> {
   return createCorsHeaders(Deno.env.get('APP_PUBLIC_URL'));
+}
+
+function teamsHeaderImageUrl(): string | undefined {
+  const root = String(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
+  return root ? `${root}/functions/v1/notify-ticket-communications/teams-header-orange.png` : undefined;
 }
 
 function json(status: number, body: unknown): Response {
@@ -120,9 +130,19 @@ async function authenticatedFetch(req: Request): Promise<Response> {
         authMode: auth.authMode,
         isAdmin: isAdmin === true,
         email: body.email,
+        name: body.name,
         type: body.type,
         appPublicUrl: config.appPublicUrl,
+        headerImageUrl: teamsHeaderImageUrl(),
         resolveUserId: getGraphClient(config).resolveUserId,
+        lookupName: async (recipientEmail: string) => {
+          const { data } = await supabaseAdmin
+            .from('app_c009c0e4f1_users')
+            .select('name')
+            .ilike('email', recipientEmail)
+            .maybeSingle();
+          return typeof data?.name === 'string' ? data.name : '';
+        },
         sendChat: teamsClient.sendChat,
         teamsTemplateOverrides,
       });
@@ -157,6 +177,7 @@ async function authenticatedFetch(req: Request): Promise<Response> {
             sendTeamsChat: teamsClient.sendChat,
           },
           appBaseUrl: config.appPublicUrl,
+          headerImageUrl: teamsHeaderImageUrl(),
         };
       },
     },
@@ -196,6 +217,14 @@ async function oauthCallback(req: Request): Promise<Response> {
 
 async function fetch(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  if (req.method === 'GET' && url.pathname.endsWith('/teams-header-orange.png')) {
+    return new Response(TEAMS_HEADER_ORANGE_PNG, {
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
+  }
   if (
     req.method === 'GET'
     && url.pathname.endsWith('/notify-ticket-communications/oauth/callback')

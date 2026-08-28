@@ -51,11 +51,11 @@ export class TicketCommunicationTeamsService {
     );
   }
 
-  static async sendTestMessage(email: string, type?: string): Promise<void> {
+  static async sendTestMessage(email: string, type?: string, name?: string): Promise<void> {
     await invoke(
       'teams_test_send',
       'Não foi possível enviar a mensagem de teste do Teams.',
-      { email, ...(type ? { type } : {}) },
+      { email, ...(type ? { type } : {}), ...(name ? { name } : {}) },
     );
   }
 }

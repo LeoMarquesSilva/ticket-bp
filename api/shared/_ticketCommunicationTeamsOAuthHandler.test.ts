@@ -154,6 +154,7 @@ describe('handleTeamsTestSend', () => {
       authMode: 'user',
       isAdmin: true,
       email: 'samuel.silva@bpplaw.com.br',
+      name: 'Samuel Willian Silva',
       type: 'awaiting_requester',
       appPublicUrl: CONFIG.appPublicUrl,
       resolveUserId,
@@ -170,6 +171,27 @@ describe('handleTeamsTestSend', () => {
       html: expect.stringContaining('RESPONSUM'),
       card: expect.objectContaining({ type: 'AdaptiveCard' }),
     }));
+    expect(JSON.stringify(sendChat.mock.calls[0][0])).toContain('Olá, Samuel.');
+    expect(JSON.stringify(sendChat.mock.calls[0][0])).not.toContain('Olá, você.');
+  });
+
+  it('descobre o nome pelo e-mail quando o cliente não envia', async () => {
+    const sendChat = vi.fn(async () => undefined);
+    const lookupName = vi.fn(async () => 'Samuel Willian Silva');
+
+    await expect(handleTeamsTestSend({
+      authMode: 'user',
+      isAdmin: true,
+      email: 'samuel.silva@bpplaw.com.br',
+      type: 'awaiting_feedback',
+      appPublicUrl: CONFIG.appPublicUrl,
+      resolveUserId: async () => 'entra-user-1',
+      lookupName,
+      sendChat,
+    })).resolves.toEqual({ status: 200, body: { ok: true } });
+    expect(lookupName).toHaveBeenCalledWith('samuel.silva@bpplaw.com.br');
+    expect(JSON.stringify(sendChat.mock.calls[0][0])).toContain('Olá, Samuel.');
+    expect(JSON.stringify(sendChat.mock.calls[0][0])).not.toContain('Olá.');
   });
 
   it('recusa destinatário externo, secret key ou ausência no Entra sem vazar o provedor', async () => {

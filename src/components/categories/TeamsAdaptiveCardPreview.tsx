@@ -20,6 +20,7 @@ type AdaptiveContainer = {
   type: 'Container';
   style?: string;
   bleed?: boolean;
+  backgroundImage?: { url?: string; fillMode?: string };
   items?: AdaptiveElement[];
 };
 
@@ -68,7 +69,7 @@ const TEXT_COLOR: Record<string, string> = {
 
 const CONTAINER_STYLE: Record<string, string> = {
   emphasis: 'bg-[#F0F0F0]',
-  accent: 'bg-[#5B5FC7]',
+  accent: 'bg-[#F69F19]',
   good: 'bg-[#DFF6DD]',
   attention: 'bg-[#FDE7E9]',
   warning: 'bg-[#FFF4CE]',
@@ -96,6 +97,7 @@ function TextBlock({
     : block.isSubtle
       ? 'text-[#616161]'
       : (TEXT_COLOR[block.color ?? 'Default'] ?? TEXT_COLOR.Default);
+  const italicMatch = /^\*(.+)\*$/.exec(block.text ?? '');
 
   return (
     <p
@@ -104,11 +106,12 @@ function TextBlock({
         TEXT_SIZE[block.size ?? 'Default'] ?? TEXT_SIZE.Default,
         block.weight === 'Bolder' ? 'font-semibold' : 'font-normal',
         colorClass,
+        italicMatch ? 'italic' : '',
         block.wrap === false ? 'truncate' : 'whitespace-pre-wrap break-words',
         spacingClass(block.spacing, isFirst),
       )}
     >
-      {block.text}
+      {italicMatch ? <em>{italicMatch[1]}</em> : block.text}
     </p>
   );
 }
@@ -166,17 +169,17 @@ function CardElements({
         }
         if (item.type === 'Container') {
           const container = item as AdaptiveContainer;
-          const accent = container.style === 'accent';
+          const branded = Boolean(container.backgroundImage?.url) || container.style === 'accent';
           return (
             <div
               key={`${item.type}-${index}`}
               className={cn(
                 container.bleed ? 'px-3 py-3' : 'rounded-md px-3 py-2.5',
-                CONTAINER_STYLE[container.style ?? ''] ?? 'bg-transparent',
+                branded ? 'bg-gradient-to-r from-[#F69F19] via-[#DE5532] to-[#BD2D29]' : (CONTAINER_STYLE[container.style ?? ''] ?? 'bg-transparent'),
                 !container.bleed && index > 0 ? 'mt-3' : '',
               )}
             >
-              <CardElements items={container.items} inverted={accent} />
+              <CardElements items={container.items} inverted={branded} />
             </div>
           );
         }

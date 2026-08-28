@@ -3,7 +3,12 @@ import {
   createTeamsOAuthState,
   verifyTeamsOAuthState,
 } from './teamsDelegatedAuth.mjs';
-import { buildNotificationContent, TEAMS_TEMPLATE_DEFAULTS } from './templates.mjs';
+import {
+  buildNotificationContent,
+  nameFromEmail,
+  resolveRecipientName,
+  TEAMS_TEMPLATE_DEFAULTS,
+} from './templates.mjs';
 
 export const TEAMS_OAUTH_ACTIONS = new Set([
   'teams_oauth_status',
@@ -82,9 +87,12 @@ export async function handleTeamsTestSend({
   authMode,
   isAdmin,
   email,
+  name,
   type,
   appPublicUrl,
+  headerImageUrl,
   resolveUserId,
+  lookupName,
   sendChat,
   teamsTemplateOverrides,
 }) {
@@ -93,6 +101,7 @@ export async function handleTeamsTestSend({
   if (!isAllowedTeamsTestRecipient(recipient)) return response(400, 'invalid_recipient');
   const userId = await resolveUserId(recipient);
   if (!userId) return response(404, 'entra_user_not_found');
+  const lookedUp = typeof lookupName === 'function' ? await lookupName(recipient) : '';
   const notificationType = TEAMS_TEMPLATE_DEFAULTS[type] ? type : 'resolved_feedback_invite';
   const content = buildNotificationContent({
     type: notificationType,
@@ -100,8 +109,12 @@ export async function handleTeamsTestSend({
       id: 'teste-comunicacao',
       title: 'Mensagem de teste do Responsum',
     },
-    requester: { name: 'você' },
+    requester: {
+      name: resolveRecipientName(name, lookedUp) || nameFromEmail(recipient),
+      email: recipient,
+    },
     appBaseUrl: appPublicUrl,
+    headerImageUrl,
     teamsTemplateOverrides,
   });
   try {

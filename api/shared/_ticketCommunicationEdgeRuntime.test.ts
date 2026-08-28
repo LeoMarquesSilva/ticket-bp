@@ -10,6 +10,7 @@ describe('notify-ticket-communications Edge runtime imports', () => {
 
     expect(source).toContain("from 'npm:@supabase/supabase-js@2'");
     expect(source).toContain('resolveTicketCommunicationAuth');
+    expect(source).toContain('teams-header-orange.png');
     expect(source).not.toContain('withSupabase');
     expect(source).not.toContain("from 'npm:@supabase/supabase-js@2.49.1'");
   });

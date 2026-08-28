@@ -155,6 +155,7 @@ export async function processDeliveries({
   clock,
   ticketId,
   notificationType,
+  headerImageUrl,
   batchSize = DEFAULT_BATCH_SIZE,
   budget = DEFAULT_BUDGET,
   monotonicNow = () => Date.now(),
@@ -286,6 +287,7 @@ export async function processDeliveries({
         appBaseUrl,
         emailTemplateOverrides,
         teamsTemplateOverrides,
+        headerImageUrl,
       });
       const email = context.requester.email.trim();
 

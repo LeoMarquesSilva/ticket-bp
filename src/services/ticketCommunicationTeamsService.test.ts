@@ -53,16 +53,21 @@ describe('TicketCommunicationTeamsService', () => {
     );
   });
 
-  it('envia o teste 1:1 com o e-mail e a variante escolhidos', async () => {
+  it('envia o teste 1:1 com o e-mail, o nome e a variante escolhidos', async () => {
     mocks.invoke.mockResolvedValue({ data: { ok: true }, error: null });
     await expect(
-      TicketCommunicationTeamsService.sendTestMessage('samuel.silva@bpplaw.com.br', 'awaiting_requester'),
+      TicketCommunicationTeamsService.sendTestMessage(
+        'samuel.silva@bpplaw.com.br',
+        'awaiting_requester',
+        'Samuel Willian Silva',
+      ),
     ).resolves.toBeUndefined();
     expect(mocks.invoke).toHaveBeenCalledWith('notify-ticket-communications', {
       body: {
         action: 'teams_test_send',
         email: 'samuel.silva@bpplaw.com.br',
         type: 'awaiting_requester',
+        name: 'Samuel Willian Silva',
       },
     });
   });

@@ -84,6 +84,7 @@ export async function handleTicketCommunicationRequest({ authMode, body, depende
       repository: runtimeDependencies.repository,
       graph: runtimeDependencies.graph,
       appBaseUrl: runtimeDependencies.appBaseUrl,
+      headerImageUrl: runtimeDependencies.headerImageUrl,
       clock,
       ticketId,
       notificationType,

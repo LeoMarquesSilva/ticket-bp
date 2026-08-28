@@ -8,6 +8,34 @@ export function escapeHtml(value) {
   })[char]);
 }
 
+export function greetingName(value) {
+  const text = String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim();
+  if (!text) return '';
+  const first = text.split(/\s+/)[0].replace(/[^\p{L}\p{N}'’-]/gu, '');
+  return first.slice(0, 40);
+}
+
+export function nameFromEmail(email) {
+  const local = String(email ?? '').trim().split('@')[0] ?? '';
+  const first = local.split(/[._+-]/).find(Boolean) ?? '';
+  const cleaned = greetingName(first);
+  if (!cleaned) return '';
+  return `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
+}
+
+export function resolveRecipientName(...candidates) {
+  for (const value of candidates) {
+    const name = greetingName(value);
+    if (name) return name;
+  }
+  return '';
+}
+
+function greetingLine(value) {
+  const name = greetingName(value);
+  return name ? `Olá, ${name}.` : 'Olá.';
+}
+
 export function normalizeAppPublicUrl(value) {
   let url;
   try {
@@ -116,7 +144,7 @@ function communicationState(type) {
 }
 
 function renderEmailHtml({ name, title, reason, action, webUrl, type }) {
-  const safeName = escapeHtml(name);
+  const safeName = escapeHtml(greetingName(name));
   const safeTitle = escapeHtml(title);
   const safeReason = escapeHtml(reason);
   const safeAction = escapeHtml(action);
@@ -139,7 +167,7 @@ function renderEmailHtml({ name, title, reason, action, webUrl, type }) {
 <tr><td style="padding:34px 32px 12px;">
 <div style="display:inline-block;padding:7px 11px;border-radius:999px;background:${state.color}18;color:${state.color};font-size:11px;line-height:14px;font-weight:700;letter-spacing:.8px;">${state.label}</div>
 <h1 style="margin:18px 0 10px;font-size:26px;line-height:33px;font-weight:700;color:#2C2D2F;">${state.intro}</h1>
-<p style="margin:0;font-size:16px;line-height:26px;color:#5C6168;">Olá, <strong style="color:#2C2D2F;">${safeName}</strong>.</p>
+<p style="margin:0;font-size:16px;line-height:26px;color:#5C6168;">${safeName ? `Olá, <strong style="color:#2C2D2F;">${safeName}</strong>.` : 'Olá.'}</p>
 <p style="margin:14px 0 0;font-size:16px;line-height:26px;color:#5C6168;">${safeReason}</p>
 </td></tr>
 <tr><td style="padding:18px 32px 8px;">
@@ -164,7 +192,7 @@ function renderEmailHtml({ name, title, reason, action, webUrl, type }) {
 }
 
 function renderTeamsHtml({ name, title, reason, action, webUrl, type, subject }) {
-  const safeName = escapeHtml(name);
+  const safeName = escapeHtml(greetingName(name));
   const safeTitle = escapeHtml(title);
   const safeReason = escapeHtml(reason);
   const safeAction = escapeHtml(action);
@@ -178,14 +206,14 @@ function renderTeamsHtml({ name, title, reason, action, webUrl, type, subject })
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;background:#F1F3F5;"><tr><td align="center" style="padding:16px 10px;">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="520" style="width:100%;max-width:520px;background:#FFFFFF;border:1px solid #E2E5E9;border-radius:16px;overflow:hidden;">
 <tr><td style="height:5px;font-size:0;line-height:0;background:linear-gradient(90deg,#F69F19 0%,#DE5532 52%,#BD2D29 100%);">&nbsp;</td></tr>
-<tr><td style="padding:20px 24px;background:#2C2D2F;">
+<tr><td style="padding:20px 24px;background:#F69F19;background:linear-gradient(90deg,#F69F19 0%,#DE5532 52%,#BD2D29 100%);">
 <div style="font-size:18px;line-height:22px;font-weight:700;letter-spacing:2px;color:#FFFFFF;">RESPONSUM</div>
-<div style="margin-top:4px;font-size:11px;letter-spacing:1.2px;color:#BFC3C8;">BIS MARCHI PIRES · AVISO DE CHAMADO</div>
+<div style="margin-top:4px;font-size:11px;letter-spacing:1.2px;color:rgba(255,255,255,.82);">BIS MARCHI PIRES · AVISO DE CHAMADO</div>
 </td></tr>
 <tr><td style="padding:24px 24px 10px;">
 <div style="display:inline-block;padding:6px 10px;border-radius:999px;background:${state.color}18;color:${state.color};font-size:11px;font-weight:700;letter-spacing:.8px;">${state.label}</div>
 <h1 style="margin:14px 0 8px;font-size:22px;line-height:28px;font-weight:700;color:#2C2D2F;">${state.intro}</h1>
-<p style="margin:0;font-size:15px;line-height:24px;color:#5C6168;">Olá, <strong style="color:#2C2D2F;">${safeName}</strong>.</p>
+<p style="margin:0;font-size:15px;line-height:24px;color:#5C6168;">${safeName ? `Olá, <strong style="color:#2C2D2F;">${safeName}</strong>.` : 'Olá.'}</p>
 <p style="margin:12px 0 0;font-size:15px;line-height:24px;color:#5C6168;">${safeReason}</p>
 </td></tr>
 <tr><td style="padding:14px 24px 8px;">
@@ -199,6 +227,9 @@ function renderTeamsHtml({ name, title, reason, action, webUrl, type, subject })
 <a href="${safeUrl}" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#2C2D2F;text-decoration:none;">${safeAction} &nbsp;→</a>
 </td></tr></table>
 </td></tr>
+<tr><td style="padding:4px 24px 20px;font-size:12px;line-height:18px;color:#8A9098;font-style:italic;">
+<em>${escapeHtml(TEAMS_AUTOMATIC_DISCLAIMER)}</em>
+</td></tr>
 </table>
 </td></tr></table></body></html>`;
 }
@@ -211,11 +242,26 @@ function adaptiveStatusColor(type) {
       : 'Good';
 }
 
+export const TEAMS_AUTOMATIC_DISCLAIMER =
+  'Mensagem automática do Responsum. Não é necessário responder neste chat.';
+
 function renderTeamsChatHtml({ action, reason }) {
   return `<p><strong>RESPONSUM</strong> · ${escapeHtml(action)}</p><p>${escapeHtml(reason)}</p>`;
 }
 
-function renderTeamsCard({ name, title, reason, action, webUrl, type, subject }) {
+function teamsHeaderImageUrl(appBaseUrl, headerImageUrl) {
+  if (
+    typeof headerImageUrl === 'string'
+    && headerImageUrl.startsWith('https://')
+    && headerImageUrl.length <= 300
+    && !/[\s<>]/.test(headerImageUrl)
+  ) {
+    return headerImageUrl;
+  }
+  return `${normalizeAppPublicUrl(appBaseUrl)}/teams-header-orange.png`;
+}
+
+function renderTeamsCard({ name, title, reason, action, webUrl, type, subject, appBaseUrl, headerImageUrl }) {
   const state = communicationState(type);
   const statusColor = adaptiveStatusColor(type);
   return {
@@ -226,8 +272,11 @@ function renderTeamsCard({ name, title, reason, action, webUrl, type, subject })
     body: [
       {
         type: 'Container',
-        style: 'accent',
         bleed: true,
+        backgroundImage: {
+          url: teamsHeaderImageUrl(appBaseUrl, headerImageUrl),
+          fillMode: 'Cover',
+        },
         items: [
           { type: 'TextBlock', text: 'RESPONSUM', weight: 'Bolder', color: 'Light', spacing: 'None' },
           { type: 'TextBlock', text: 'BIS MARCHI PIRES · AVISO DE CHAMADO', size: 'Small', color: 'Light', isSubtle: true, spacing: 'None' },
@@ -254,7 +303,7 @@ function renderTeamsCard({ name, title, reason, action, webUrl, type, subject })
           },
         ],
       },
-      { type: 'TextBlock', text: `Olá, ${name}.`, wrap: true, spacing: 'Medium' },
+      { type: 'TextBlock', text: greetingLine(name), wrap: true, spacing: 'Medium' },
       { type: 'TextBlock', text: reason, wrap: true },
       {
         type: 'Container',
@@ -269,6 +318,14 @@ function renderTeamsCard({ name, title, reason, action, webUrl, type, subject })
           },
         ],
       },
+      {
+        type: 'TextBlock',
+        text: `*${TEAMS_AUTOMATIC_DISCLAIMER}*`,
+        wrap: true,
+        isSubtle: true,
+        size: 'Small',
+        spacing: 'Large',
+      },
     ],
     actions: [
       { type: 'Action.OpenUrl', title: action, url: webUrl },
@@ -276,25 +333,28 @@ function renderTeamsCard({ name, title, reason, action, webUrl, type, subject })
   };
 }
 
-export function buildNotificationContent({ type, ticket, requester, appBaseUrl, emailTemplateOverrides, teamsTemplateOverrides }) {
+export function buildNotificationContent({ type, ticket, requester, appBaseUrl, emailTemplateOverrides, teamsTemplateOverrides, headerImageUrl }) {
   const feedback = type !== 'awaiting_requester';
   const webUrl = buildTicketUrl(appBaseUrl, ticket.id, feedback);
   const copy = resolveCopy(type, ticket.title, emailTemplateOverrides);
   const teamsCopy = resolveCopy(type, ticket.title, teamsTemplateOverrides, TEAMS_TEMPLATE_DEFAULTS);
+  const personName = resolveRecipientName(requester?.name) || nameFromEmail(requester?.email);
   const html = renderEmailHtml({
-    name: requester.name, title: ticket.title, reason: copy.reason,
+    name: personName, title: ticket.title, reason: copy.reason,
     action: copy.action, webUrl, type,
   });
   const teamsPayload = {
-    name: requester.name,
+    name: personName,
     title: ticket.title,
     reason: teamsCopy.reason,
     action: teamsCopy.action,
     webUrl,
     type,
     subject: teamsCopy.subject,
+    appBaseUrl,
+    headerImageUrl,
   };
-  const text = `RESPONSUM | AVISO DE CHAMADO\n\nOlá, ${requester.name}.\n\n${copy.reason}\n\nChamado: ${ticket.title}\n\n${copy.action}: ${webUrl}\n\nBismarchi Pires · Operações Jurídicas`;
+  const text = `RESPONSUM | AVISO DE CHAMADO\n\n${greetingLine(personName)}\n\n${copy.reason}\n\nChamado: ${ticket.title}\n\n${copy.action}: ${webUrl}\n\nBismarchi Pires · Operações Jurídicas`;
 
   return {
     email: { subject: copy.subject, html, text },

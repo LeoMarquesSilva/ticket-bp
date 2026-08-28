@@ -26,7 +26,11 @@ describe('TeamsAdaptiveCardPreview', () => {
     expect(html).toContain('Acesso ao sistema de indicadores');
     expect(html).toContain('Avaliar atendimento');
     expect(html).toContain('como o destinatário vê no Teams');
-    expect(html).toContain('bg-[#5B5FC7]');
+    expect(html).toContain('from-[#F69F19]');
+    expect(html).toContain('via-[#DE5532]');
+    expect(html).toContain('to-[#BD2D29]');
+    expect(html).toContain('Mensagem automática do Responsum');
+    expect(html).toContain('<em>');
     expect(html).not.toContain('iframe');
     expect(html).not.toContain('linear-gradient');
   });

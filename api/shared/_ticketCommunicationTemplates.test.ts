@@ -4,6 +4,7 @@ import {
   EMAIL_TEMPLATE_DEFAULTS,
   TEAMS_TEMPLATE_DEFAULTS,
   escapeHtml,
+  greetingName,
   normalizeEmailTemplateOverrides,
   normalizeTeamsTemplateOverrides,
   normalizeAppPublicUrl,
@@ -88,8 +89,11 @@ describe('buildNotificationContent', () => {
     expect(content.teams.card.msteams).toEqual({ width: 'Full' });
     expect(content.teams.card.body[0]).toEqual(expect.objectContaining({
       type: 'Container',
-      style: 'accent',
       bleed: true,
+      backgroundImage: {
+        url: 'https://responsum.example/teams-header-orange.png',
+        fillMode: 'Cover',
+      },
     }));
     expect(JSON.stringify(content.teams.card)).toContain('FactSet');
     expect(JSON.stringify(content.teams.card)).toContain('Abrir no Responsum');
@@ -125,8 +129,38 @@ describe('buildNotificationContent', () => {
     expect(content.teams.ticketUrl).toBe('https://responsum.example/tickets/11111111-1111-1111-1111-111111111111?showFeedback=true');
     expect(content.teams.label).toBe('Avaliar atendimento');
     expect(content.email.html).toContain('Acesso &lt;urgente&gt;');
-    expect(content.email.html).toContain('Ana &amp; Cia');
+    expect(content.email.html).toContain('Olá, <strong style="color:#2C2D2F;">Ana</strong>.');
+    expect(content.email.html).not.toContain('Ana &amp; Cia');
     expect(content.email.html).not.toContain('Acesso <urgente>');
+  });
+
+  it('cumprimenta pelo primeiro nome e pinta o cabeçalho do Teams com o laranja Responsum', () => {
+    expect(greetingName('Samuel Willian Silva')).toBe('Samuel');
+    expect(greetingName('  ana\nmarques  ')).toBe('ana');
+    expect(greetingName('')).toBe('');
+
+    const content = buildNotificationContent({
+      type: 'awaiting_requester',
+      ticket,
+      requester: { name: 'Samuel Willian Silva' },
+      appBaseUrl: 'https://responsum.example',
+    });
+    const header = content.teams.card.body[0];
+
+    expect(content.teams.card.body.some((item) => item.text === 'Olá, Samuel.')).toBe(true);
+    expect(JSON.stringify(content.teams.card)).not.toContain('Olá, você.');
+    expect(header.style).toBeUndefined();
+    expect(header.backgroundImage).toEqual({
+      url: 'https://responsum.example/teams-header-orange.png',
+      fillMode: 'Cover',
+    });
+    expect(content.teams.card.body.at(-1)).toEqual(expect.objectContaining({
+      type: 'TextBlock',
+      text: '*Mensagem automática do Responsum. Não é necessário responder neste chat.*',
+      isSubtle: true,
+      size: 'Small',
+    }));
+    expect(content.teams.html).toContain('<em>Mensagem automática do Responsum. Não é necessário responder neste chat.</em>');
   });
 
   it('usa o chamado sem showFeedback no lembrete de resposta', () => {

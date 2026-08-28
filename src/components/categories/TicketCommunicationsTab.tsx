@@ -355,7 +355,7 @@ export default function TicketCommunicationsTab() {
     }
     setTeamsBusy(true);
     try {
-      await TicketCommunicationTeamsService.sendTestMessage(testUser.email, type);
+      await TicketCommunicationTeamsService.sendTestMessage(testUser.email, type, testUser.name);
       toast.success(`Mensagem de teste enviada para ${testUser.name}.`);
     } catch {
       toast.error('Não foi possível enviar a mensagem de teste do Teams.');
