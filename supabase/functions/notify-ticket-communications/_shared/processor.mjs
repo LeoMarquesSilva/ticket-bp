@@ -93,16 +93,6 @@ function positiveInteger(value, fallback) {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
-function deliveryChainId(delivery) {
-  const key = `${delivery.id}:${delivery.cycle_key}`;
-  let hash = 2166136261;
-  for (const character of key) {
-    hash ^= character.codePointAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) || 1;
-}
-
 function hasCurrentResolvedCycle(delivery, ticket) {
   return delivery.notification_type !== 'resolved_feedback_invite'
     || (
@@ -288,10 +278,9 @@ export async function processDeliveries({
           error.code = 'entra_user_not_found';
           throw error;
         }
-        await graph.sendTeamsActivity({
-          userId,
+        await graph.sendTeamsChat({
+          recipientUserId: userId,
           ...content.teams,
-          chainId: deliveryChainId(delivery),
         });
       }
     } catch (error) {

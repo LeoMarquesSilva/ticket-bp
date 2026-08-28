@@ -370,7 +370,7 @@ describe('handleTicketCommunicationRequest', () => {
     const graph = {
       sendEmail: vi.fn(async () => undefined),
       resolveUserId: vi.fn(async () => 'entra-id'),
-      sendTeamsActivity: vi.fn(async () => undefined),
+      sendTeamsChat: vi.fn(async () => undefined),
     };
     const userQuery = fakeQuery({ data: { id: TICKET_ID, status: 'resolved' }, error: null });
 

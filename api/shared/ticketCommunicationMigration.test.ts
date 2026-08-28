@@ -6,6 +6,10 @@ const migration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260824150304_ticket_communications.sql'),
   'utf8',
 );
+const delegatedTeamsMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260828184213_ticket_communications_delegated_teams.sql'),
+  'utf8',
+);
 
 describe('ticket communications migration contract', () => {
   it('fences completion with the active claim token, attempt and processing state', () => {
@@ -52,5 +56,19 @@ describe('ticket communications migration contract', () => {
     expect(migration).toMatch(/where ticket\.id = p_ticket_id\s+and ticket\.status <> 'resolved'/);
     expect(migration).toMatch(/'changed', true/);
     expect(migration).toMatch(/'changed', false/);
+  });
+});
+
+describe('delegated Teams credential migration contract', () => {
+  it('mantém um único token criptografado e nenhuma política para usuários do app', () => {
+    expect(delegatedTeamsMigration).toMatch(
+      /create table public\.app_c009c0e4f1_ticket_teams_oauth/,
+    );
+    expect(delegatedTeamsMigration).toMatch(/singleton boolean primary key/);
+    expect(delegatedTeamsMigration).toMatch(/refresh_token_ciphertext text not null/);
+    expect(delegatedTeamsMigration).toMatch(/refresh_token_iv text not null/);
+    expect(delegatedTeamsMigration).toMatch(/enable row level security/);
+    expect(delegatedTeamsMigration).toMatch(/revoke all[\s\S]+from anon, authenticated/);
+    expect(delegatedTeamsMigration).not.toMatch(/create policy/i);
   });
 });

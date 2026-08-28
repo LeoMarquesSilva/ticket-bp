@@ -8,7 +8,8 @@ const dedicatedEnv = {
   TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID: 'client-id',
   TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_SECRET: 'client-secret',
   TICKET_COMMUNICATIONS_MICROSOFT_NOTIFICATION_SENDER: 'notificacoes@bpplaw.com.br',
-  TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID: 'teams-app-id',
+  TICKET_COMMUNICATIONS_MICROSOFT_REDIRECT_URI: 'https://project.supabase.co/functions/v1/notify-ticket-communications/oauth/callback',
+  TICKET_COMMUNICATIONS_MICROSOFT_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
   APP_PUBLIC_URL: 'https://responsum.example/helpdesk///',
 };
 
@@ -21,7 +22,8 @@ describe('readTicketCommunicationRuntimeConfig', () => {
       clientId: 'client-id',
       clientSecret: 'client-secret',
       sender: 'notificacoes@bpplaw.com.br',
-      teamsAppId: 'teams-app-id',
+      redirectUri: 'https://project.supabase.co/functions/v1/notify-ticket-communications/oauth/callback',
+      tokenEncryptionKey: Buffer.alloc(32, 7).toString('base64'),
       appPublicUrl: 'https://responsum.example/helpdesk',
     });
     expect(getEnv).not.toHaveBeenCalledWith('MICROSOFT_TENANT_ID');

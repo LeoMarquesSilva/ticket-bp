@@ -98,7 +98,7 @@ function fakeGraph({ emailError, teamsError, resolvedUserId = 'entra-user-id' } 
       if (emailError) throw emailError;
     }),
     resolveUserId: vi.fn(async () => resolvedUserId),
-    sendTeamsActivity: vi.fn(async () => {
+    sendTeamsChat: vi.fn(async () => {
       if (teamsError) throw teamsError;
     }),
   };
@@ -351,7 +351,7 @@ describe('processDeliveries', () => {
 
     expect(repository.getContext).toHaveBeenCalledTimes(2);
     expect(graph.sendEmail).toHaveBeenCalledTimes(1);
-    expect(graph.sendTeamsActivity).not.toHaveBeenCalled();
+    expect(graph.sendTeamsChat).not.toHaveBeenCalled();
     expect(repository.completed.at(-1)).toEqual(expect.objectContaining({
       id: teamsDelivery.id,
       outcome: 'cancelled',
@@ -392,19 +392,16 @@ describe('processDeliveries', () => {
     expect(result.cancelled).toBe(1);
   });
 
-  it('envia chainId determinístico derivado da entrega e do ciclo', async () => {
-    const run = async () => {
-      const repository = fakeRepository({ claimed: [teamsDelivery] });
-      const graph = fakeGraph();
-      await processDeliveries({ repository, graph, appBaseUrl: 'https://responsum.example', now });
-      return graph.sendTeamsActivity.mock.calls[0][0].chainId;
-    };
+  it('envia ao chat somente para o usuário resolvido e mantém o link direto', async () => {
+    const repository = fakeRepository({ claimed: [teamsDelivery] });
+    const graph = fakeGraph();
 
-    const first = await run();
-    const second = await run();
-    expect(first).toBe(second);
-    expect(Number.isSafeInteger(first)).toBe(true);
-    expect(first).toBeGreaterThan(0);
+    await processDeliveries({ repository, graph, appBaseUrl: 'https://responsum.example', now });
+
+    expect(graph.sendTeamsChat).toHaveBeenCalledWith(expect.objectContaining({
+      recipientUserId: 'entra-user-id',
+      ticketUrl: 'https://responsum.example/tickets/11111111-1111-1111-1111-111111111111',
+    }));
   });
 
   it('conclui somente com token e versão recebidos no claim', async () => {
@@ -601,7 +598,7 @@ describe('processDeliveries', () => {
     });
 
     expect(graph.resolveUserId).not.toHaveBeenCalled();
-    expect(graph.sendTeamsActivity).not.toHaveBeenCalled();
+    expect(graph.sendTeamsChat).not.toHaveBeenCalled();
     expect(repository.completed).toEqual([
       expect.objectContaining({
         id: teamsDelivery.id,
@@ -701,7 +698,7 @@ describe('processDeliveries', () => {
     });
 
     expect(graph.sendEmail).toHaveBeenCalledTimes(1);
-    expect(graph.sendTeamsActivity).toHaveBeenCalledTimes(1);
+    expect(graph.sendTeamsChat).toHaveBeenCalledTimes(1);
     expect(repository.completed).toEqual([
       expect.objectContaining({ id: emailDelivery.id, outcome: 'failed', error: 'delivery_error' }),
       expect.objectContaining({ id: teamsDelivery.id, outcome: 'sent' }),
@@ -739,7 +736,7 @@ describe('processDeliveries', () => {
     });
 
     expect(graph.sendEmail).not.toHaveBeenCalled();
-    expect(graph.sendTeamsActivity).toHaveBeenCalledTimes(1);
+    expect(graph.sendTeamsChat).toHaveBeenCalledTimes(1);
     expect(repository.complete).toHaveBeenCalledTimes(3);
     expect(result).toEqual({ selected: 3, sent: 1, failed: 0, cancelled: 0, skipped: 2, backlog: 0, budgetExhausted: false });
   });

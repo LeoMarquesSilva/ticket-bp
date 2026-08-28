@@ -6,7 +6,6 @@ const config = {
   clientId: 'client-id',
   clientSecret: 'client-secret',
   sender: 'notificacoes@bpplaw.com.br',
-  teamsAppId: 'teams-app-id',
 };
 
 function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
@@ -158,45 +157,6 @@ describe('createGraphClient', () => {
 
     await expect(graph.resolveUserId('ana@bismarchipires.com.br')).resolves.toBeNull();
     expect(fetchImpl).toHaveBeenCalledTimes(3);
-  });
-
-  it('envia atividade templada por deep link da tab e preserva o link direto no conteúdo', async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ access_token: 'access-token' }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    const graph = createGraphClient(config, { fetchImpl, sleep: vi.fn() });
-
-    await graph.sendTeamsActivity({
-      userId: 'entra-user-id',
-      topic: 'Chamado',
-      label: 'Avaliar atendimento',
-      previewText: 'Avaliação pendente',
-      ticketUrl: 'https://responsum.example/tickets/1?showFeedback=true',
-      chainId: 719337,
-    });
-
-    expect(fetchImpl.mock.calls[1][0]).toContain('/users/entra-user-id/teamwork/sendActivityNotification');
-    expect(fetchImpl.mock.calls[1][1].headers).toMatchObject({
-      Authorization: 'Bearer access-token',
-      'Content-Type': 'application/json',
-    });
-    expect(JSON.parse(fetchImpl.mock.calls[1][1].body)).toEqual({
-      teamsAppId: 'teams-app-id',
-      activityType: 'ticketCommunication',
-      topic: {
-        source: 'text',
-        value: 'Chamado',
-        webUrl: 'https://teams.microsoft.com/l/entity/teams-app-id/ticket-detail?webUrl=https%3A%2F%2Fresponsum.example%2Ftickets%2F1%3FshowFeedback%3Dtrue&label=Avaliar%20atendimento',
-      },
-      previewText: { content: 'Avaliação pendente\nhttps://responsum.example/tickets/1?showFeedback=true' },
-      templateParameters: [
-        { name: 'notificationText', value: 'Avaliação pendente' },
-        { name: 'ticketUrl', value: 'https://responsum.example/tickets/1?showFeedback=true' },
-      ],
-      chainId: 719337,
-    });
-    expect(JSON.parse(fetchImpl.mock.calls[1][1].body).topic.webUrl)
-      .toMatch(/^https:\/\/teams\.microsoft\.com\//);
   });
 
   it('serializa assunto e partes Unicode longas em MIME com linhas RFC-compliant', async () => {

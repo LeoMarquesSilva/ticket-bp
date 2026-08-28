@@ -1,11 +1,13 @@
 import { normalizeAppPublicUrl } from './templates.mjs';
+import { isValidTokenEncryptionKey } from './teamsDelegatedAuth.mjs';
 
 const ENV = Object.freeze({
   tenantId: 'TICKET_COMMUNICATIONS_MICROSOFT_TENANT_ID',
   clientId: 'TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID',
   clientSecret: 'TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_SECRET',
   sender: 'TICKET_COMMUNICATIONS_MICROSOFT_NOTIFICATION_SENDER',
-  teamsAppId: 'TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID',
+  redirectUri: 'TICKET_COMMUNICATIONS_MICROSOFT_REDIRECT_URI',
+  tokenEncryptionKey: 'TICKET_COMMUNICATIONS_MICROSOFT_TOKEN_ENCRYPTION_KEY',
   appPublicUrl: 'APP_PUBLIC_URL',
 });
 
@@ -18,6 +20,16 @@ export function readTicketCommunicationRuntimeConfig(getEnv) {
 
   try {
     values.appPublicUrl = normalizeAppPublicUrl(values.appPublicUrl);
+    const redirect = new URL(values.redirectUri);
+    if (
+      redirect.protocol !== 'https:'
+      || redirect.username
+      || redirect.password
+      || redirect.search
+      || redirect.hash
+    ) return null;
+    values.redirectUri = redirect.toString();
+    if (!isValidTokenEncryptionKey(values.tokenEncryptionKey)) return null;
   } catch {
     return null;
   }

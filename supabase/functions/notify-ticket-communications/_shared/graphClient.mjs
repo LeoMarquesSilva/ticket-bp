@@ -222,12 +222,6 @@ async function resolveGraphUserId(email, graphRequest) {
   return null;
 }
 
-function teamsDeepLink(teamsAppId, ticketUrl, label) {
-  const url = new URL(ticketUrl);
-  if (url.protocol !== 'https:') throw new TypeError('Teams ticketUrl must use HTTPS');
-  return `https://teams.microsoft.com/l/entity/${encodeURIComponent(teamsAppId)}/ticket-detail?webUrl=${encodeURIComponent(url.toString())}&label=${encodeURIComponent(label)}`;
-}
-
 export function createGraphClient(
   config,
   {
@@ -324,31 +318,8 @@ export function createGraphClient(
       body: buildMimeBase64({ from: config.sender, to, subject, html, text }),
     },
   );
-  const sendTeamsActivity = ({ userId, topic, label, previewText, ticketUrl, chainId }) => graphRequest(
-    `/users/${encodeURIComponent(userId)}/teamwork/sendActivityNotification`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        teamsAppId: config.teamsAppId,
-        activityType: 'ticketCommunication',
-        topic: {
-          source: 'text',
-          value: topic,
-          webUrl: teamsDeepLink(config.teamsAppId, ticketUrl, label),
-        },
-        previewText: { content: `${previewText}\n${ticketUrl}` },
-        templateParameters: [
-          { name: 'notificationText', value: previewText },
-          { name: 'ticketUrl', value: ticketUrl },
-        ],
-        chainId,
-      }),
-    },
-  );
-
   return {
     sendEmail,
     resolveUserId: (email) => resolveGraphUserId(email, graphRequest),
-    sendTeamsActivity,
   };
 }

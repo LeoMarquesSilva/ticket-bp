@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, Eye, Mail, Monitor, RotateCcw, Save, Smartphone } from 'lucide-react';
+import { CheckCircle2, Clock3, Eye, Link2, Loader2, Mail, MessageSquareText, Monitor, RotateCcw, Save, Smartphone, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,10 @@ import {
   type TicketCommunicationTemplateOverrides,
   type TicketCommunicationType,
 } from '@/services/ticketCommunicationSettingsService';
+import {
+  TicketCommunicationTeamsService,
+  type TicketCommunicationTeamsStatus,
+} from '@/services/ticketCommunicationTeamsService';
 
 const OPTIONS: Array<{
   type: TicketCommunicationType;
@@ -34,12 +39,93 @@ const SAMPLE_TICKET = {
   title: 'Acesso ao sistema de indicadores',
 };
 
+type TeamsConnectionCardProps = {
+  loading: boolean;
+  busy: boolean;
+  status: TicketCommunicationTeamsStatus | null;
+  onConnect: () => void;
+  onDisconnect: () => void;
+};
+
+function connectedDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Sao_Paulo',
+  }).format(date);
+}
+
+export function TeamsConnectionCard({
+  loading,
+  busy,
+  status,
+  onConnect,
+  onDisconnect,
+}: TeamsConnectionCardProps) {
+  const connected = status?.connected === true;
+  const connectedAt = connectedDate(status?.connectedAt);
+
+  return (
+    <Card className="overflow-hidden border-slate-200 shadow-sm">
+      <div className="h-1 bg-[#5B5FC7]" />
+      <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="rounded-xl bg-[#5B5FC7]/10 p-2.5 text-[#5B5FC7]">
+            <MessageSquareText className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold text-[#2C2D2F]">Microsoft Teams</h2>
+              {loading ? (
+                <Badge variant="secondary">Verificando conexão</Badge>
+              ) : connected ? (
+                <Badge variant="success">Conectado</Badge>
+              ) : (
+                <Badge variant="warning">Não conectado</Badge>
+              )}
+            </div>
+            {connected ? (
+              <div className="mt-1 text-sm text-slate-600">
+                <p className="truncate font-medium text-slate-800">{status?.accountDisplayName || 'Conta Microsoft'}</p>
+                <p className="truncate">{status?.accountEmail}</p>
+                {connectedAt && <p className="mt-1 text-xs text-slate-400">Conectada em {connectedAt}</p>}
+              </div>
+            ) : (
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                Conecte uma conta corporativa para enviar avisos em chats individuais. Os colaboradores não precisam instalar aplicativo.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" onClick={onConnect} disabled={loading || busy} className="bg-[#5B5FC7] text-white hover:bg-[#4b4fa8]">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+            {connected ? 'Conectar novamente' : 'Conectar conta do Teams'}
+          </Button>
+          {connected && (
+            <Button type="button" variant="outline" onClick={onDisconnect} disabled={busy}>
+              <Unplug className="h-4 w-4" />
+              Desconectar
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function TicketCommunicationsTab() {
   const [activeType, setActiveType] = useState<TicketCommunicationType>('resolved_feedback_invite');
   const [settings, setSettings] = useState<TicketCommunicationTemplateOverrides>({});
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [teamsStatus, setTeamsStatus] = useState<TicketCommunicationTeamsStatus | null>(null);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [teamsBusy, setTeamsBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -49,6 +135,28 @@ export default function TicketCommunicationsTab() {
       .catch(() => toast.error('Não foi possível carregar os textos dos e-mails.'))
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    setTeamsLoading(true);
+    TicketCommunicationTeamsService.getStatus()
+      .then((value) => { if (alive) setTeamsStatus(value); })
+      .catch(() => toast.error('Não foi possível consultar a conexão do Teams.'))
+      .finally(() => { if (alive) setTeamsLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get('teams');
+    if (result === 'connected') toast.success('Conta do Microsoft Teams conectada.');
+    if (result === 'error') toast.error('Não foi possível concluir a conexão do Teams.');
+    if (result) {
+      url.searchParams.delete('teams');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }
   }, []);
 
   const defaults = EMAIL_TEMPLATE_DEFAULTS[activeType];
@@ -91,8 +199,40 @@ export default function TicketCommunicationsTab() {
     }
   }
 
+  async function connectTeams() {
+    setTeamsBusy(true);
+    try {
+      const authorizationUrl = await TicketCommunicationTeamsService.startConnection();
+      window.location.assign(authorizationUrl);
+    } catch {
+      toast.error('Não foi possível iniciar a conexão do Teams.');
+      setTeamsBusy(false);
+    }
+  }
+
+  async function disconnectTeams() {
+    setTeamsBusy(true);
+    try {
+      await TicketCommunicationTeamsService.disconnect();
+      setTeamsStatus({ connected: false, accountEmail: null, accountDisplayName: null, connectedAt: null });
+      toast.success('Conta do Teams desconectada.');
+    } catch {
+      toast.error('Não foi possível desconectar a conta do Teams.');
+    } finally {
+      setTeamsBusy(false);
+    }
+  }
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
+    <div className="space-y-5">
+      <TeamsConnectionCard
+        loading={teamsLoading}
+        busy={teamsBusy}
+        status={teamsStatus}
+        onConnect={() => void connectTeams()}
+        onDisconnect={() => void disconnectTeams()}
+      />
+      <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
       <div className="space-y-4">
         <Card className="overflow-hidden border-slate-200 shadow-sm">
           <div className="h-1 bg-gradient-to-r from-[#F69F19] via-[#DE5532] to-[#BD2D29]" />
@@ -160,6 +300,7 @@ export default function TicketCommunicationsTab() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

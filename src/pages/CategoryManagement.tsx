@@ -17,11 +17,15 @@ import FrenteFormDialog from '@/components/categories/FrenteFormDialog';
 import QuickReplyFormDialog from '@/components/categories/QuickReplyFormDialog';
 import DeleteConfirmDialog from '@/components/categories/DeleteConfirmDialog';
 import type { Tag as TagType } from '@/services/categoryService';
+import { getInitialCategoryManagementTab } from './categoryManagementTabs';
 
 export default function CategoryManagement() {
   const cat = useCategories();
   const evo = useEvolutionApi(cat.loadData);
   const quickReplies = useQuickReplyTemplates();
+  const initialTab = getInitialCategoryManagementTab(
+    typeof window === 'undefined' ? '' : window.location.search,
+  );
 
   // Load Evolution data on mount
   useEffect(() => {
@@ -92,7 +96,7 @@ export default function CategoryManagement() {
       </header>
 
       {/* Tabs */}
-      <Tabs defaultValue="categorias" className="w-full">
+      <Tabs defaultValue={initialTab} className="w-full">
         <div className="overflow-x-auto border-b border-slate-200">
         <TabsList className="h-11 w-max min-w-full justify-start rounded-none bg-transparent p-0">
           <TabsTrigger value="categorias" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">

@@ -1,14 +1,12 @@
 # Implantação das comunicações de chamados
 
-Este runbook publica o envio de e-mail e o aviso no feed **Atividade** do Teams da Edge Function `notify-ticket-communications`. Não crie ícones, ZIPs ou valores secretos no repositório.
+Este runbook publica o envio de e-mail e mensagens em chats individuais do Teams pela Edge Function `notify-ticket-communications`. Não grave valores secretos no repositório.
 
 ## Escopo e pré-requisitos
 
-- O template usa o [schema Teams 1.28](https://developer.microsoft.com/json-schemas/teams/v1.28/MicrosoftTeams.schema.json), uma única RSC `TeamsActivity.Send.User`/`Application` e o activity type templado `ticketCommunication`. Não contém bot, chat, canal, conectores, permissões de dispositivo nem `TeamsActivity.Send` amplo.
-- O código envia `POST /users/{id}/teamwork/sendActivityNotification` com `activityType: "ticketCommunication"`, `templateParameters`, tópico textual e `teamsAppId`. O `topic.webUrl` é um deep link `https://teams.microsoft.com/l/entity/{teamsAppId}/ticket-detail?...`; o conteúdo também leva o link HTTPS direto do chamado. Consulte [notificações de atividade](https://learn.microsoft.com/en-us/graph/teams-send-activityfeednotifications) e a [operação para usuário](https://learn.microsoft.com/en-us/graph/api/userteamwork-sendactivitynotification?view=graph-rest-1.0).
-- A Function usa client credentials para Graph e `User.Read.All` de aplicação para resolver o destinatário. Consulte as [permissões Graph](https://learn.microsoft.com/en-us/graph/permissions-reference), [Exchange Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac) e a [autorização de Edge Functions](https://supabase.com/docs/guides/functions/auth).
-
-Antes do upload, o proprietário deve aprovar URLs legais e ícones oficiais. Valide que as páginas de privacidade e termos do pacote estão publicadas e aprovadas; se o tenant exigir URLs corporativas diferentes, altere-as somente no `manifest.json` gerado para o pacote aprovado. Não altere o template versionado sem a aprovação correspondente.
+- O e-mail e a resolução do destinatário usam client credentials e `User.Read.All` de aplicação. O Teams usa Authorization Code delegado com `Chat.Create` e `ChatMessage.Send`.
+- Somente a conta corporativa remetente autoriza o Responsum. Os destinatários não instalam aplicativo e não concedem consentimento.
+- Consulte [enviar mensagem em chat](https://learn.microsoft.com/en-us/graph/api/chat-post-messages?view=graph-rest-1.0), [criar chat](https://learn.microsoft.com/en-us/graph/api/chat-post?view=graph-rest-1.0), [Exchange Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac) e [autorização de Edge Functions](https://supabase.com/docs/guides/functions/auth).
 
 ## 1. Preparar homologação isolada
 
@@ -48,21 +46,18 @@ Test-ApplicationAccessPolicy -AppId <TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID> 
 
 O teste deve permitir a mailbox remetente e negar uma mailbox fora do grupo. Não crie uma atribuição `Application Mail.Send` de Exchange RBAC neste caminho; remova/revise grants conflitantes antes de liberar produção.
 
-## 3. Preparar o aplicativo Teams
+## 3. Preparar o OAuth delegado do Teams
 
-1. Exporte somente ativos oficiais aprovados: `color.png` (192 × 192 PNG colorido) e `outline.png` (32 × 32 PNG transparente com contorno branco). Valide dimensões, transparência e direitos de uso.
-2. Copie `teams/responsum-notifications/manifest.template.json` para `teams/responsum-notifications/manifest.json`.
-3. Substitua `${TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID}` pelo App ID Teams, `${TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID}` pelo Client ID Entra e `${APP_PUBLIC_URL}` pela mesma base HTTPS normalizada configurada na Function. Os IDs devem ser GUIDs do tenant; a URL não pode conter userinfo, query ou fragment.
-4. No Developer Portal, valide o JSON, as URLs legais aprovadas, os dois ícones, a tab pessoal estática `ticket-detail`, `ticketCommunication` e a única RSC `TeamsActivity.Send.User`/`Application`. O template usa `{notificationText}` e `{ticketUrl}`; confirme que o clique abre o deep link Teams e que o link direto abre o chamado correto.
-5. Crie um ZIP com exatamente `manifest.json`, `color.png` e `outline.png` na raiz, sem diretório-pai, e publique-o no catálogo da organização conforme a política do tenant.
+1. No registro Entra usado pelo Responsum, adicione as permissões **delegadas** `User.Read`, `Chat.Create` e `ChatMessage.Send`, além dos escopos padrão `openid`, `profile` e `offline_access`, e conceda consentimento administrativo.
+2. Em **Autenticação → Adicionar uma plataforma → Web**, cadastre exatamente `https://jhgbrbarfpvgdaaznldj.supabase.co/functions/v1/notify-ticket-communications/oauth/callback`.
+3. Não habilite implicit grant para access token ou ID token. O código usa Authorization Code no servidor com client secret.
+4. Depois do deploy, entre em **Estrutura de atendimento → Comunicações → Microsoft Teams → Conectar conta do Teams** e autentique a conta remetente uma única vez.
 
-No Teams Admin Center, aprove a RSC e instale o app por política no escopo **pessoal** dos destinatários, concedendo o consentimento específico ao recurso. Instale-o também para o usuário de homologação. Não substitua instalação ausente por bot, chat, canal ou permissão ampla.
-
-Os PNGs, `manifest.json` e ZIP são ignorados pelo Git. Não faça upload antes da aprovação formal das URLs legais e dos ícones.
+Não publique manifesto, bot, tab ou aplicativo Teams. Os colaboradores destinatários não precisam instalar nada.
 
 ## 4. Configurar a Function e o banco em homologação
 
-No projeto Supabase de homologação, configure em Edge Function Secrets somente os valores destes seis nomes dedicados, já listados em `.env.example`. Não reutilize as credenciais `MICROSOFT_*` da integração SharePoint:
+No projeto Supabase, configure em Edge Function Secrets somente os valores destes sete nomes dedicados, já listados em `.env.example`. Não reutilize as credenciais `MICROSOFT_*` da integração SharePoint:
 
 | Secret | Uso |
 | --- | --- |
@@ -70,10 +65,11 @@ No projeto Supabase de homologação, configure em Edge Function Secrets somente
 | `TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID` | Registro dedicado de aplicativo Graph/Teams. |
 | `TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_SECRET` | Credencial client-secret dedicada. |
 | `TICKET_COMMUNICATIONS_MICROSOFT_NOTIFICATION_SENDER` | Mailbox remetente autorizada no caminho escolhido. |
-| `TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID` | App ID Teams publicado. |
+| `TICKET_COMMUNICATIONS_MICROSOFT_REDIRECT_URI` | Callback Web cadastrado no Entra. |
+| `TICKET_COMMUNICATIONS_MICROSOFT_TOKEN_ENCRYPTION_KEY` | Chave aleatória base64 de 32 bytes para AES-GCM e state OAuth. |
 | `APP_PUBLIC_URL` | Base HTTPS dos links, sem userinfo, query ou fragment. |
 
-Não copie valores para `.env.example`, migrations, documentação, comandos versionados ou logs. Aplique `supabase/migrations/20260824150304_ticket_communications.sql` pelo fluxo aprovado (por exemplo, `supabase db push`) e publique `supabase/functions/notify-ticket-communications/` (por exemplo, `supabase functions deploy notify-ticket-communications`).
+Não copie valores para `.env.example`, migrations, documentação, comandos versionados ou logs. Aplique também `supabase/migrations/20260828184213_ticket_communications_delegated_teams.sql` e publique `supabase/functions/notify-ticket-communications/`.
 
 Confirme em `supabase/config.toml` que a Function usa `verify_jwt = false`: o handler `@supabase/server` autoriza `auth: ['user', 'secret:ticket-communications']`, portanto a configuração não torna o endpoint público.
 
@@ -81,7 +77,7 @@ Confirme em `supabase/config.toml` que a Function usa `verify_jwt = false`: o ha
 
 Crie no painel Supabase de homologação uma secret key chamada `ticket-communications`, guardando o valor apenas no Vault/painel seguro. Para o smoke `daily` isolado, envie `POST` a `{SUPABASE_URL}/functions/v1/notify-ticket-communications` com corpo `{ "action": "daily" }` e somente os headers `Content-Type: application/json` e `apikey: <valor seguro da key>`. Não envie `Authorization`, service-role key ou segredo Microsoft.
 
-Espere `200` com `ok`, `prepared`, `sent` e `failed` numéricos; confirme o e-mail da mailbox autorizada e a atividade Teams do usuário de homologação. Para testar o fluxo dirigido de interface, faça `ticket_resolved` com sessão de usuário e ticket de homologação resolvido; esse comando exige RLS e não substitui o smoke `daily` isolado.
+Espere `200` com `ok`, `prepared`, `sent` e `failed` numéricos; confirme o e-mail e a mensagem no chat individual do usuário de homologação. Conecte a conta Teams antes do teste. Para testar o fluxo dirigido de interface, faça `ticket_resolved` com sessão de usuário e ticket de homologação resolvido; esse comando exige RLS e não substitui o smoke `daily` isolado.
 
 Audite as entregas em sessão administrativa:
 
@@ -114,8 +110,8 @@ Não registre essa key em SQL, Git ou logs. Não agende fora da janela documenta
 | Sintoma | Verificação e ação |
 | --- | --- |
 | HTTP `401` da Function | Confirme a secret key `ticket-communications` no header `apikey`, seu ambiente correto e ausência de valor truncado. Para `401` Graph, valide tenant, client ID, client secret e consentimentos sem registrar credenciais. |
-| Graph `403` | Verifique `User.Read.All`; no Caminho A, `Application Mail.Send` e o escopo RBAC; no Caminho B, `Mail.Send` consentido e o teste da AAP. Para Teams, confira RSC, publicação e instalação pessoal. |
-| App Teams não instalado | Aplique a política pessoal ao destinatário e aguarde propagação; não adicione bot/chat/canal nem permissões amplas. |
+| Graph `403` | Verifique `User.Read.All`; no e-mail, confira RBAC/AAP. Para Teams, confira o consentimento delegado de `Chat.Create` e `ChatMessage.Send` e reconecte a conta remetente. |
+| `teams_not_connected` | Abra o painel Comunicações e conecte ou reconecte a conta corporativa remetente. |
 | UPN não resolvido ou Graph `404` | Verifique `userPrincipalName`/`mail`. O código tenta os domínios corporativos e filtro por `mail`; sem resultado único, grava `entra_user_not_found` e tenta novamente no próximo dia. |
 | Graph `429` | Respeite `Retry-After`. A Function tenta até três vezes; se esgotar, grava `graph_http_429` e reagenda a próxima execução diária. |
 | `budgetExhausted: true` | Confira o `backlog` sanitizado e os disparos de continuação pós-09h. Não altere `cycle_key` nem crie jobs com payload diferente para drenar a fila. |
