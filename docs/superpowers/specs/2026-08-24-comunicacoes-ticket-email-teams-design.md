@@ -36,7 +36,7 @@ Essa rota já abre o chamado e solicita a exibição do modal de avaliação. O 
 
 Os e-mails terão assunto específico, resumo do chamado, motivo do contato, chamada para ação e link textual de contingência. O HTML será simples, responsivo e terá também uma versão textual equivalente.
 
-No Teams, o aviso aparecerá no feed Atividade e poderá gerar banner, som e notificação do sistema conforme as preferências pessoais do usuário. Como tópicos com `source = text` exigem URL Teams, o clique usará `https://teams.microsoft.com/l/entity/{teamsAppId}/ticket-detail?webUrl={ticketUrl codificada}&label={label codificada}` para a tab pessoal estática `ticket-detail`. O link HTTPS direto do chamado continuará explícito no conteúdo e no parâmetro `webUrl`. Não será criada uma mensagem em chat. O `chainId` será derivado deterministicamente da entrega e do ciclo.
+No Teams, o aviso será uma mensagem normal em um chat individual entre a conta corporativa conectada e a pessoa que abriu o chamado. O conteúdo terá o motivo do contato e o link HTTPS direto do chamado. Esse fluxo não exige que os destinatários instalem um aplicativo Teams; somente a conta remetente autoriza o Responsum uma vez no Microsoft Entra.
 
 ## Arquitetura
 
@@ -88,14 +88,17 @@ A transição para `resolved` e a definição de `resolved_at` ocorrerão numa R
 
 ### Microsoft Graph
 
-A Function obterá token pelo fluxo OAuth 2.0 `client_credentials`, usando:
+A Function continuará usando OAuth 2.0 `client_credentials` para e-mail e resolução de usuários, com:
 
 - `TICKET_COMMUNICATIONS_MICROSOFT_TENANT_ID`;
 - `TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_ID`;
 - `TICKET_COMMUNICATIONS_MICROSOFT_CLIENT_SECRET`;
 - `TICKET_COMMUNICATIONS_MICROSOFT_NOTIFICATION_SENDER`;
-- `TICKET_COMMUNICATIONS_MICROSOFT_TEAMS_APP_ID`;
 - `APP_PUBLIC_URL`.
+
+O Teams usará OAuth 2.0 Authorization Code delegado, com os escopos `openid`, `profile`, `offline_access`, `User.Read`, `Chat.Create` e `ChatMessage.Send`. Um administrador com `manage_categories` inicia a conexão no painel de Comunicações. O callback registrado será `https://jhgbrbarfpvgdaaznldj.supabase.co/functions/v1/notify-ticket-communications/oauth/callback`, validará `state` assinado e trocará o código no servidor usando o client secret. A conta conectada será exibida no painel e poderá ser reconectada ou desconectada.
+
+O refresh token será criptografado com AES-GCM antes de ser persistido em uma tabela dedicada, protegida por RLS sem políticas para `anon` ou `authenticated`. A chave `TICKET_COMMUNICATIONS_MICROSOFT_TOKEN_ENCRYPTION_KEY` existirá somente nos secrets da Edge Function. Access tokens serão mantidos apenas em memória; quando renovados, refresh tokens rotacionados substituirão de forma criptografada o valor anterior.
 
 O registro e as credenciais são dedicados a comunicações de tickets e não reutilizam `MICROSOFT_*` do SharePoint. `APP_PUBLIC_URL` exige HTTPS, rejeita userinfo, query e fragment, e normaliza o pathname/base. O token respeitará `expires_in`, será renovado uma vez após `401` e nunca será persistido no banco ou em logs.
 
@@ -103,9 +106,7 @@ Além do privilégio de envio escolhido, a aplicação terá `User.Read.All` par
 
 E-mails serão enviados por `POST /users/{TICKET_COMMUNICATIONS_MICROSOFT_NOTIFICATION_SENDER}/sendMail`. O caminho recomendado é Exchange Online Application RBAC, atribuindo `Application Mail.Send` apenas à mailbox/grupo remetente, sem consentimento global Entra `Mail.Send`; a alternativa de compatibilidade é `Mail.Send` global no Entra acompanhado obrigatoriamente de Application Access Policy `RestrictAccess`. Os caminhos são mutuamente exclusivos porque grants são aditivos: o `Mail.Send` global não pode coexistir com RBAC, mas é necessário no caminho AAP; `User.Read.All` permanece consentido para a resolução de destinatários.
 
-Notificações do Teams serão enviadas por `POST /users/{userId-or-UPN}/teamwork/sendActivityNotification`, com a permissão de aplicação de consentimento específico ao recurso `TeamsActivity.Send.User`, que é a opção de menor privilégio para um app instalado no escopo pessoal do usuário. O manifesto declara a tab pessoal estática `ticket-detail` e o activity type `ticketCommunication`, com os parâmetros `notificationText` e `ticketUrl`; o tópico textual usa o deep link Teams e o conteúdo mantém o link direto do chamado. A permissão ampla `TeamsActivity.Send` não será solicitada por padrão.
-
-O Microsoft Entra app ID deverá constar em `webApplicationInfo` no manifesto do aplicativo Teams. O aplicativo Teams deverá estar instalado no escopo pessoal do destinatário. O repositório conterá o manifesto versionado e instruções de empacotamento, publicação no catálogo da organização e instalação. A instalação pode ser feita administrativamente pelo Graph, mas não fará parte do envio de cada aviso.
+Para cada entrega Teams, a Function resolverá o usuário destinatário com o token de aplicação existente, criará ou recuperará o chat individual com `POST /chats` usando o token delegado e enviará com `POST /chats/{chat-id}/messages`. A mensagem aparecerá como enviada pela conta conectada. Se a autorização for revogada ou expirar, somente o canal Teams falhará e continuará retentável; o e-mail e o estado do chamado não serão afetados.
 
 ## Agendamento
 
@@ -143,7 +144,7 @@ Conteúdo inserido em HTML será escapado. URLs serão construídas somente a pa
 - `notify-ticket-communications/_shared/graphClient`: autenticação, envio, classificação de erros e retentativas.
 - `notify-ticket-communications/index.ts`: autenticação da requisição, leitura do banco e orquestração.
 - serviço do frontend: invoca `ticket_resolved` depois que a finalização do chamado for confirmada.
-- manifesto e guia do Teams: artefato administrativo necessário para notificações no feed Atividade.
+- módulo OAuth do Teams: autorização, criptografia, renovação e envio em chat individual.
 
 Cada unidade terá interface própria e não dependerá de componentes React para aplicar regras de prazo ou construir mensagens.
 
@@ -179,9 +180,10 @@ Antes da entrega serão executados os testes direcionados, a suíte completa, li
 
 ## Fora de escopo
 
-- mensagens em chats ou canais do Teams;
-- painel administrativo de templates ou histórico de entregas;
+- mensagens em chats de grupo ou canais do Teams;
+- painel administrativo de histórico de entregas;
 - preferências individuais de opt-out dentro do Responsum;
 - regras de dias úteis ou calendário de feriados;
 - anexos nos e-mails;
-- substituição das notificações push e WhatsApp existentes.
+- substituição das notificações push e WhatsApp existentes;
+- envio de Teams por feed Atividade, bot, canal ou aplicativo Teams instalado.
