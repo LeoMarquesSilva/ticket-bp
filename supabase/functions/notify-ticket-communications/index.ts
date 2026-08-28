@@ -1,5 +1,5 @@
 import { withSupabase } from 'npm:@supabase/server@1.4.1';
-import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createCorsHeaders } from './_shared/cors.ts';
 import { createGraphClient } from './_shared/graphClient.mjs';
 import { createTicketCommunicationRepository } from './_shared/repository.ts';
