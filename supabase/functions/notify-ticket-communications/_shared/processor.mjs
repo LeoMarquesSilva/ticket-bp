@@ -155,6 +155,7 @@ export async function processDeliveries({
   clock,
   ticketId,
   notificationType,
+  channel,
   headerImageUrl,
   batchSize = DEFAULT_BATCH_SIZE,
   budget = DEFAULT_BUDGET,
@@ -206,7 +207,15 @@ export async function processDeliveries({
   ) {
     const remaining = effectiveBudget.maxDeliveries - counts.selected;
     const claimLimit = Math.min(effectiveBatchSize, remaining);
-    const deliveries = await repository.claim(claimLimit, claimNow, { ticketId, notificationType });
+    let deliveries = await repository.claim(claimLimit, claimNow, { ticketId, notificationType });
+    if (channel) {
+      const kept = [];
+      for (const delivery of deliveries) {
+        if (delivery.channel === channel) kept.push(delivery);
+        else await releaseDelivery(repository, delivery, claimNow);
+      }
+      deliveries = kept;
+    }
     batches += 1;
     counts.selected += deliveries.length;
 

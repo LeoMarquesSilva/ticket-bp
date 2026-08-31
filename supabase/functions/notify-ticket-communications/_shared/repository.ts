@@ -10,6 +10,7 @@ const RPCS = {
   teamsTemplates: 'helpdesk_get_ticket_communication_teams_templates',
   schedule: 'helpdesk_get_ticket_communication_schedule',
   listDeliveries: 'helpdesk_list_ticket_communication_deliveries',
+  requeue: 'helpdesk_requeue_ticket_notification',
 } as const;
 
 const PAGE_SIZE = 500;
@@ -96,6 +97,7 @@ export function createTicketCommunicationRepository(supabaseAdmin: unknown) {
       return rows(result.data).map((item) => ({
         ticketId: item.ticket_id,
         ticketTitle: typeof item.ticket_title === 'string' ? item.ticket_title : '',
+        requesterId: typeof item.requester_id === 'string' ? item.requester_id : '',
         requesterName: typeof item.requester_name === 'string' ? item.requester_name : '',
         requesterEmail: typeof item.requester_email === 'string' ? item.requester_email : '',
         notificationType: item.notification_type,
@@ -147,6 +149,24 @@ export function createTicketCommunicationRepository(supabaseAdmin: unknown) {
         p_next_attempt_at: new Date(input.nextAttemptAt).toISOString(),
       });
       throwOnError(result.error, 'enqueue');
+      return row(result.data);
+    },
+
+    async requeue(input: {
+      ticketId: string;
+      notificationType: string;
+      channel: string;
+      cycleKey: string;
+      nextAttemptAt: Date | string;
+    }) {
+      const result = await client.rpc(RPCS.requeue, {
+        p_ticket_id: input.ticketId,
+        p_notification_type: input.notificationType,
+        p_channel: input.channel,
+        p_cycle_key: input.cycleKey,
+        p_next_attempt_at: new Date(input.nextAttemptAt).toISOString(),
+      });
+      throwOnError(result.error, 'requeue');
       return row(result.data);
     },
 

@@ -14,6 +14,14 @@ const queuePreviewMigration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260828214500_ticket_communication_queue_preview.sql'),
   'utf8',
 );
+const deliveryRequesterMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260831132000_ticket_communication_delivery_requester.sql'),
+  'utf8',
+);
+const retryDeliveryMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260831140000_ticket_communication_retry_delivery.sql'),
+  'utf8',
+);
 
 describe('ticket communications migration contract', () => {
   it('fences completion with the active claim token, attempt and processing state', () => {
@@ -83,5 +91,23 @@ describe('ticket communication queue preview migration contract', () => {
     expect(queuePreviewMigration).toMatch(/grant execute\s+on function public\.helpdesk_list_ticket_communication_deliveries\(integer\)\s+to service_role/);
     expect(queuePreviewMigration).toMatch(/revoke all[\s\S]+from public, anon, authenticated, service_role/);
     expect(queuePreviewMigration).not.toMatch(/grant execute[\s\S]+to authenticated/);
+  });
+
+  it('inclui o solicitante na lista de entregas só para service_role', () => {
+    expect(deliveryRequesterMigration).toMatch(/requester_id uuid/);
+    expect(deliveryRequesterMigration).toMatch(/on requester\.id = ticket\.created_by/);
+    expect(deliveryRequesterMigration).toMatch(/grant execute\s+on function public\.helpdesk_list_ticket_communication_deliveries\(integer\)\s+to service_role/);
+    expect(deliveryRequesterMigration).toMatch(/revoke all[\s\S]+from public, anon, authenticated, service_role/);
+    expect(deliveryRequesterMigration).not.toMatch(/grant execute[\s\S]+to authenticated/);
+  });
+});
+
+describe('ticket communication retry delivery migration contract', () => {
+  it('recoloca um aviso falho só para service_role', () => {
+    expect(retryDeliveryMigration).toMatch(/create function public\.helpdesk_requeue_ticket_notification/);
+    expect(retryDeliveryMigration).toMatch(/grant execute\s+on function public\.helpdesk_requeue_ticket_notification\(/);
+    expect(retryDeliveryMigration).toMatch(/to service_role/);
+    expect(retryDeliveryMigration).toMatch(/revoke all[\s\S]+from public, anon, authenticated, service_role/);
+    expect(retryDeliveryMigration).not.toMatch(/grant execute[\s\S]+to authenticated/);
   });
 });

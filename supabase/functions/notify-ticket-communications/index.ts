@@ -50,8 +50,8 @@ const TEAMS_HEADER_ORANGE_PNG = Uint8Array.from(
   (char) => char.charCodeAt(0),
 );
 
-function corsHeaders(): Record<string, string> {
-  return createCorsHeaders(Deno.env.get('APP_PUBLIC_URL'));
+function corsHeaders(req?: Request): Record<string, string> {
+  return createCorsHeaders(Deno.env.get('APP_PUBLIC_URL'), req?.headers.get('Origin'));
 }
 
 function teamsHeaderImageUrl(): string | undefined {
@@ -59,10 +59,10 @@ function teamsHeaderImageUrl(): string | undefined {
   return root ? `${root}/functions/v1/notify-ticket-communications/teams-header-orange.png` : undefined;
 }
 
-function json(status: number, body: unknown): Response {
+function json(status: number, body: unknown, req?: Request): Response {
   return Response.json(body, {
     status,
-    headers: { ...corsHeaders(), 'Cache-Control': 'no-store' },
+    headers: { ...corsHeaders(req), 'Cache-Control': 'no-store' },
   });
 }
 
@@ -82,8 +82,8 @@ function createAdminClient() {
 }
 
 async function authenticatedFetch(req: Request): Promise<Response> {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() });
-  if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
+  if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' }, req);
 
   const authorization = req.headers.get('Authorization');
   const auth = await resolveTicketCommunicationAuth({
@@ -99,7 +99,7 @@ async function authenticatedFetch(req: Request): Promise<Response> {
       }
     },
   });
-  if (!auth) return json(401, { error: 'unauthorized' });
+  if (!auth) return json(401, { error: 'unauthorized' }, req);
 
   const supabaseAdmin = createAdminClient();
   const supabase = auth.authMode === 'user' && authorization
@@ -113,10 +113,10 @@ async function authenticatedFetch(req: Request): Promise<Response> {
     && (TEAMS_OAUTH_ACTIONS.has(body.action) || body.action === TEAMS_TEST_ACTION)
   ) {
     const config = readRuntimeConfig();
-    if (!config) return json(503, { error: 'service_unavailable' });
+    if (!config) return json(503, { error: 'service_unavailable' }, req);
     const { data: isAdmin, error: permissionError } = await supabase
       .rpc('helpdesk_has_manage_categories');
-    if (permissionError) return json(500, { error: 'internal_error' });
+    if (permissionError) return json(500, { error: 'internal_error' }, req);
     const teamsClient = getTeamsClient(config, supabaseAdmin);
     if (body.action === TEAMS_TEST_ACTION) {
       const repository = createTicketCommunicationRepository(supabaseAdmin);
@@ -146,7 +146,7 @@ async function authenticatedFetch(req: Request): Promise<Response> {
         sendChat: teamsClient.sendChat,
         teamsTemplateOverrides,
       });
-      return json(result.status, result.body);
+      return json(result.status, result.body, req);
     }
     const result = await handleTeamsOAuthAction({
       authMode: auth.authMode,
@@ -155,7 +155,7 @@ async function authenticatedFetch(req: Request): Promise<Response> {
       config,
       teamsClient,
     });
-    return json(result.status, result.body);
+    return json(result.status, result.body, req);
   }
 
   let isAdmin = false;
@@ -163,11 +163,11 @@ async function authenticatedFetch(req: Request): Promise<Response> {
     auth.authMode === 'user'
     && body
     && typeof body === 'object'
-    && (body.action === 'queue_status' || body.action === 'run_pending')
+    && (body.action === 'queue_status' || body.action === 'run_pending' || body.action === 'retry_delivery')
   ) {
     const { data: adminFlag, error: permissionError } = await supabase
       .rpc('helpdesk_has_manage_categories');
-    if (permissionError) return json(500, { error: 'internal_error' });
+    if (permissionError) return json(500, { error: 'internal_error' }, req);
     isAdmin = adminFlag === true;
   }
 
@@ -203,7 +203,7 @@ async function authenticatedFetch(req: Request): Promise<Response> {
     });
   }
 
-  return json(result.status, result.body);
+  return json(result.status, result.body, req);
 }
 
 async function oauthCallback(req: Request): Promise<Response> {

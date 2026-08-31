@@ -4,6 +4,7 @@ import type { TicketCommunicationType } from '@/services/ticketCommunicationSett
 export type TicketCommunicationQueueItem = {
   ticketId: string;
   ticketTitle: string;
+  requesterId?: string;
   requesterName: string;
   requesterEmail: string;
   notificationType: TicketCommunicationType;
@@ -42,6 +43,28 @@ export async function getTicketCommunicationQueue(): Promise<TicketCommunication
       next: Number(body.counts.next) || 0,
       sent: Number(body.counts.sent) || 0,
     },
+  };
+}
+
+export async function retryTicketCommunication(input: {
+  ticketId: string;
+  notificationType: TicketCommunicationType;
+  channel: 'email' | 'teams';
+  cycleKey: string;
+}): Promise<{
+  prepared: number;
+  sent: number;
+  failed: number;
+}> {
+  const { data, error } = await supabase.functions.invoke('notify-ticket-communications', {
+    body: { action: 'retry_delivery', ...input },
+  });
+  const body = data as { ok?: boolean; prepared?: number; sent?: number; failed?: number; error?: string } | null;
+  invokeError(error, body, 'Não foi possível reenviar este aviso.');
+  return {
+    prepared: Number(body?.prepared) || 0,
+    sent: Number(body?.sent) || 0,
+    failed: Number(body?.failed) || 0,
   };
 }
 

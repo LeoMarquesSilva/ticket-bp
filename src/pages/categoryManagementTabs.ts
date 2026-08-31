@@ -1,9 +1,7 @@
 const CATEGORY_MANAGEMENT_TABS = new Set([
   'categorias',
   'frentes',
-  'whatsapp',
   'respostas-rapidas',
-  'comunicacoes',
 ]);
 
 export function getInitialCategoryManagementTab(search: string): string {

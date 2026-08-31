@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, CheckCircle2, Clock3, Eye, Inbox, Link2, ListChecks, Loader2, Mail, MessageSquare, MessageSquareText, Monitor, RefreshCw, RotateCcw, Save, Send, Smartphone, Unplug } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { CheckCircle2, Clock3, ExternalLink, Eye, Inbox, Link2, ListChecks, Loader2, Mail, MessageSquare, MessageSquareText, Monitor, RefreshCw, RotateCcw, Save, Search, Send, Smartphone, Unplug, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,14 +16,31 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { useOfficialPhoto } from '@/contexts/OfficialPhotosContext';
+import { officialPhotoSrc } from '@/services/officialPhotosService';
+import {
+  filterQueueItems,
+  groupQueueItemsByMonthAndDay,
+  QUEUE_CHANNEL_BADGE_CLASS,
+  QUEUE_TYPE_BADGE_CLASS,
+  type QueueChannelFilter,
+  type QueueTypeFilter,
+} from './ticketCommunicationQueueView';
 import { cn } from '@/lib/utils';
 import {
   formatScheduleCaption,
   normalizeSchedule,
   SCHEDULE_DEFAULTS,
-  SCHEDULE_DELAY_HOURS_MAX,
 } from '../../../supabase/functions/notify-ticket-communications/_shared/rules.mjs';
 import {
   EMAIL_TEMPLATE_DEFAULTS,
@@ -42,6 +59,7 @@ import {
 } from '@/services/ticketCommunicationTeamsService';
 import {
   getTicketCommunicationQueue,
+  retryTicketCommunication,
   runPendingTicketCommunications,
   type TicketCommunicationQueue,
   type TicketCommunicationQueueItem,
@@ -179,35 +197,316 @@ function formatDateTime(value: string | null | undefined): string | null {
   }).format(date);
 }
 
+function formatTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeStyle: 'short',
+    timeZone: 'America/Sao_Paulo',
+  }).format(date);
+}
+
+function initials(name?: string): string {
+  if (!name?.trim()) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
 function deliveryErrorLabel(code: string | null): string | null {
   if (!code) return null;
   if (code === 'entra_user_not_found') return 'Usuário não encontrado no Microsoft 365';
   return 'Falha no envio';
 }
 
-function QueueRow({ item, showSentAt }: { item: TicketCommunicationQueueItem; showSentAt?: boolean }) {
+function queueItemKey(item: TicketCommunicationQueueItem): string {
+  return `${item.ticketId}-${item.notificationType}-${item.channel}-${item.cycleKey}`;
+}
+
+function QueueRow({
+  item,
+  showTime,
+  busy,
+  retrying,
+  onPreview,
+  onRetry,
+}: {
+  item: TicketCommunicationQueueItem;
+  showTime?: boolean;
+  busy?: boolean;
+  retrying?: boolean;
+  onPreview: (item: TicketCommunicationQueueItem) => void;
+  onRetry: (item: TicketCommunicationQueueItem) => void;
+}) {
+  const photo = useOfficialPhoto(item.requesterId);
+  const src = officialPhotoSrc(photo);
+  const displayName = item.requesterName || 'Solicitante';
+  const sentAt = formatTime(item.sentAt);
+  const error = deliveryErrorLabel(item.lastError);
+  const ticketUrl = `/tickets/${item.ticketId}`;
+
+  return (
+    <div
+      className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 hover:border-slate-300"
+      onClick={() => onPreview(item)}
+    >
+      <Avatar className="h-10 w-10 shrink-0 rounded-lg">
+        {src && <AvatarImage src={src} alt={displayName} className="object-cover" />}
+        <AvatarFallback className="rounded-lg bg-[#F69F19]/15 text-xs font-semibold text-[#DE5532]">
+          {item.requesterName ? initials(item.requesterName) : <UserRound className="h-4 w-4" />}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <a
+            href={ticketUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-w-0 items-center gap-1 truncate text-sm font-semibold text-[#2C2D2F] hover:text-[#DE5532]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="truncate">{item.ticketTitle}</span>
+            <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" />
+            <span className="sr-only">Abrir chamado</span>
+          </a>
+          {showTime && sentAt && (
+            <span className="shrink-0 text-[11px] text-slate-400" title={`Enviado às ${sentAt}`}>
+              {sentAt}
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 truncate text-xs text-slate-500" title={item.requesterEmail || undefined}>
+          {displayName}
+          {item.requesterEmail ? ` · ${item.requesterEmail}` : ''}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className={QUEUE_TYPE_BADGE_CLASS[item.notificationType]}>
+            {TYPE_LABELS[item.notificationType]}
+          </Badge>
+          <Badge variant="outline" className={QUEUE_CHANNEL_BADGE_CLASS[item.channel]}>
+            {item.channel === 'teams'
+              ? <><MessageSquareText className="mr-1 h-3 w-3" />Teams</>
+              : <><Mail className="mr-1 h-3 w-3" />E-mail</>}
+          </Badge>
+          {item.status === 'failed' && <Badge variant="warning">{error ?? 'Falhou'}</Badge>}
+          {item.status === 'processing' && <Badge variant="secondary">Enviando</Badge>}
+          {item.status === 'pending' && <Badge variant="secondary">Pendente</Badge>}
+          {item.status === 'failed' && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              disabled={busy || retrying}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRetry(item);
+              }}
+            >
+              {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              Reenviar
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueueItemPreview({
+  item,
+  busy,
+  retrying,
+  onRetry,
+}: {
+  item: TicketCommunicationQueueItem;
+  busy?: boolean;
+  retrying?: boolean;
+  onRetry: (item: TicketCommunicationQueueItem) => void;
+}) {
+  const photo = useOfficialPhoto(item.requesterId);
+  const src = officialPhotoSrc(photo);
+  const displayName = item.requesterName || 'Solicitante';
   const sentAt = formatDateTime(item.sentAt);
   const error = deliveryErrorLabel(item.lastError);
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0">
-        <a href={`/tickets/${item.ticketId}`} className="truncate text-sm font-semibold text-[#2C2D2F] hover:text-[#DE5532]">
-          {item.ticketTitle}
-        </a>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {item.requesterName || 'Solicitante'}
-          {item.requesterEmail ? ` · ${item.requesterEmail}` : ''}
-        </p>
-        <p className="mt-1 text-xs text-slate-400">{TYPE_LABELS[item.notificationType]}</p>
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <Avatar className="h-12 w-12 shrink-0 rounded-lg">
+          {src && <AvatarImage src={src} alt={displayName} className="object-cover" />}
+          <AvatarFallback className="rounded-lg bg-[#F69F19]/15 text-sm font-semibold text-[#DE5532]">
+            {item.requesterName ? initials(item.requesterName) : <UserRound className="h-5 w-5" />}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#2C2D2F]">{displayName}</p>
+          {item.requesterEmail && <p className="truncate text-xs text-slate-500">{item.requesterEmail}</p>}
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline">{item.channel === 'teams' ? 'Teams' : 'E-mail'}</Badge>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="outline" className={QUEUE_TYPE_BADGE_CLASS[item.notificationType]}>
+          {TYPE_LABELS[item.notificationType]}
+        </Badge>
+        <Badge variant="outline" className={QUEUE_CHANNEL_BADGE_CLASS[item.channel]}>
+          {item.channel === 'teams' ? 'Teams' : 'E-mail'}
+        </Badge>
         {item.status === 'failed' && <Badge variant="warning">{error ?? 'Falhou'}</Badge>}
-        {item.status === 'processing' && <Badge variant="secondary">Enviando</Badge>}
         {item.status === 'pending' && <Badge variant="secondary">Pendente</Badge>}
-        {showSentAt && sentAt && <span className="text-[11px] text-slate-400">{sentAt}</span>}
+        {item.status === 'sent' && <Badge variant="success">Enviado</Badge>}
       </div>
+      {sentAt && <p className="text-sm text-slate-600">Enviado em {sentAt}</p>}
+      {item.status === 'failed' && error && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{error}</p>
+      )}
+      <SheetFooter className="flex-col gap-2 sm:flex-col">
+        <Button asChild className="w-full">
+          <a href={`/tickets/${item.ticketId}`} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-4 w-4" />
+            Abrir chamado
+          </a>
+        </Button>
+        {item.status === 'failed' && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={busy || retrying}
+            onClick={() => onRetry(item)}
+          >
+            {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            Reenviar este aviso
+          </Button>
+        )}
+      </SheetFooter>
+    </div>
+  );
+}
+
+function QueueState({
+  tone,
+  title,
+  description,
+}: {
+  tone: 'loading' | 'error' | 'empty';
+  title: string;
+  description?: ReactNode;
+}) {
+  const Icon = tone === 'loading' ? Loader2 : tone === 'error' ? RefreshCw : Inbox;
+  return (
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center gap-1.5 rounded-xl border px-4 py-8 text-center',
+        tone === 'error'
+          ? 'border-rose-200 bg-rose-50/80'
+          : 'border-dashed border-slate-200 bg-slate-50/70',
+      )}
+    >
+      <Icon className={cn(
+        'h-5 w-5',
+        tone === 'loading' && 'animate-spin text-slate-400',
+        tone === 'error' && 'text-rose-500',
+        tone === 'empty' && 'text-slate-400',
+      )} />
+      <p className={cn('text-sm', tone === 'error' ? 'font-medium text-rose-700' : 'text-slate-500')}>
+        {title}
+      </p>
+      {description && <p className="text-xs text-slate-400">{description}</p>}
+    </div>
+  );
+}
+
+const TYPE_FILTERS: Array<{ value: QueueTypeFilter; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'resolved_feedback_invite', label: 'Finalizado' },
+  { value: 'awaiting_requester', label: 'Aguardando' },
+  { value: 'awaiting_feedback', label: 'Avaliação' },
+];
+
+const CHANNEL_FILTERS: Array<{ value: QueueChannelFilter; label: string }> = [
+  { value: 'all', label: 'Todos os canais' },
+  { value: 'email', label: 'E-mail' },
+  { value: 'teams', label: 'Teams' },
+];
+
+function QueueFilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        active
+          ? 'border-[#2C2D2F] bg-[#2C2D2F] text-white'
+          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function QueueGroupedList({
+  items,
+  showTime,
+  busy,
+  retryingKey,
+  onPreview,
+  onRetry,
+}: {
+  items: TicketCommunicationQueueItem[];
+  showTime?: boolean;
+  busy?: boolean;
+  retryingKey?: string | null;
+  onPreview: (item: TicketCommunicationQueueItem) => void;
+  onRetry: (item: TicketCommunicationQueueItem) => void;
+}) {
+  const groups = groupQueueItemsByMonthAndDay(items);
+  const currentMonth = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date()).slice(0, 7);
+  return (
+    <div className="max-h-[520px] space-y-4 overflow-y-auto pr-1">
+      {groups.map((month) => (
+        <div key={month.key} className="space-y-3">
+          {(groups.length > 1 || month.key !== currentMonth) && (
+            <p className="sticky top-0 z-10 bg-white/95 px-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              {month.label}
+            </p>
+          )}
+          {month.days.map((day) => (
+            <div key={day.key} className="space-y-2">
+              <div className="flex items-center gap-2 px-0.5">
+                <p className="text-xs font-semibold text-[#2C2D2F]">{day.label}</p>
+                <span className="text-[11px] text-slate-400">{day.items.length}</span>
+              </div>
+              {day.items.map((item) => (
+                <QueueRow
+                  key={queueItemKey(item)}
+                  item={item}
+                  showTime={showTime}
+                  busy={busy}
+                  retrying={retryingKey === queueItemKey(item)}
+                  onPreview={onPreview}
+                  onRetry={onRetry}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -216,20 +515,34 @@ export function TicketCommunicationQueueCard({
   loading,
   busy,
   queue,
+  retryingKey,
   onRefresh,
   onRunPending,
+  onRetry,
 }: {
   loading: boolean;
   busy: boolean;
   queue: TicketCommunicationQueue | null;
+  retryingKey?: string | null;
   onRefresh: () => void;
   onRunPending: () => void;
+  onRetry?: (item: TicketCommunicationQueueItem) => void;
 }) {
+  const [typeFilter, setTypeFilter] = useState<QueueTypeFilter>('all');
+  const [channelFilter, setChannelFilter] = useState<QueueChannelFilter>('all');
+  const [query, setQuery] = useState('');
+  const [preview, setPreview] = useState<TicketCommunicationQueueItem | null>(null);
   const nextRunAt = formatDateTime(queue?.nextRunAt);
   const pendingCount = queue?.counts.next ?? 0;
   const sentCount = queue?.counts.sent ?? 0;
+  const filters = { type: typeFilter, channel: channelFilter, query };
+  const visibleNext = filterQueueItems(queue?.next ?? [], filters);
+  const visibleSent = filterQueueItems(queue?.sent ?? [], filters);
+  const hasFilter = typeFilter !== 'all' || channelFilter !== 'all' || query.trim() !== '';
+  const retryItem = onRetry ?? (() => undefined);
 
   return (
+    <>
     <Card className="overflow-hidden border-slate-200 shadow-sm">
       <div className="h-1 bg-gradient-to-r from-[#F69F19] via-[#DE5532] to-[#BD2D29]" />
       <CardHeader className="pb-4">
@@ -256,6 +569,38 @@ export function TicketCommunicationQueueCard({
             </Button>
           </div>
         </div>
+        {queue && (queue.next.length > 0 || queue.sent.length > 0) && (
+          <div className="mt-4 flex flex-wrap items-center gap-1.5">
+            {TYPE_FILTERS.map((filter) => (
+              <QueueFilterChip
+                key={filter.value}
+                active={typeFilter === filter.value}
+                onClick={() => setTypeFilter(filter.value)}
+              >
+                {filter.label}
+              </QueueFilterChip>
+            ))}
+            <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:block" />
+            {CHANNEL_FILTERS.map((filter) => (
+              <QueueFilterChip
+                key={filter.value}
+                active={channelFilter === filter.value}
+                onClick={() => setChannelFilter(filter.value)}
+              >
+                {filter.label}
+              </QueueFilterChip>
+            ))}
+            <div className="relative w-full sm:ml-auto sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar chamado ou solicitante"
+                className="h-8 pl-9"
+              />
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-2">
         <section className="space-y-2">
@@ -264,20 +609,36 @@ export function TicketCommunicationQueueCard({
               <ListChecks className="h-4 w-4 text-[#DE5532]" />
               Próxima rodada
             </h3>
-            <Badge variant="secondary">{pendingCount}</Badge>
+            <Badge variant="secondary">{hasFilter ? visibleNext.length : pendingCount}</Badge>
           </div>
           {loading && !queue ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Carregando fila...</p>
+            <QueueState tone="loading" title="Carregando fila..." />
           ) : !queue ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Não foi possível carregar a próxima rodada. Clique em Atualizar.</p>
+            <QueueState
+              tone="error"
+              title="Não foi possível carregar a próxima rodada. Clique em Atualizar."
+              description="A lista depende da conexão com o serviço de avisos."
+            />
           ) : queue.next.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Nenhum aviso pendente agora.</p>
+            <QueueState
+              tone="empty"
+              title="Nenhum aviso pendente agora."
+              description="Quando o prazo vencer, o chamado aparece aqui."
+            />
+          ) : visibleNext.length === 0 ? (
+            <QueueState
+              tone="empty"
+              title="Nenhum aviso neste filtro."
+              description="Tire o filtro ou escolha outro tipo e canal."
+            />
           ) : (
-            <div className="max-h-[480px] space-y-2 overflow-y-auto pr-1">
-              {queue!.next.map((item) => (
-                <QueueRow key={`${item.ticketId}-${item.notificationType}-${item.channel}`} item={item} />
-              ))}
-            </div>
+            <QueueGroupedList
+              items={visibleNext}
+              busy={busy}
+              retryingKey={retryingKey}
+              onPreview={setPreview}
+              onRetry={retryItem}
+            />
           )}
         </section>
         <section className="space-y-2">
@@ -286,28 +647,62 @@ export function TicketCommunicationQueueCard({
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
               Enviados
             </h3>
-            <Badge variant="secondary">{sentCount}</Badge>
+            <Badge variant="secondary">{hasFilter ? visibleSent.length : sentCount}</Badge>
           </div>
           {loading && !queue ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Carregando histórico...</p>
+            <QueueState tone="loading" title="Carregando histórico..." />
           ) : !queue ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Não foi possível carregar os envios. Clique em Atualizar.</p>
+            <QueueState
+              tone="error"
+              title="Não foi possível carregar os envios. Clique em Atualizar."
+              description="O histórico de e-mail e Teams aparece depois do envio."
+            />
           ) : queue.sent.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Nenhum envio recente.</p>
+            <QueueState
+              tone="empty"
+              title="Nenhum envio recente."
+              description="Os avisos já disparados ficam agrupados por dia."
+            />
+          ) : visibleSent.length === 0 ? (
+            <QueueState
+              tone="empty"
+              title="Nenhum envio neste filtro."
+              description="Tire o filtro ou escolha outro tipo e canal."
+            />
           ) : (
-            <div className="max-h-[480px] space-y-2 overflow-y-auto pr-1">
-              {queue!.sent.map((item) => (
-                <QueueRow
-                  key={`${item.ticketId}-${item.notificationType}-${item.channel}-${item.cycleKey}`}
-                  item={item}
-                  showSentAt
-                />
-              ))}
-            </div>
+            <QueueGroupedList
+              items={visibleSent}
+              showTime
+              busy={busy}
+              retryingKey={retryingKey}
+              onPreview={setPreview}
+              onRetry={retryItem}
+            />
           )}
         </section>
       </CardContent>
     </Card>
+    <Sheet open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }}>
+      <SheetContent className="overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle className="pr-6 text-left">{preview?.ticketTitle ?? 'Aviso'}</SheetTitle>
+          <SheetDescription className="text-left">
+            Detalhes do aviso sem sair da fila.
+          </SheetDescription>
+        </SheetHeader>
+        {preview && (
+          <div className="mt-6">
+            <QueueItemPreview
+              item={preview}
+              busy={busy}
+              retrying={retryingKey === queueItemKey(preview)}
+              onRetry={retryItem}
+            />
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+    </>
   );
 }
 
@@ -317,7 +712,6 @@ export default function TicketCommunicationsTab() {
   const [settings, setSettings] = useState<TicketCommunicationTemplateOverrides>({});
   const [teamsSettings, setTeamsSettings] = useState<TicketCommunicationTemplateOverrides>({});
   const [schedule, setSchedule] = useState<TicketCommunicationSchedule>(() => normalizeSchedule(SCHEDULE_DEFAULTS));
-  const [savingSchedule, setSavingSchedule] = useState(false);
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [teamsDevice, setTeamsDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [loading, setLoading] = useState(false);
@@ -331,6 +725,7 @@ export default function TicketCommunicationsTab() {
   const [queue, setQueue] = useState<TicketCommunicationQueue | null>(null);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [retryingKey, setRetryingKey] = useState<string | null>(null);
   const [confirmRun, setConfirmRun] = useState(false);
 
   useEffect(() => {
@@ -473,31 +868,6 @@ export default function TicketCommunicationsTab() {
     }
   }
 
-  function updateScheduleItem(type: TicketCommunicationType, patch: Partial<TicketCommunicationSchedule[TicketCommunicationType]>) {
-    setSchedule((current) => normalizeSchedule({
-      ...current,
-      [type]: { ...current[type], ...patch },
-    }));
-  }
-
-  function restoreScheduleDefaults() {
-    setSchedule(normalizeSchedule({}));
-    toast.success('Prazos padrão restaurados nesta tela. Clique em salvar para aplicar.');
-  }
-
-  async function saveSchedule() {
-    setSavingSchedule(true);
-    try {
-      await TicketCommunicationSettingsService.saveSchedule(schedule);
-      setSchedule(await TicketCommunicationSettingsService.getSchedule());
-      toast.success('Prazos das mensagens automáticas atualizados.');
-    } catch {
-      toast.error('Não foi possível salvar os prazos das mensagens.');
-    } finally {
-      setSavingSchedule(false);
-    }
-  }
-
   async function saveTeams() {
     setSavingTeams(true);
     try {
@@ -537,6 +907,26 @@ export default function TicketCommunicationsTab() {
 
   const testUser = testUsers.find((user) => user.id === testUserId);
   const canSendTest = Boolean(testUser?.email);
+
+  async function retryOne(item: TicketCommunicationQueueItem) {
+    setRetryingKey(queueItemKey(item));
+    try {
+      const result = await retryTicketCommunication({
+        ticketId: item.ticketId,
+        notificationType: item.notificationType,
+        channel: item.channel,
+        cycleKey: item.cycleKey,
+      });
+      await loadQueue();
+      if (result.sent > 0) toast.success('Aviso reenviado.');
+      else if (result.failed > 0) toast.error('O reenvio falhou de novo.');
+      else toast.success('Aviso recolocado na fila.');
+    } catch {
+      toast.error('Não foi possível reenviar este aviso.');
+    } finally {
+      setRetryingKey(null);
+    }
+  }
 
   async function runPending() {
     setConfirmRun(false);
@@ -587,8 +977,10 @@ export default function TicketCommunicationsTab() {
         loading={queueLoading}
         busy={queueBusy}
         queue={queue}
+        retryingKey={retryingKey}
         onRefresh={() => void loadQueue()}
         onRunPending={() => setConfirmRun(true)}
+        onRetry={(item) => void retryOne(item)}
       />
       <AlertDialog open={confirmRun} onOpenChange={setConfirmRun}>
         <AlertDialogContent>
@@ -630,70 +1022,6 @@ export default function TicketCommunicationsTab() {
             {teamsBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
             Enviar teste
           </Button>
-        </CardContent>
-      </Card>
-      <Card className="overflow-hidden border-slate-200 shadow-sm">
-        <div className="h-1 bg-gradient-to-r from-[#F69F19] via-[#DE5532] to-[#BD2D29]" />
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg text-[#2C2D2F]">
-            <span className="rounded-lg bg-[#2C2D2F] p-2 text-white"><CalendarClock className="h-4 w-4" /></span>
-            Quando enviar
-          </CardTitle>
-          <CardDescription>
-            Ative ou desative cada aviso e defina depois de quantas horas ele sai. A rotina diária confere os prazos por volta das 9h (Brasília). No chamado finalizado, prazo 0 envia na hora.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {OPTIONS.map((option) => {
-            const item = schedule[option.type];
-            return (
-              <div key={option.type} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#2C2D2F]">{option.label}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{formatScheduleCaption(option.type, item)}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm text-slate-600">
-                    <Switch
-                      checked={item.enabled}
-                      disabled={loading || savingSchedule}
-                      onCheckedChange={(enabled) => updateScheduleItem(option.type, { enabled })}
-                    />
-                    {item.enabled ? 'Ativa' : 'Desativada'}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={`schedule-${option.type}-hours`} className="text-xs text-slate-500">Horas</Label>
-                    <Input
-                      id={`schedule-${option.type}-hours`}
-                      type="number"
-                      min={0}
-                      max={SCHEDULE_DELAY_HOURS_MAX}
-                      disabled={loading || savingSchedule || !item.enabled}
-                      value={item.delayHours}
-                      onChange={(event) => {
-                        const parsed = Number.parseInt(event.target.value, 10);
-                        if (!Number.isInteger(parsed)) return;
-                        updateScheduleItem(option.type, {
-                          delayHours: Math.min(SCHEDULE_DELAY_HOURS_MAX, Math.max(0, parsed)),
-                        });
-                      }}
-                      className="w-24"
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button type="button" onClick={() => void saveSchedule()} disabled={savingSchedule || loading}>
-              <Save className="h-4 w-4" />
-              {savingSchedule ? 'Salvando...' : 'Salvar prazos'}
-            </Button>
-            <Button type="button" variant="outline" onClick={restoreScheduleDefaults} disabled={savingSchedule || loading}>
-              <RotateCcw className="h-4 w-4" />
-              Restaurar padrão
-            </Button>
-          </div>
         </CardContent>
       </Card>
       <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">

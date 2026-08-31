@@ -46,6 +46,7 @@ describe('buildQueuePreview', () => {
       expect.objectContaining({
         ticketId,
         ticketTitle: 'Acesso ao sistema',
+        requesterId,
         requesterName: 'Samuel Silva',
         requesterEmail: 'samuel.silva@bpplaw.com.br',
         notificationType: 'awaiting_requester',

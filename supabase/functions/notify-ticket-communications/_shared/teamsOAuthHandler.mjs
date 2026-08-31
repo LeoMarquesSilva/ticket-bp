@@ -39,7 +39,7 @@ function hasOnlyAction(body) {
 }
 
 function callbackLocation(appPublicUrl, state) {
-  const url = new URL('/categories', appPublicUrl);
+  const url = new URL('/settings', appPublicUrl);
   url.searchParams.set('tab', 'comunicacoes');
   url.searchParams.set('teams', state);
   return url.toString();

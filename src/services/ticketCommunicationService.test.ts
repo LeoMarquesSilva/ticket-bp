@@ -9,6 +9,7 @@ vi.mock('@/lib/supabase', () => ({
 import {
   getTicketCommunicationQueue,
   notifyTicketResolved,
+  retryTicketCommunication,
   runPendingTicketCommunications,
 } from './ticketCommunicationService';
 
@@ -69,6 +70,33 @@ describe('notifyTicketResolved', () => {
     });
     expect(mocks.invoke).toHaveBeenCalledWith('notify-ticket-communications', {
       body: { action: 'run_pending' },
+    });
+  });
+
+  it('reenvia um aviso específico sem disparar a fila inteira', async () => {
+    mocks.invoke.mockResolvedValue({
+      data: { ok: true, prepared: 1, sent: 1, failed: 0 },
+      error: null,
+    });
+
+    await expect(retryTicketCommunication({
+      ticketId: '11111111-1111-1111-1111-111111111111',
+      notificationType: 'awaiting_requester',
+      channel: 'teams',
+      cycleKey: '2026-08-28',
+    })).resolves.toEqual({
+      prepared: 1,
+      sent: 1,
+      failed: 0,
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith('notify-ticket-communications', {
+      body: {
+        action: 'retry_delivery',
+        ticketId: '11111111-1111-1111-1111-111111111111',
+        notificationType: 'awaiting_requester',
+        channel: 'teams',
+        cycleKey: '2026-08-28',
+      },
     });
   });
 });

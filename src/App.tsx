@@ -10,6 +10,7 @@ import Dashboard from '@/pages/Dashboard';
 import Tickets from '@/pages/Tickets';
 import UserManagement from '@/pages/UserManagement';
 import CategoryManagement from '@/pages/CategoryManagement';
+import Settings from '@/pages/Settings';
 // Banco de Dados desabilitado
 // import DatabaseManagement from '@/pages/DatabaseManagement';
 import Profile from '@/pages/Profile';
@@ -190,6 +191,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute requiredPermission="manage_categories">
             <CategoryManagement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute requiredPermission="manage_categories">
+            <Settings />
           </ProtectedRoute>
         }
       />

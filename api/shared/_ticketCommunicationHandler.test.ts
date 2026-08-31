@@ -485,6 +485,7 @@ describe('handleTicketCommunicationRequest', () => {
         next: [{
           ticketId: TICKET_ID,
           ticketTitle: 'Acesso',
+          requesterId: '',
           requesterName: 'Samuel',
           requesterEmail: 'samuel.silva@bpplaw.com.br',
           notificationType: 'awaiting_requester',
@@ -537,6 +538,66 @@ describe('handleTicketCommunicationRequest', () => {
     expect(result).toEqual({
       status: 200,
       body: { ok: true, prepared: 2, sent: 1, failed: 1 },
+    });
+  });
+
+  it('recusa retry_delivery sem administrador', async () => {
+    const context = handlerDependencies();
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      isAdmin: false,
+      body: {
+        action: 'retry_delivery',
+        ticketId: TICKET_ID,
+        notificationType: 'awaiting_requester',
+        channel: 'teams',
+        cycleKey: '2026-08-28',
+      },
+      dependencies: context.dependencies,
+    });
+
+    expect(result).toEqual({ status: 403, body: { error: 'forbidden' } });
+    expect(context.prepareDeliveries).not.toHaveBeenCalled();
+    expect(context.processDeliveries).not.toHaveBeenCalled();
+  });
+
+  it('reenvia só o aviso falho do chamado e do canal', async () => {
+    const context = handlerDependencies();
+    const requeue = vi.fn(async () => ({ id: 'delivery-1' }));
+
+    const result = await handleTicketCommunicationRequest({
+      authMode: 'user',
+      isAdmin: true,
+      body: {
+        action: 'retry_delivery',
+        ticketId: TICKET_ID,
+        notificationType: 'awaiting_requester',
+        channel: 'teams',
+        cycleKey: '2026-08-28',
+      },
+      dependencies: {
+        ...context.dependencies,
+        repository: { ...context.dependencies.repository, requeue },
+      },
+    });
+
+    expect(requeue).toHaveBeenCalledWith({
+      ticketId: TICKET_ID,
+      notificationType: 'awaiting_requester',
+      channel: 'teams',
+      cycleKey: '2026-08-28',
+      nextAttemptAt: NOW,
+    });
+    expect(context.prepareDeliveries).not.toHaveBeenCalled();
+    expect(context.processDeliveries).toHaveBeenCalledWith(expect.objectContaining({
+      ticketId: TICKET_ID,
+      notificationType: 'awaiting_requester',
+      channel: 'teams',
+    }));
+    expect(result).toEqual({
+      status: 200,
+      body: { ok: true, prepared: 1, sent: 1, failed: 1 },
     });
   });
 });
@@ -752,6 +813,7 @@ describe('createTicketCommunicationRepository', () => {
           id: 'delivery-1',
           ticket_id: TICKET_ID,
           ticket_title: 'Acesso',
+          requester_id: '22222222-2222-2222-2222-222222222222',
           requester_name: 'Ana',
           requester_email: 'ana@bpplaw.com.br',
           notification_type: 'awaiting_requester',
@@ -770,6 +832,7 @@ describe('createTicketCommunicationRepository', () => {
     await expect(repository.listDeliveries()).resolves.toEqual([{
       ticketId: TICKET_ID,
       ticketTitle: 'Acesso',
+      requesterId: '22222222-2222-2222-2222-222222222222',
       requesterName: 'Ana',
       requesterEmail: 'ana@bpplaw.com.br',
       notificationType: 'awaiting_requester',
@@ -793,5 +856,12 @@ describe('createCorsHeaders', () => {
       'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-app-instance',
       Vary: 'Origin',
     });
+  });
+
+  it('libera localhost só quando o Origin é de desenvolvimento local', () => {
+    expect(createCorsHeaders('https://www.responsum.com.br', 'http://localhost:5174')['Access-Control-Allow-Origin'])
+      .toBe('http://localhost:5174');
+    expect(createCorsHeaders('https://www.responsum.com.br', 'https://evil.example')['Access-Control-Allow-Origin'])
+      .toBe('https://www.responsum.com.br');
   });
 });

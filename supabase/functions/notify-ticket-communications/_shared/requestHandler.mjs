@@ -6,8 +6,9 @@ import { previewQueue as defaultPreviewQueue } from './queuePreview.mjs';
 
 const TICKETS_TABLE = 'app_c009c0e4f1_tickets';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTIONS = new Set(['ticket_resolved', 'daily', 'queue_status', 'run_pending']);
+const ACTIONS = new Set(['ticket_resolved', 'daily', 'queue_status', 'run_pending', 'retry_delivery']);
 const ADMIN_ACTIONS = new Set(['queue_status', 'run_pending']);
+const RETRY_KEYS = ['action', 'ticketId', 'notificationType', 'channel', 'cycleKey'];
 const QUEUE_TYPES = new Set([
   'resolved_feedback_invite',
   'awaiting_requester',
@@ -47,6 +48,9 @@ function sanitizeQueueItem(item) {
   return {
     ticketId: item.ticketId,
     ticketTitle: clippedText(item.ticketTitle, 160) || 'Chamado',
+    requesterId: typeof item.requesterId === 'string' && UUID_PATTERN.test(item.requesterId)
+      ? item.requesterId
+      : '',
     requesterName: clippedText(item.requesterName, 120),
     requesterEmail: clippedText(item.requesterEmail, 160),
     notificationType: item.notificationType,
@@ -98,6 +102,20 @@ function authorizeAction(action, authMode, isAdmin, body) {
     }
     return null;
   }
+  if (action === 'retry_delivery') {
+    if (authMode !== 'user' || isAdmin !== true) return response(403, 'forbidden');
+    if (!hasOnlyKeys(body, RETRY_KEYS)) return response(400, 'invalid_body');
+    if (typeof body.ticketId !== 'string' || !UUID_PATTERN.test(body.ticketId)) {
+      return response(400, 'invalid_ticket_id');
+    }
+    if (!QUEUE_TYPES.has(body.notificationType) || !QUEUE_CHANNELS.has(body.channel)) {
+      return response(400, 'invalid_body');
+    }
+    if (typeof body.cycleKey !== 'string' || !body.cycleKey.trim() || body.cycleKey.length > 64) {
+      return response(400, 'invalid_body');
+    }
+    return null;
+  }
   if (ADMIN_ACTIONS.has(action)) {
     if (authMode !== 'user' || isAdmin !== true) return response(403, 'forbidden');
     if (!hasOnlyKeys(body, ['action'])) return response(400, 'invalid_body');
@@ -143,12 +161,45 @@ export async function handleTicketCommunicationRequest({ authMode, isAdmin, body
       return { status: 200, body: sanitizeQueuePreview(preview) };
     }
 
-    const prepareDeliveries = runtimeDependencies.prepareDeliveries
-      ?? dependencies.prepareDeliveries
-      ?? defaultPrepareDeliveries;
     const processDeliveries = runtimeDependencies.processDeliveries
       ?? dependencies.processDeliveries
       ?? defaultProcessDeliveries;
+
+    if (action === 'retry_delivery') {
+      const repository = runtimeDependencies.repository ?? dependencies.repository;
+      if (typeof repository?.requeue !== 'function') return response(500, 'internal_error');
+      const queued = await repository.requeue({
+        ticketId: body.ticketId,
+        notificationType: body.notificationType,
+        channel: body.channel,
+        cycleKey: body.cycleKey,
+        nextAttemptAt: clock(),
+      });
+      if (!queued) return response(404, 'delivery_not_found');
+      const processed = await processDeliveries({
+        repository,
+        graph: runtimeDependencies.graph,
+        appBaseUrl: runtimeDependencies.appBaseUrl,
+        headerImageUrl: runtimeDependencies.headerImageUrl,
+        clock,
+        ticketId: body.ticketId,
+        notificationType: body.notificationType,
+        channel: body.channel,
+      });
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          prepared: 1,
+          sent: count(processed?.sent),
+          failed: count(processed?.failed),
+        },
+      };
+    }
+
+    const prepareDeliveries = runtimeDependencies.prepareDeliveries
+      ?? dependencies.prepareDeliveries
+      ?? defaultPrepareDeliveries;
     const prepareNow = clock();
     const prepared = await prepareDeliveries({
       repository: runtimeDependencies.repository,

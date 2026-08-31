@@ -1,16 +1,14 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, RefreshCw, Tag, MessageCircle, FolderTree, MessageSquare, Settings2, Mail } from 'lucide-react';
+import { Plus, RefreshCw, Tag, FolderTree, MessageSquare } from 'lucide-react';
 import { useCategories } from '@/hooks/useCategories';
 import { useEvolutionApi } from '@/hooks/useEvolutionApi';
 import { useQuickReplyTemplates } from '@/hooks/useQuickReplyTemplates';
 import CategoriesTab from '@/components/categories/CategoriesTab';
 import FrentesTab from '@/components/categories/FrentesTab';
-import WhatsAppTab from '@/components/categories/WhatsAppTab';
 import QuickRepliesTab from '@/components/categories/QuickRepliesTab';
-import TicketCommunicationsTab from '@/components/categories/TicketCommunicationsTab';
 import CategoryFormDialog from '@/components/categories/CategoryFormDialog';
 import SubcategoryFormDialog from '@/components/categories/SubcategoryFormDialog';
 import FrenteFormDialog from '@/components/categories/FrenteFormDialog';
@@ -18,26 +16,16 @@ import QuickReplyFormDialog from '@/components/categories/QuickReplyFormDialog';
 import DeleteConfirmDialog from '@/components/categories/DeleteConfirmDialog';
 import type { Tag as TagType } from '@/services/categoryService';
 import { getInitialCategoryManagementTab } from './categoryManagementTabs';
+import { getSettingsRedirectFromCategorySearch } from './settingsTabs';
 
 export default function CategoryManagement() {
   const cat = useCategories();
   const evo = useEvolutionApi(cat.loadData);
   const quickReplies = useQuickReplyTemplates();
-  const initialTab = getInitialCategoryManagementTab(
-    typeof window === 'undefined' ? '' : window.location.search,
-  );
+  const search = typeof window === 'undefined' ? '' : window.location.search;
+  const settingsRedirect = getSettingsRedirectFromCategorySearch(search);
+  const initialTab = getInitialCategoryManagementTab(search);
 
-  // Load Evolution data on mount
-  useEffect(() => {
-    if (cat.canAccess) {
-      evo.loadInstanceName();
-      evo.loadEvolutionInstances();
-      evo.loadStaleTicketSettings();
-      evo.loadUnansweredTickets();
-    }
-  }, [cat.canAccess]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Dialog state
   const [createCategoryDialogOpen, setCreateCategoryDialogOpen] = useState(false);
   const [editCategoryDialogOpen, setEditCategoryDialogOpen] = useState(false);
   const [createSubcategoryDialogOpen, setCreateSubcategoryDialogOpen] = useState(false);
@@ -48,24 +36,7 @@ export default function CategoryManagement() {
   const [deleteSubcategoryDialogOpen, setDeleteSubcategoryDialogOpen] = useState(false);
   const [deleteFrenteDialogOpen, setDeleteFrenteDialogOpen] = useState(false);
 
-  // WhatsApp tag groups filtered for the bulk config filter
-  const filteredWhatsappTagGroups = useMemo(() =>
-    cat.sortedTagGroups.filter(([tagKey, group]) => {
-      if (evo.whatsappFrenteFilter === 'all') return true;
-      if (evo.whatsappFrenteFilter === 'sem-frente') return tagKey === 'sem-tag';
-      return group.tag?.id === evo.whatsappFrenteFilter;
-    }),
-  [cat.sortedTagGroups, evo.whatsappFrenteFilter]);
-
-  const bulkTargetSubcategories = useMemo(() =>
-    filteredWhatsappTagGroups.flatMap(([, g]) => g.categories.flatMap((c) => c.subcategories ?? [])),
-  [filteredWhatsappTagGroups]);
-
-  // Count active WhatsApp notifications for badge
-  const whatsappActiveCount = useMemo(() =>
-    cat.categories.flatMap(c => c.subcategories ?? []).filter(s => s.whatsappNotifyEnabled).length,
-  [cat.categories]);
-
+  if (settingsRedirect) return <Navigate to={settingsRedirect} replace />;
   if (!cat.canAccess) return null;
 
   return (
@@ -74,12 +45,12 @@ export default function CategoryManagement() {
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#2C2D2F] text-white">
-              <Settings2 className="h-5 w-5" />
+              <FolderTree className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-[#2C2D2F]">Estrutura de atendimento</h1>
+              <h1 className="text-2xl font-semibold text-[#2C2D2F]">Categorias</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                Organize frentes, categorias, respostas e automações de WhatsApp em um só lugar.
+                Organize frentes, categorias e respostas rápidas do atendimento.
               </p>
           </div>
           </div>
@@ -107,20 +78,9 @@ export default function CategoryManagement() {
             <Tag className="h-4 w-4" />
             Frentes de Atuação
           </TabsTrigger>
-          <TabsTrigger value="whatsapp" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-            <MessageCircle className="h-4 w-4" />
-            WhatsApp
-            {whatsappActiveCount > 0 && (
-              <Badge variant="success" className="ml-1 h-5 min-w-5 px-1.5 text-xs">{whatsappActiveCount}</Badge>
-            )}
-          </TabsTrigger>
           <TabsTrigger value="respostas-rapidas" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
             <MessageSquare className="h-4 w-4" />
             Respostas Rápidas
-          </TabsTrigger>
-          <TabsTrigger value="comunicacoes" className="h-11 gap-2 rounded-none border-b-2 border-transparent px-4 text-sm data-[state=active]:border-[#DE5532] data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-            <Mail className="h-4 w-4" />
-            Comunicações
           </TabsTrigger>
         </TabsList>
         </div>
@@ -191,58 +151,6 @@ export default function CategoryManagement() {
           />
         </TabsContent>
 
-        <TabsContent value="whatsapp" className="mt-6">
-          <WhatsAppTab
-            evolutionInstanceName={evo.evolutionInstanceName}
-            setEvolutionInstanceName={evo.setEvolutionInstanceName}
-            evolutionState={evo.evolutionState}
-            evolutionOpsLoading={evo.evolutionOpsLoading}
-            evolutionInstances={evo.evolutionInstances}
-            evolutionInstancesLoading={evo.evolutionInstancesLoading}
-            saveInstanceLoading={evo.saveInstanceLoading}
-            createInstanceLoading={evo.createInstanceLoading}
-            qrDialogOpen={evo.qrDialogOpen}
-            setQrDialogOpen={evo.setQrDialogOpen}
-            qrDataUrl={evo.qrDataUrl}
-            onRefreshConnection={() => void evo.refreshEvolutionConnection()}
-            onListInstances={() => void evo.loadEvolutionInstances()}
-            onOpenQr={() => void evo.openQrDialog()}
-            onSaveInstanceName={() => void evo.saveEvolutionInstanceName()}
-            onCreateInstance={() => void evo.createEvolutionInstance()}
-            tags={cat.tags}
-            whatsappFrenteFilter={evo.whatsappFrenteFilter}
-            setWhatsappFrenteFilter={evo.setWhatsappFrenteFilter}
-            bulkWhatsappNotifyEnabled={evo.bulkWhatsappNotifyEnabled}
-            setBulkWhatsappNotifyEnabled={evo.setBulkWhatsappNotifyEnabled}
-            bulkWhatsappMessageTemplate={evo.bulkWhatsappMessageTemplate}
-            setBulkWhatsappMessageTemplate={evo.setBulkWhatsappMessageTemplate}
-            bulkWhatsappRecipient={evo.bulkWhatsappRecipient}
-            setBulkWhatsappRecipient={evo.setBulkWhatsappRecipient}
-            bulkWhatsappApplying={evo.bulkWhatsappApplying}
-            bulkTargetSubcategories={bulkTargetSubcategories}
-            onApplyBulk={() => void evo.applyBulkWhatsapp(bulkTargetSubcategories)}
-            whatsappChats={evo.whatsappChats}
-            whatsappChatsLoading={evo.whatsappChatsLoading}
-            onLoadChats={() => void evo.loadWhatsappChats()}
-            filteredWhatsappTagGroups={filteredWhatsappTagGroups}
-            onConfigureSubcategory={(s) => { cat.setEditingSubcategory(s); setEditSubcategoryDialogOpen(true); }}
-            staleTicketDays={evo.staleTicketDays}
-            setStaleTicketDays={evo.setStaleTicketDays}
-            staleTicketRecipient={evo.staleTicketRecipient}
-            setStaleTicketRecipient={evo.setStaleTicketRecipient}
-            staleTicketTemplate={evo.staleTicketTemplate}
-            setStaleTicketTemplate={evo.setStaleTicketTemplate}
-            staleTicketLoading={evo.staleTicketLoading}
-            staleTicketSaving={evo.staleTicketSaving}
-            onSaveStaleTicketSettings={() => void evo.saveStaleTicketSettings()}
-            unansweredTickets={evo.unansweredTickets}
-            unansweredTicketsLoading={evo.unansweredTicketsLoading}
-            onLoadUnansweredTickets={() => void evo.loadUnansweredTickets()}
-            sendingAlertTicketId={evo.sendingAlertTicketId}
-            onSendAlertNow={(ticketId) => void evo.sendStaleAlertNow(ticketId)}
-          />
-        </TabsContent>
-
         <TabsContent value="respostas-rapidas" className="mt-6">
           <QuickRepliesTab
             loading={quickReplies.loading}
@@ -252,10 +160,6 @@ export default function CategoryManagement() {
             onDelete={(t) => quickReplies.setPendingDelete(t)}
             onMove={(t, dir) => void quickReplies.moveTemplate(t, dir)}
           />
-        </TabsContent>
-
-        <TabsContent value="comunicacoes" className="mt-6">
-          <TicketCommunicationsTab />
         </TabsContent>
       </Tabs>
 

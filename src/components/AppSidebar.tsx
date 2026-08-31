@@ -12,7 +12,8 @@ import {
   Database,
   ChevronRight,
   Tag,
-  Shield
+  Shield,
+  Settings2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
@@ -53,7 +54,8 @@ export function AppSidebar({ className, pendingTickets = 0, unreadMessages = 0 }
     { name: "Dashboard", href: "/dashboard", icon: <LayoutDashboard className="h-5 w-5" />, permission: 'dashboard' as const, badge: null },
     { name: "Tickets", href: "/tickets", icon: <Ticket className="h-5 w-5" />, permission: 'tickets' as const, badge: pendingTickets > 0 ? pendingTickets : null },
     { name: "Gerenciar Usuários", href: "/users", icon: <Users className="h-5 w-5" />, permission: 'manage_users' as const, badge: null },
-    { name: "Gerenciar Categorias", href: "/categories", icon: <Tag className="h-5 w-5" />, permission: 'manage_categories' as const, badge: null },
+    { name: "Categorias", href: "/categories", icon: <Tag className="h-5 w-5" />, permission: 'manage_categories' as const, badge: null },
+    { name: "Configurações", href: "/settings", icon: <Settings2 className="h-5 w-5" />, permission: 'manage_categories' as const, badge: null },
     { name: "Roles e Permissões", href: "/users", icon: <Shield className="h-5 w-5" />, permission: 'manage_roles' as const, badge: null, onlyWhenNoManageUsers: true },
   ];
   const navItems = navItemsRaw.filter((item) => {

@@ -128,7 +128,7 @@ describe('handleTeamsOAuthCallback', () => {
     expect(teamsClient.exchangeCode).toHaveBeenCalledWith('authorization-code');
     expect(result).toEqual({
       status: 302,
-      location: 'https://www.responsum.com.br/categories?tab=comunicacoes&teams=connected',
+      location: 'https://www.responsum.com.br/settings?tab=comunicacoes&teams=connected',
     });
   });
 

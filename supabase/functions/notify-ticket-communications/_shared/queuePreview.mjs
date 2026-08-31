@@ -25,6 +25,7 @@ function deliveryKey(item) {
 function previewItem({
   ticketId,
   ticketTitle,
+  requesterId,
   requesterName,
   requesterEmail,
   notificationType,
@@ -37,6 +38,7 @@ function previewItem({
   return {
     ticketId,
     ticketTitle: ticketTitle || 'Chamado',
+    requesterId: requesterId || '',
     requesterName: requesterName || '',
     requesterEmail: requesterEmail || '',
     notificationType,
@@ -87,6 +89,7 @@ export function buildQueuePreview({ now, candidates, deliveries, schedule }) {
         next.push(previewItem({
           ticketId: ticket.id,
           ticketTitle: ticket.title,
+          requesterId: candidate.requester?.id,
           requesterName: candidate.requester?.name,
           requesterEmail: candidate.requester?.email,
           notificationType,
