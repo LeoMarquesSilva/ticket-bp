@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getDashboardStats } from '@/services/dashboardService';
@@ -11,20 +11,17 @@ import {
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart as RechartsPieChart, Pie, Cell, BarChart as RechartsBarChart, Bar, LineChart,
-  Line, TooltipProps
+  PieChart as RechartsPieChart, Pie, Cell, TooltipProps
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import UserAvatar from '@/components/UserAvatar';
-import { Separator } from '@/components/ui/separator';
 import { DateRange } from 'react-day-picker';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { format, subDays, endOfDay, startOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, startOfWeek, endOfWeek, differenceInHours, differenceInDays } from 'date-fns';
@@ -52,6 +49,148 @@ const STATUS_COLORS_MAP = {
   in_progress: BRAND.orange,
   resolved: BRAND.success
 };
+
+function formatChatMessageText(text?: string) {
+  return String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function RankedBarRow({
+  name,
+  valueLabel,
+  widthPct,
+  color,
+  userId,
+  avatarUrl,
+  showAvatar = false,
+}: {
+  name: string;
+  valueLabel: string;
+  widthPct: number;
+  color: string;
+  userId?: string;
+  avatarUrl?: string;
+  showAvatar?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      {showAvatar && (
+        <UserAvatar
+          name={name}
+          userId={userId}
+          avatarUrl={avatarUrl}
+          size="sm"
+          className="h-8 w-8 shrink-0"
+          fallbackClassName="bg-[#F69F19]/20 text-[#2C2D2F] text-[10px]"
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="truncate text-sm text-slate-700" title={name}>
+            {name}
+          </span>
+          <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500">
+            {valueLabel}
+          </span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${widthPct}%`, backgroundColor: color }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function isTextOverflowing(el: HTMLElement | null) {
+  if (!el) return false;
+  return el.scrollHeight - el.clientHeight > 1;
+}
+
+function ExpandableFeedbackCell({
+  reason,
+  comment,
+}: {
+  reason?: string | null;
+  comment?: string | null;
+}) {
+  const reasonRef = useRef<HTMLDivElement>(null);
+  const commentRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+
+  const measure = useCallback(() => {
+    if (expanded) return;
+    setIsClamped(
+      isTextOverflowing(reasonRef.current) || isTextOverflowing(commentRef.current)
+    );
+  }, [expanded]);
+
+  useLayoutEffect(() => {
+    measure();
+  }, [measure, reason, comment]);
+
+  useEffect(() => {
+    const nodes = [reasonRef.current, commentRef.current].filter(Boolean) as HTMLElement[];
+    if (!nodes.length) return;
+    const observer = new ResizeObserver(() => measure());
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, [measure, reason, comment]);
+
+  if (!reason && !comment) {
+    return <span className="text-xs text-slate-300 italic">Sem comentário</span>;
+  }
+
+  return (
+    <div className="space-y-1">
+      {reason && (
+        <div
+          ref={reasonRef}
+          className={`text-sm text-red-600 ${!expanded ? 'line-clamp-2' : ''}`}
+        >
+          <span className="font-semibold">❌ Motivo:</span> {reason}
+        </div>
+      )}
+      {comment && (
+        <div
+          ref={commentRef}
+          className={`text-sm text-slate-600 italic ${!expanded ? 'line-clamp-2' : ''}`}
+        >
+          {reason ? `💬 "${comment}"` : `"${comment}"`}
+        </div>
+      )}
+      {(isClamped || expanded) && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((current) => !current);
+          }}
+          className="h-6 px-2 text-xs text-slate-500 hover:text-slate-700"
+        >
+          {expanded ? (
+            <>
+              <ChevronUp className="h-3 w-3 mr-1" />
+              Ver menos
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3 w-3 mr-1" />
+              Ver mais
+            </>
+          )}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -115,22 +254,6 @@ const Dashboard = () => {
   // Filtros rápidos da tabela de avaliações
   const [npsFilter, setNpsFilter] = useState<'all' | 'promoter' | 'passive' | 'detractor'>('all');
   const [fulfilledFilter, setFulfilledFilter] = useState<'all' | 'fulfilled' | 'notFulfilled'>('all');
-  
-  // Estado para controlar quais comentários estão expandidos
-  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
-  
-  // Função para alternar expansão de comentário
-  const toggleCommentExpansion = (feedbackId: string) => {
-    setExpandedComments(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(feedbackId)) {
-        newSet.delete(feedbackId);
-      } else {
-        newSet.add(feedbackId);
-      }
-      return newSet;
-    });
-  };
   
   // Função para lidar com ordenação
   const handleSort = (column: 'nps' | 'requestFulfilled') => {
@@ -468,7 +591,7 @@ const Dashboard = () => {
   const getCategoryLabel = (category: string): string => {
     if (Object.keys(categoriesConfig).length === 0) return category || 'Geral';
     const categoryConfig = categoriesConfig[category];
-    return categoryConfig?.label || category || 'Geral';
+    return categoryConfig?.label || category?.replace(/_/g, ' ') || 'Geral';
   };
 
   // Função para obter o label formatado da subcategoria
@@ -828,20 +951,28 @@ const Dashboard = () => {
                   <CardTitle className="text-lg font-bold text-[#2C2D2F]">Top Solicitantes</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsBarChart data={stats.topUsers} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                        <XAxis type="number" hide />
-                        <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                        <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomTooltip />} />
-                        <Bar dataKey="tickets" name="Tickets" fill={BRAND.orange} radius={[0, 4, 4, 0]} barSize={20}>
-                          {stats.topUsers.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={index === 0 ? BRAND.orange : BRAND.gold} />
-                          ))}
-                        </Bar>
-                      </RechartsBarChart>
-                    </ResponsiveContainer>
+                  <div className="h-[300px] flex flex-col justify-center">
+                    {(!stats.topUsers || stats.topUsers.length === 0) ? (
+                      <p className="text-sm text-slate-500 text-center">Nenhum solicitante no período.</p>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        {stats.topUsers.map((topUser: { name: string; tickets: number; userId?: string; avatarUrl?: string }, index: number) => {
+                          const maxTickets = stats.topUsers[0]?.tickets || 1;
+                          return (
+                            <RankedBarRow
+                              key={topUser.userId || `${topUser.name}-${index}`}
+                              name={topUser.name}
+                              userId={topUser.userId}
+                              avatarUrl={topUser.avatarUrl}
+                              showAvatar
+                              valueLabel={String(topUser.tickets)}
+                              widthPct={Math.max((topUser.tickets / maxTickets) * 100, 8)}
+                              color={index === 0 ? BRAND.orange : BRAND.gold}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -861,30 +992,28 @@ const Dashboard = () => {
                   <CardDescription>Média de horas para primeira resposta (menor é melhor)</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsBarChart data={stats.responseTimeByAgent || []} layout="vertical" margin={{ top: 20, right: 30, left: 80, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                        <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} label={{ value: 'Horas', position: 'insideBottom', offset: -5, fill: '#64748b' }} />
-                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} width={70} />
-                        <Tooltip 
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const data = payload[0].payload;
-                              return (
-                                <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
-                                  <p className="font-semibold text-[#2C2D2F]">{data.name}</p>
-                                  <p className="text-sm text-slate-600">Tempo médio: <span className="font-bold">{data.time}h</span></p>
-                                  <p className="text-sm text-slate-600">Tickets: <span className="font-bold">{data.tickets}</span></p>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar dataKey="time" name="Horas" fill={BRAND.orange} radius={[0, 4, 4, 0]} />
-                      </RechartsBarChart>
-                    </ResponsiveContainer>
+                  <div className="custom-scrollbar h-[350px] overflow-y-auto pr-1">
+                    {(!stats.responseTimeByAgent || stats.responseTimeByAgent.length === 0) ? (
+                      <p className="text-sm text-slate-500 text-center pt-8">Nenhum atendente com resposta no período.</p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {stats.responseTimeByAgent.map((agent: { name: string; time: number; tickets: number; userId?: string; avatarUrl?: string }, index: number) => {
+                          const maxTime = Math.max(...stats.responseTimeByAgent.map((a: { time: number }) => a.time), 0.1);
+                          return (
+                            <RankedBarRow
+                              key={agent.userId || `${agent.name}-${index}`}
+                              name={agent.name}
+                              userId={agent.userId}
+                              avatarUrl={agent.avatarUrl}
+                              showAvatar
+                              valueLabel={`${agent.time}h · ${agent.tickets} tkt`}
+                              widthPct={Math.max((agent.time / maxTime) * 100, 8)}
+                              color={index === 0 ? BRAND.orange : BRAND.gold}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -899,30 +1028,43 @@ const Dashboard = () => {
                   <CardDescription>Média de dias para resolver tickets (menor é melhor)</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsBarChart data={stats.resolutionTimeByCategory || []} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} angle={-45} textAnchor="end" height={80} />
-                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} label={{ value: 'Dias', angle: -90, position: 'insideLeft', fill: '#64748b' }} />
-                        <Tooltip 
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const data = payload[0].payload;
-                              return (
-                                <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
-                                  <p className="font-semibold text-[#2C2D2F]">{data.category}</p>
-                                  <p className="text-sm text-slate-600">Tempo médio: <span className="font-bold">{data.time} dias</span></p>
-                                  <p className="text-sm text-slate-600">Tickets: <span className="font-bold">{data.tickets}</span></p>
-                                </div>
-                              );
+                  <div className="custom-scrollbar h-[350px] overflow-y-auto pr-1">
+                    {(!stats.resolutionTimeByCategory || stats.resolutionTimeByCategory.length === 0) ? (
+                      <p className="text-sm text-slate-500 text-center pt-8">Nenhuma categoria resolvida no período.</p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {(() => {
+                          const merged = new Map<string, { name: string; totalTime: number; tickets: number }>();
+                          stats.resolutionTimeByCategory.forEach((item: { category: string; time: number; tickets: number }) => {
+                            const name = getCategoryLabel(item.category);
+                            const current = merged.get(name);
+                            if (!current) {
+                              merged.set(name, { name, totalTime: item.time * item.tickets, tickets: item.tickets });
+                            } else {
+                              current.totalTime += item.time * item.tickets;
+                              current.tickets += item.tickets;
                             }
-                            return null;
-                          }}
-                        />
-                        <Bar dataKey="time" name="Dias" fill={BRAND.red} radius={[4, 4, 0, 0]} />
-                      </RechartsBarChart>
-                    </ResponsiveContainer>
+                          });
+                          const rows = Array.from(merged.values())
+                            .map((item) => ({
+                              name: item.name,
+                              time: item.tickets > 0 ? Math.round((item.totalTime / item.tickets) * 10) / 10 : 0,
+                              tickets: item.tickets,
+                            }))
+                            .sort((a, b) => b.tickets - a.tickets);
+                          const maxTime = Math.max(...rows.map((row) => row.time), 0.1);
+                          return rows.map((item, index) => (
+                            <RankedBarRow
+                              key={item.name}
+                              name={item.name}
+                              valueLabel={`${item.time}d · ${item.tickets} tkt`}
+                              widthPct={Math.max((item.time / maxTime) * 100, 8)}
+                              color={index === 0 ? BRAND.red : BRAND.gold}
+                            />
+                          ));
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1041,7 +1183,7 @@ const Dashboard = () => {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }) => (percent > 0.04 ? `${name}: ${(percent * 100).toFixed(0)}%` : '')}
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="value"
@@ -1270,87 +1412,11 @@ const Dashboard = () => {
                                 </Badge>
                               ) : <span className="text-slate-300">-</span>}
                             </TableCell>
-                            <TableCell className="max-w-[300px]">
-                              {(() => {
-                                const isExpanded = expandedComments.has(feedback.id);
-                                
-                                // Se a solicitação não foi atendida, mostrar o motivo primeiro
-                                if (feedback.requestFulfilled === false && feedback.notFulfilledReason) {
-                                  const hasLongContent = feedback.notFulfilledReason.length > 100 || (feedback.comment && feedback.comment.length > 100);
-                                  
-                                  return (
-                                    <div className="space-y-1">
-                                      <div className={`text-sm text-red-600 ${!isExpanded ? 'line-clamp-2' : ''}`}>
-                                        <span className="font-semibold">❌ Motivo:</span> {feedback.notFulfilledReason}
-                                      </div>
-                                      {feedback.comment && (
-                                        <div className={`text-sm text-slate-600 ${!isExpanded ? 'line-clamp-2' : ''} italic`}>
-                                          💬 "{feedback.comment}"
-                                        </div>
-                                      )}
-                                      {hasLongContent && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleCommentExpansion(feedback.id);
-                                          }}
-                                          className="h-6 px-2 text-xs text-slate-500 hover:text-slate-700 mt-1"
-                                        >
-                                          {isExpanded ? (
-                                            <>
-                                              <ChevronUp className="h-3 w-3 mr-1" />
-                                              Ver menos
-                                            </>
-                                          ) : (
-                                            <>
-                                              <ChevronDown className="h-3 w-3 mr-1" />
-                                              Ver mais
-                                            </>
-                                          )}
-                                        </Button>
-                                      )}
-                                    </div>
-                                  );
-                                }
-                                // Caso contrário, mostrar apenas o comentário normal
-                                if (feedback.comment) {
-                                  const hasLongContent = feedback.comment.length > 100;
-                                  
-                                  return (
-                                    <div className="space-y-1">
-                                      <div className={`text-sm text-slate-600 ${!isExpanded ? 'line-clamp-2' : ''} italic`}>
-                                        "{feedback.comment}"
-                                      </div>
-                                      {hasLongContent && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleCommentExpansion(feedback.id);
-                                          }}
-                                          className="h-6 px-2 text-xs text-slate-500 hover:text-slate-700 mt-1"
-                                        >
-                                          {isExpanded ? (
-                                            <>
-                                              <ChevronUp className="h-3 w-3 mr-1" />
-                                              Ver menos
-                                            </>
-                                          ) : (
-                                            <>
-                                              <ChevronDown className="h-3 w-3 mr-1" />
-                                              Ver mais
-                                            </>
-                                          )}
-                                        </Button>
-                                      )}
-                                    </div>
-                                  );
-                                }
-                                return <span className="text-xs text-slate-300 italic">Sem comentário</span>;
-                              })()}
+                            <TableCell className="max-w-[300px] min-w-[180px]">
+                              <ExpandableFeedbackCell
+                                reason={feedback.requestFulfilled === false ? feedback.notFulfilledReason : undefined}
+                                comment={feedback.comment}
+                              />
                             </TableCell>
                           </TableRow>
                         ))
@@ -1428,9 +1494,19 @@ const Dashboard = () => {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm text-slate-700">
-                                {entry.tickets[0]?.assignedToName || 'Não atribuído'}
-                              </span>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <UserAvatar
+                                  name={entry.tickets[0]?.assignedToName || 'Não atribuído'}
+                                  userId={entry.tickets[0]?.assignedTo}
+                                  avatarUrl={entry.tickets[0]?.assignedToAvatarUrl}
+                                  size="sm"
+                                  className="h-7 w-7 shrink-0"
+                                  fallbackClassName="bg-[#F69F19]/15 text-[#F69F19] text-xs"
+                                />
+                                <span className="text-sm text-slate-700 truncate">
+                                  {entry.tickets[0]?.assignedToName || 'Não atribuído'}
+                                </span>
+                              </div>
                             </TableCell>
                             <TableCell className="text-slate-600 text-sm whitespace-nowrap">
                               {entry.tickets[0]?.resolvedAt ? (
@@ -1506,21 +1582,22 @@ const Dashboard = () => {
 
       {/* === MODAL DE HISTÓRICO DE CHAT === */}
       <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
-        {/* CORREÇÃO: Altura fixa (80vh) e padding zerado no container principal */}
-        <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col p-0 gap-0" aria-describedby="chat-history-description">
-          <DialogHeader className="p-4 sm:p-6 pb-2">
-            <DialogTitle className="text-lg sm:text-xl">Histórico da Conversa</DialogTitle>
-            <DialogDescription id="chat-history-description" className="text-xs sm:text-sm">
-              Histórico completo de mensagens do ticket {chatTicket?.title}.
+        <DialogContent
+          className="flex h-[min(85vh,820px)] w-[calc(100vw-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+          aria-describedby="chat-history-description"
+        >
+          <DialogHeader className="shrink-0 space-y-0 border-b border-slate-100 px-5 pb-3 pt-5 pr-12 text-left">
+            <DialogTitle className="text-lg leading-snug">Histórico da Conversa</DialogTitle>
+            <DialogDescription id="chat-history-description" className="mt-1 line-clamp-2 text-xs sm:text-sm">
+              {chatTicket?.title || 'Histórico completo de mensagens do ticket.'}
             </DialogDescription>
             
-            {/* Botão Mostrar Detalhes */}
             <div className="mt-3">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowTicketDetails(!showTicketDetails)}
-                className="w-full sm:w-auto text-xs"
+                className="w-full text-xs sm:w-auto"
               >
                 {showTicketDetails ? (
                   <>
@@ -1536,64 +1613,64 @@ const Dashboard = () => {
               </Button>
             </div>
 
-            {/* Detalhes do Ticket (expandível) */}
             {showTicketDetails && chatTicket && (
-              <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 animate-in slide-in-from-top-2">
-                {/* Data e Hora de Criação - Sempre mostrar se ticket existe */}
-                <div className="flex items-center gap-2 text-xs text-slate-600">
-                  <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                  <span className="font-semibold text-[#2C2D2F]">Criado em:</span>
-                  <span className="text-slate-700">
-                    {chatTicket.createdAt ? (
-                      format(new Date(chatTicket.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
-                    ) : (
-                      <span className="text-slate-400 italic">Não informado</span>
-                    )}
+              <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 animate-in slide-in-from-top-2">
+                <div className="flex items-start gap-2 text-xs text-slate-600">
+                  <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <span className="min-w-0">
+                    <span className="font-semibold text-[#2C2D2F]">Criado em: </span>
+                    <span className="text-slate-700">
+                      {chatTicket.createdAt ? (
+                        format(new Date(chatTicket.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                      ) : (
+                        <span className="italic text-slate-400">Não informado</span>
+                      )}
+                    </span>
                   </span>
                 </div>
                 
-                {/* Tempo de Resolução */}
                 {chatTicket.createdAt && chatTicket.resolvedAt && (
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span className="font-semibold text-[#2C2D2F]">Tempo de resolução:</span>
-                    <span className="text-slate-700">{getResolutionTime(chatTicket.createdAt, chatTicket.resolvedAt)}</span>
+                  <div className="flex items-start gap-2 text-xs text-slate-600">
+                    <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <span className="min-w-0">
+                      <span className="font-semibold text-[#2C2D2F]">Tempo de resolução: </span>
+                      <span className="text-slate-700">{getResolutionTime(chatTicket.createdAt, chatTicket.resolvedAt)}</span>
+                    </span>
                   </div>
                 )}
                 
-                {/* Categoria e Subcategoria */}
-                <div className="flex items-center gap-2 text-xs text-slate-600">
-                  <Tag className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                  <span className="font-semibold text-[#2C2D2F]">Categoria:</span>
-                  <span className="text-slate-700">
-                    {(chatTicket.category || chatTicket.subcategory) ? (
-                      <>
-                        {getCategoryLabel(chatTicket.category || 'outros')}
-                        {chatTicket.subcategory && (
-                          <span> / {getSubcategoryLabel(chatTicket.category || 'outros', chatTicket.subcategory)}</span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-slate-400 italic">Não informado</span>
-                    )}
+                <div className="flex items-start gap-2 text-xs text-slate-600">
+                  <Tag className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <span className="min-w-0">
+                    <span className="font-semibold text-[#2C2D2F]">Categoria: </span>
+                    <span className="text-slate-700">
+                      {(chatTicket.category || chatTicket.subcategory) ? (
+                        <>
+                          {getCategoryLabel(chatTicket.category || 'outros')}
+                          {chatTicket.subcategory && (
+                            <span> / {getSubcategoryLabel(chatTicket.category || 'outros', chatTicket.subcategory)}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="italic text-slate-400">Não informado</span>
+                      )}
+                    </span>
                   </span>
                 </div>
               </div>
             )}
             
             <div className="mt-3 space-y-2">
-              {/* Informações do cliente/usuario */}
               {chatTicket?.createdByName && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="text-xs font-medium text-slate-500 shrink-0">Cliente:</div>
-                    <span className="text-xs sm:text-sm text-slate-700 truncate">{chatTicket.createdByName}</span>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="shrink-0 text-xs font-medium text-slate-500">Cliente:</div>
+                    <span className="truncate text-xs text-slate-700 sm:text-sm">{chatTicket.createdByName}</span>
                   </div>
-                  {/* NPS */}
                   {chatTicket?.serviceScore !== undefined && chatTicket?.serviceScore !== null && (
                     <div className="flex items-center gap-2">
-                      <div className="text-xs font-medium text-slate-500 shrink-0">NPS:</div>
-                      <Badge variant="outline" className={`${getScoreColor(chatTicket.serviceScore)} font-bold text-xs shrink-0`}>
+                      <div className="shrink-0 text-xs font-medium text-slate-500">NPS:</div>
+                      <Badge variant="outline" className={`${getScoreColor(chatTicket.serviceScore)} shrink-0 text-xs font-bold`}>
                         {chatTicket.serviceScore}
                       </Badge>
                     </div>
@@ -1601,53 +1678,48 @@ const Dashboard = () => {
                 </div>
               )}
               
-              {/* Informações do atendente */}
               {chatTicket?.assignedToName && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="text-xs font-medium text-slate-500 shrink-0">Atendente:</div>
-                    <div className="flex items-center gap-1 min-w-0">
-                      <UserAvatar
-                        name={chatTicket.assignedToName}
-                        userId={chatTicket.assignedTo}
-                        avatarUrl={chatTicket.assignedToAvatarUrl}
-                        size="sm"
-                        className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
-                        fallbackClassName={
-                          chatTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
-                          chatTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
-                          'bg-[#2C2D2F] text-[#F6F6F6]'
-                        }
-                      />
-                      <span className="text-xs sm:text-sm text-slate-700 truncate">{chatTicket.assignedToName}</span>
-                      {chatTicket.assignedToRole && (
-                        <Badge variant="outline" className="text-xs font-normal bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
-                          {chatTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
-                          chatTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
-                        </Badge>
-                      )}
-                    </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="shrink-0 text-xs font-medium text-slate-500">Atendente:</div>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <UserAvatar
+                      name={chatTicket.assignedToName}
+                      userId={chatTicket.assignedTo}
+                      avatarUrl={chatTicket.assignedToAvatarUrl}
+                      size="sm"
+                      className="h-5 w-5 shrink-0"
+                      fallbackClassName={
+                        chatTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
+                        chatTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
+                        'bg-[#2C2D2F] text-[#F6F6F6]'
+                      }
+                    />
+                    <span className="truncate text-xs text-slate-700 sm:text-sm">{chatTicket.assignedToName}</span>
+                    {chatTicket.assignedToRole && (
+                      <Badge variant="outline" className="hidden shrink-0 bg-slate-50 text-xs font-normal sm:inline-flex">
+                        {chatTicket.assignedToRole === 'lawyer' ? 'Advogado' :
+                        chatTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               )}
             </div>
-            <Separator className="my-3" />
           </DialogHeader>
           
-          {/* Legenda Atualizada - Com padding lateral */}
-          <div className="px-6 pb-2">
-            <div className="flex flex-wrap gap-4 px-2 bg-[#F6F6F6] p-2 rounded-md justify-center sm:justify-between">
+          <div className="shrink-0 px-5 py-2">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-md bg-[#F6F6F6] px-3 py-2 sm:justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-slate-200 border border-slate-300"></div>
+                <div className="h-3 w-3 rounded-full border border-slate-300 bg-slate-200"></div>
                 <span className="text-xs text-[#2C2D2F]">Cliente (Esq)</span>
               </div>
               <div className="flex gap-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#F69F19]"></div>
+                  <div className="h-3 w-3 rounded-full bg-[#F69F19]"></div>
                   <span className="text-xs text-[#2C2D2F]">Suporte (Dir)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#DE5532]"></div>
+                  <div className="h-3 w-3 rounded-full bg-[#DE5532]"></div>
                   <span className="text-xs text-[#2C2D2F]">Advogado (Dir)</span>
                 </div>
               </div>
@@ -1655,50 +1727,42 @@ const Dashboard = () => {
           </div>
           
           {isChatLoading ? (
-            <div className="flex items-center justify-center py-12 flex-1">
+            <div className="flex min-h-0 flex-1 items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
             </div>
           ) : chatMessages.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 flex-1 flex flex-col items-center justify-center">
-              <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-30" />
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-5 text-center text-slate-500">
+              <MessageSquare className="mb-2 h-12 w-12 opacity-30" />
               <p>Nenhuma mensagem encontrada para este ticket.</p>
             </div>
           ) : (
-            // CORREÇÃO: flex-1 para ocupar o espaço restante e permitir scroll
-            <ScrollArea className="flex-1 w-full p-6 pt-0">
-              <div className="space-y-6 w-full">
+            <div className="custom-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-3 pl-5 pr-7 [scrollbar-gutter:stable]">
+              <div className="flex w-full min-w-0 flex-col gap-5 pb-1">
                 {chatMessages.map((message) => {
                   const styles = getMessageStyles(message, chatTicket);
                   
                   return (
-                    <div key={message.id} className={`flex w-full ${styles.containerClass}`}>
-                      <div className={`flex gap-3 max-w-[85%] ${styles.flexDirection}`}>
-                        
-                        {/* Avatar - shrink-0 impede que o avatar seja esmagado */}
-                        <div className="flex flex-col items-center mt-1 shrink-0">
-                          <UserAvatar
-                            name={message.userName}
-                            userId={message.userId}
-                            avatarUrl={message.avatarUrl}
-                            size="md"
-                            className={`h-8 w-8 ${styles.avatarBg}`}
-                            fallbackClassName={`${styles.avatarBg} flex items-center justify-center`}
-                          />
-                        </div>
+                    <div key={message.id} className={`flex w-full min-w-0 ${styles.containerClass}`}>
+                      <div className={`flex min-w-0 max-w-[min(85%,28rem)] gap-2.5 ${styles.flexDirection}`}>
+                        <UserAvatar
+                          name={message.userName}
+                          userId={message.userId}
+                          avatarUrl={message.avatarUrl}
+                          size="md"
+                          className={`mt-0.5 h-8 w-8 shrink-0 ${styles.avatarBg}`}
+                          fallbackClassName={`${styles.avatarBg} flex items-center justify-center`}
+                        />
 
-                        {/* Balão da Mensagem - min-w-0 ajuda no flexbox aninhado */}
-                        <div className="flex flex-col min-w-0">
-                          <div className={`rounded-lg p-3 shadow-sm ${styles.bubbleClass} overflow-hidden`}>
-                            <p className="text-[10px] font-bold opacity-70 mb-1 uppercase tracking-wide">
+                        <div className="min-w-0 flex-1">
+                          <div className={`rounded-2xl px-3.5 py-2.5 shadow-sm ${styles.bubbleClass}`}>
+                            <p className="mb-1 truncate text-[10px] font-bold uppercase tracking-wide opacity-70">
                               {message.userName || styles.label}
                             </p>
                             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                              {message.message}
+                              {formatChatMessageText(message.message)}
                             </p>
                           </div>
-                          
-                          {/* Data */}
-                          <div className={`text-[10px] mt-1 ${styles.textAlign} text-slate-400`}>
+                          <div className={`mt-1 text-[10px] text-slate-400 ${styles.textAlign}`}>
                             {formatDate(message.createdAt)}
                           </div>
                         </div>
@@ -1707,11 +1771,10 @@ const Dashboard = () => {
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
           )}
           
-          {/* Footer com padding */}
-          <div className="p-6 pt-2 border-t border-slate-100 flex justify-end">
+          <div className="flex shrink-0 justify-end border-t border-slate-100 px-5 py-3">
             <Button onClick={() => setIsChatOpen(false)} variant="outline">Fechar</Button>
           </div>
         </DialogContent>

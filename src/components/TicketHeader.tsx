@@ -86,7 +86,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   canCreateTicket = false,
   canCreateTicketForUser = false,
   filtersOpen = true,
-  onToggleFilters
+  onToggleFilters,
 }) => {
   const { has, loading: permissionsLoading } = usePermissions();
   const isAdmin = user?.role === 'admin';
@@ -127,7 +127,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   const statsToDisplay = ticketStatsOverride ?? ticketStats;
 
   // Referências para controlar inscrições e evitar vazamentos de memória
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const isMountedRef = useRef(true);
   const cleanupRef = useRef<(() => void) | null>(null);
 
@@ -393,41 +393,21 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   };
 
   return (
-    <div className="w-full bg-white border-b border-[#F69F19]/10 shadow-sm mb-2 tall:mb-6 rounded-lg overflow-hidden">
-      {/* Header principal com design sofisticado */}
+    <div className="w-full border-b border-[#F69F19]/15 bg-white">
       <div
-        className="relative py-3 px-4 sm:px-6 tall:py-6 overflow-hidden"
-        style={{ 
-          background: `linear-gradient(135deg, #2C2D2F 0%, #444546 100%)`,
-          boxShadow: 'inset 0 0 30px rgba(0,0,0,0.2)'
+        className="relative overflow-hidden px-3 py-2 sm:px-4"
+        style={{
+          background: 'linear-gradient(135deg, #2C2D2F 0%, #444546 100%)',
         }}
       >
-        {/* Efeito de brilho superior - mais sutil e elegante */}
-        <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#F69F19] to-transparent opacity-70"></div>
-        
-        {/* Elementos decorativos sutis */}
-        <div className="absolute -bottom-6 -right-6 w-32 h-32 rounded-full bg-[#F69F19]/5 blur-2xl"></div>
-        <div className="absolute top-10 left-10 w-20 h-20 rounded-full bg-[#DE5532]/5 blur-xl"></div>
-        
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
-          <div>
-            <h1 className="text-lg tall:text-2xl font-bold flex items-center">
-              <span className="text-white relative">
-                Tickets de Suporte
-                <span className="absolute -bottom-1 left-0 w-1/2 h-[2px] bg-[#F69F19]"></span>
-              </span>
-            </h1>
-            <p className="text-slate-200 text-sm mt-1 tall:mt-2 max-w-md hidden tall:block">
-              {isUser 
-                ? 'Suas solicitações de suporte jurídico'
-                : isSupport || isLawyer
-                  ? 'Tickets atribuídos a você'
-                  : 'Gerenciamento centralizado de tickets para equipe jurídica'
-              }
-            </p>
-          </div>
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#F69F19] to-transparent opacity-70" />
+
+        <div className="relative z-10 flex items-center justify-between gap-3">
+          <h1 className="truncate text-[17px] font-semibold leading-tight tracking-[-0.01em] text-white">
+            Tickets de Suporte
+          </h1>
           
-          <div className="flex items-center gap-3 self-end md:self-auto">
+          <div className="flex shrink-0 items-center gap-1.5">
             {/* Equipe Online Popover */}
             {!isUser && (
               <Popover>
@@ -435,18 +415,17 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className="group relative overflow-hidden rounded-xl border border-white/25 bg-white/10 px-4 text-white shadow-md shadow-black/10 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#F69F19]/45 hover:bg-[#F69F19]/15 hover:shadow-lg hover:shadow-[#F69F19]/20"
+                    className="density-control group hidden gap-1.5 rounded-lg border-white/20 bg-white/10 px-3 text-sm text-white hover:border-[#F69F19]/45 hover:bg-[#F69F19]/15 hover:text-white md:inline-flex"
                   >
-                    <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                    <Circle className="mr-2 h-3.5 w-3.5 fill-emerald-400 text-emerald-400 animate-pulse" />
-                    <span className="font-semibold tracking-[0.01em]">Equipe Online</span>
+                    <Circle className="h-2.5 w-2.5 animate-pulse fill-emerald-400 text-emerald-400" />
+                    <span className="hidden font-medium lg:inline">Equipe Online</span>
                     <Badge 
                       variant="outline" 
-                      className="ml-2 border-emerald-300/40 bg-emerald-400/20 px-2 text-emerald-50"
+                      className="density-badge h-5 min-w-5 border-emerald-300/40 bg-emerald-400/20 px-1.5 text-emerald-50"
                     >
                       {filteredOnlineUsers.length}
                     </Badge>
-                    <ChevronDown className="ml-1 h-4 w-4 opacity-80 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    <ChevronDown className="h-3.5 w-3.5 opacity-80 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-80 p-0 rounded-lg border-[#F69F19]/20 shadow-lg" align="end">
@@ -498,21 +477,17 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
               </Popover>
             )}
             
-            {/* Botões de criação de tickets - por permissão create_ticket */}
-            <div className="flex items-center gap-2">
-              {/* Botão para criar novo ticket */}
+            <div className="flex items-center gap-1.5">
               {canCreateTicket && (
                 <Button
                   onClick={() => setShowCreateForm(true)}
                   size="sm"
-                  className="relative overflow-hidden bg-[#F69F19] hover:bg-[#DE5532] text-white font-medium shadow-md transition-all duration-300"
+                  className="density-control gap-1.5 bg-[#F69F19] px-3 text-sm font-medium text-white hover:bg-[#DE5532]"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#F69F19] to-[#DE5532] opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
-                  <Plus className="h-4 w-4 mr-2 relative z-10" />
-                  <span className="relative z-10">Novo Ticket</span>
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Novo Ticket</span>
                 </Button>
               )}
-              {/* Botão para criar ticket em nome de usuário (permissão create_ticket_for_user) */}
               {canCreateTicketForUser && setShowCreateForUserModal && (
                 <TooltipProvider>
                   <Tooltip>
@@ -520,11 +495,10 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                       <Button
                         onClick={() => setShowCreateForUserModal(true)}
                         size="sm"
-                        className="relative overflow-hidden bg-[#F69F19] hover:bg-[#DE5532] text-white font-medium shadow-md transition-all duration-300"
+                        className="density-control gap-1.5 bg-[#F69F19] px-3 text-sm font-medium text-white hover:bg-[#DE5532]"
                       >
-                        <div className="absolute inset-0 bg-gradient-to-r from-[#F69F19] to-[#DE5532] opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
-                        <UserPlus className="h-4 w-4 mr-2 relative z-10" />
-                        <span className="relative z-10">+ Ticket</span>
+                        <UserPlus className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">+ Ticket</span>
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="bg-[#2C2D2F] text-white border-[#F69F19]/20">
@@ -539,8 +513,8 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
       </div>
       
       {/* Barra de ferramentas com botões de visualização e filtros */}
-      <div className="px-4 py-2 sm:px-6 tall:py-4 flex flex-wrap items-center justify-between gap-3 bg-white">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-1.5 sm:px-4">
+        <div className="flex items-center gap-3">
           {/* Botões de visualização com design mais sofisticado */}
           <div className="flex rounded-md overflow-hidden border border-[#F69F19]/20 shadow-sm">
             <TooltipProvider>
@@ -550,10 +524,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                     variant={view === 'list' ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setView('list')}
-                    className={view === 'list' 
-                      ? 'bg-gradient-to-r from-[#F69F19] to-[#DE5532] text-white' 
-                      : 'hover:bg-[#F69F19]/5'
-                    }
+                    aria-label="Visualização em lista"
+                    className={cn(
+                      'density-icon-control',
+                      view === 'list'
+                        ? 'bg-gradient-to-r from-[#F69F19] to-[#DE5532] text-white'
+                        : 'hover:bg-[#F69F19]/5'
+                    )}
                   >
                     <List className="h-4 w-4" />
                   </Button>
@@ -571,10 +548,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                     variant={view === 'board' ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setView('board')}
-                    className={view === 'board' 
-                      ? 'bg-gradient-to-r from-[#F69F19] to-[#DE5532] text-white' 
-                      : 'hover:bg-[#F69F19]/5'
-                    }
+                    aria-label="Visualização em quadro"
+                    className={cn(
+                      'density-icon-control',
+                      view === 'board'
+                        ? 'bg-gradient-to-r from-[#F69F19] to-[#DE5532] text-white'
+                        : 'hover:bg-[#F69F19]/5'
+                    )}
                   >
                     <LayoutGrid className="h-4 w-4" />
                   </Button>
@@ -594,10 +574,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                       variant={view === 'users' ? "default" : "ghost"}
                       size="sm"
                       onClick={() => setView('users')}
-                      className={view === 'users' 
-                        ? 'bg-gradient-to-r from-[#F69F19] to-[#DE5532] text-white' 
-                        : 'hover:bg-[#F69F19]/5'
-                      }
+                      aria-label="Visualização por usuários"
+                      className={cn(
+                        'density-icon-control',
+                        view === 'users'
+                          ? 'bg-gradient-to-r from-[#F69F19] to-[#DE5532] text-white'
+                          : 'hover:bg-[#F69F19]/5'
+                      )}
                     >
                       <Users className="h-4 w-4" />
                     </Button>
@@ -611,29 +594,29 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
           </div>
           
           {/* Estatísticas reais do banco de dados - apenas em desktop */}
-          <div className="hidden md:flex flex-col items-start">
-            <div className="text-xs text-slate-500 mb-1">{getStatsTitle()}</div>
-            <div className="flex items-center gap-3 flex-wrap">
+          <div className="ticket-header-stats items-center gap-2">
+            <span className="ticket-header-stats-title density-meta text-slate-500">{getStatsTitle()}</span>
+            <div className="flex flex-wrap items-center gap-1.5">
               {statsToDisplay.loading ? (
-                <div className="text-sm text-slate-500 flex items-center">
-                  <div className="h-4 w-4 border-2 border-[#F69F19]/30 border-t-[#F69F19] rounded-full animate-spin mr-2"></div>
+                <div className="flex items-center text-xs text-slate-500">
+                  <div className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#F69F19]/30 border-t-[#F69F19]"></div>
                   Carregando...
                 </div>
               ) : (
                 <>
-                  <Badge variant="outline" className="bg-[#F69F19]/10 text-[#F69F19] border-[#F69F19]/20 px-3 py-1 hover:bg-[#F69F19]/15 transition-colors">
-                    Abertos: <span className="font-bold ml-1">{statsToDisplay.open}</span>
+                  <Badge variant="outline" className="density-badge border-[#F69F19]/20 bg-[#F69F19]/10 px-2 py-0.5 text-[#F69F19]">
+                    Abertos: <span className="ml-1 font-bold">{statsToDisplay.open}</span>
                   </Badge>
-                  <Badge variant="outline" className="bg-[#DE5532]/10 text-[#DE5532] border-[#DE5532]/20 px-3 py-1 hover:bg-[#DE5532]/15 transition-colors">
-                    Em andamento: <span className="font-bold ml-1">{statsToDisplay.inProgress}</span>
+                  <Badge variant="outline" className="density-badge border-[#DE5532]/20 bg-[#DE5532]/10 px-2 py-0.5 text-[#DE5532]">
+                    Andamento: <span className="ml-1 font-bold">{statsToDisplay.inProgress}</span>
                   </Badge>
-                  <Badge variant="outline" className="bg-[#2C2D2F]/10 text-[#2C2D2F] border-[#2C2D2F]/20 px-3 py-1 hover:bg-[#2C2D2F]/15 transition-colors">
-                    Resolvidos: <span className="font-bold ml-1">{statsToDisplay.resolved}</span>
+                  <Badge variant="outline" className="density-badge border-[#2C2D2F]/20 bg-[#2C2D2F]/10 px-2 py-0.5 text-[#2C2D2F]">
+                    Resolvidos: <span className="ml-1 font-bold">{statsToDisplay.resolved}</span>
                   </Badge>
                 </>
               )}
               {!isUser && user?.id && (
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5">
+                <div className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/80 px-2 py-1">
                   <Switch
                     id="header-only-my-tickets"
                     checked={onlyMyTickets}
@@ -642,7 +625,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                   />
                   <Label
                     htmlFor="header-only-my-tickets"
-                    className="cursor-pointer text-xs font-medium text-[#2C2D2F]"
+                    className="density-meta cursor-pointer font-medium text-[#2C2D2F]"
                   >
                     Meus tickets
                   </Label>
@@ -659,19 +642,19 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
             size="sm"
             onClick={onToggleHideResolvedTickets}
             className={cn(
-              'border-[#F69F19]/20 hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5 transition-colors',
+              'density-control border-[#F69F19]/20 px-3 text-sm hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5',
               hideResolvedTickets && 'bg-[#F69F19]/10 border-[#F69F19]/40 text-[#F69F19]'
             )}
           >
             {hideResolvedTickets ? (
               <>
-                <Eye className="h-4 w-4 mr-2" />
-                Mostrar resolvidos
+                <Eye className="mr-0 h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Mostrar resolvidos</span>
               </>
             ) : (
               <>
-                <EyeOff className="h-4 w-4 mr-2" />
-                Ocultar resolvidos
+                <EyeOff className="mr-0 h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Ocultar resolvidos</span>
               </>
             )}
           </Button>
@@ -684,7 +667,7 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="border-[#F69F19]/20 hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5 transition-colors"
+                    className="density-control border-[#F69F19]/20 transition-colors hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5"
                   >
                     <Circle className="h-3 w-3 fill-green-500 text-green-500" />
                     <Badge 
@@ -753,13 +736,13 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
             aria-expanded={filtersOpen}
             aria-label={filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros'}
             className={cn(
-              'border-[#F69F19]/20 hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5 transition-colors',
+              'density-control border-[#F69F19]/20 px-3 text-sm hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5',
               filtersOpen && 'bg-[#F69F19]/10 border-[#F69F19]/40 text-[#F69F19]'
             )}
           >
-            <Filter className="h-4 w-4 mr-2" />
-            <span>Filtros</span>
-            <ChevronDown className={cn('h-4 w-4 ml-2 transition-transform', filtersOpen && 'rotate-180')} />
+            <Filter className="mr-0 h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Filtros</span>
+            <ChevronDown className={cn('ml-1 h-4 w-4 transition-transform sm:ml-2', filtersOpen && 'rotate-180')} />
           </Button>
         </div>
       </div>

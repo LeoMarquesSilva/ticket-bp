@@ -51,7 +51,7 @@ export const ConnectionStatus = () => {
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 bg-red-500 text-white p-2 text-center z-50">
+    <div className="fixed left-0 right-0 top-0 z-[90] bg-red-500 p-2 text-center text-white">
       <div className="flex items-center justify-center gap-2">
         <WifiOff className="h-4 w-4" />
         <span>

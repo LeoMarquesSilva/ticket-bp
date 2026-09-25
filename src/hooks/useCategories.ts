@@ -307,7 +307,7 @@ export function useCategories() {
       setCreateFrenteLoading(true);
       await CategoryService.createTag(newFrente);
       toast.success('Frente de atuação criada', { description: `${newFrente.label} foi criada com sucesso.` });
-      setNewFrente({ key: '', label: '', color: '#3B82F6' });
+      setNewFrente({ key: '', label: '', color: '#3B82F6', icon: undefined });
       loadData();
       return true;
     } catch (error: any) {
@@ -323,7 +323,11 @@ export function useCategories() {
     if (!editingFrente.label?.trim()) { toast.error('Nome obrigatório'); return false; }
     try {
       setEditFrenteLoading(true);
-      await CategoryService.updateTag(editingFrente.id, { label: editingFrente.label, color: editingFrente.color });
+      await CategoryService.updateTag(editingFrente.id, {
+        label: editingFrente.label,
+        color: editingFrente.color,
+        icon: editingFrente.icon,
+      });
       toast.success('Frente de atuação atualizada', { description: `${editingFrente.label} foi atualizada.` });
       setEditingFrente(null);
       loadData();

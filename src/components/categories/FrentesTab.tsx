@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PlusCircle, Pencil, Trash2, Power, CheckCircle2, RefreshCw } from 'lucide-react';
+import { FrenteIcon } from '@/components/FrenteIcon';
 import type { Tag as TagType } from '@/services/categoryService';
 
 interface Props {
@@ -38,15 +39,19 @@ export default function FrentesTab({ loading, tags, onCreateFrente, onEditFrente
             <p className="text-slate-500 text-sm py-4">Nenhuma frente de atuação cadastrada. Crie uma para organizar as categorias.</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {tags.sort((a, b) => (a.order || 0) - (b.order || 0)).map((tag) => (
+              {[...tags].sort((a, b) => (a.order || 0) - (b.order || 0)).map((tag) => (
                 <div
                   key={tag.id}
                   className="flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:shadow-sm transition-shadow"
                 >
-                  <div
-                    className="h-5 w-5 shrink-0 rounded-full border-2 border-white shadow-[0_0_0_1px_currentColor]"
-                    style={{ backgroundColor: tag.color, color: tag.color }}
-                  />
+                  <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200">
+                    <FrenteIcon icon={tag.icon} frenteKey={tag.key} label={tag.label} className="h-4 w-4" />
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white"
+                      style={{ backgroundColor: tag.color }}
+                      aria-hidden="true"
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <span className="font-medium text-[#2C2D2F] block truncate">{tag.label}</span>
                     <span className="text-xs text-slate-400">{tag.key}</span>

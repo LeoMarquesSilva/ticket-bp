@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { OfficialPhotosProvider } from '@/contexts/OfficialPhotosContext';
@@ -53,20 +53,6 @@ const ProtectedRoute = ({
   const location = useLocation();
   const firstAllowedPath = useFirstAllowedPath();
 
-  const getCurrentPage = (): 'dashboard' | 'tickets' | 'users' | 'profile' => {
-    const path = location.pathname;
-    if (path.includes('/dashboard')) return 'dashboard';
-    if (path.includes('/users')) return 'users';
-    if (path.includes('/profile')) return 'profile';
-    return 'tickets';
-  };
-  
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tickets' | 'users' | 'profile'>(getCurrentPage());
-  
-  const handlePageChange = (page: 'dashboard' | 'tickets' | 'users' | 'profile') => {
-    setCurrentPage(page);
-  };
-
   const hasRequiredAccess = (): boolean => {
     if (requiredPermissionAny?.length) {
       return requiredPermissionAny.some((p) => has(p));
@@ -96,7 +82,7 @@ const ProtectedRoute = ({
     const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin';
     if (isAdmin) {
       return (
-        <Layout currentPage={currentPage} onPageChange={handlePageChange}>
+        <Layout>
           {children}
         </Layout>
       );
@@ -108,10 +94,7 @@ const ProtectedRoute = ({
   }
   
   return (
-    <Layout
-      currentPage={currentPage}
-      onPageChange={handlePageChange}
-    >
+    <Layout>
       {children}
     </Layout>
   );

@@ -196,8 +196,9 @@ const Profile: React.FC = () => {
       setAvatarUrlInput(url);
       await refreshUserProfile();
       toast.success('Foto enviada!');
-    } catch (e: any) {
-      toast.error(e.message || 'Erro ao enviar foto.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erro ao enviar foto.';
+      toast.error(message);
     } finally {
       setAvatarUploading(false);
     }
@@ -205,7 +206,7 @@ const Profile: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F6F6F6]">
+      <div className="flex min-h-full items-center justify-center bg-[#F6F6F6]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#F69F19] mx-auto mb-4"></div>
           <p className="text-slate-600 font-medium font-sans">Carregando perfil...</p>
@@ -215,7 +216,7 @@ const Profile: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F6F6] p-6 font-sans">
+    <div className="bg-[#F6F6F6] font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Header Estilizado Responsum */}

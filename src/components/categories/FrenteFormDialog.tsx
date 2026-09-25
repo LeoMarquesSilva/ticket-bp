@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RefreshCw } from 'lucide-react';
+import { FrenteIcon } from '@/components/FrenteIcon';
+import { FRENTE_ICON_OPTIONS, resolveFrenteIconName } from '@/utils/ticketCategoryGroups';
 import type { CreateTagData, Tag as TagType } from '@/services/categoryService';
 
 const CORES_PRESET = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#6366F1', '#EC4899', '#14B8A6', '#F97316'];
@@ -46,7 +48,7 @@ export default function FrenteFormDialog(props: Props) {
           <DialogHeader>
             <DialogTitle>Nova Frente de Atuação</DialogTitle>
             <DialogDescription>
-              Informe o nome da frente. A chave interna é gerada automaticamente pelo sistema.
+              Informe o nome e escolha sua identidade visual. A chave interna é gerada automaticamente.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -54,6 +56,11 @@ export default function FrenteFormDialog(props: Props) {
               <Label>Nome <span className="text-red-500">*</span></Label>
               <Input value={data.label} onChange={(e) => setData({ ...data, label: e.target.value })} placeholder="ex: Inteligência de Dados" />
             </div>
+            <IconPicker
+              value={data.icon}
+              label={data.label}
+              onChange={(icon) => setData({ ...data, icon })}
+            />
             <ColorPicker color={data.color} onChange={(c) => setData({ ...data, color: c })} />
           </div>
           <div className="flex justify-end gap-2">
@@ -73,7 +80,7 @@ export default function FrenteFormDialog(props: Props) {
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Editar Frente de Atuação</DialogTitle>
-          <DialogDescription>Altere o nome ou a cor. A chave interna não pode ser alterada.</DialogDescription>
+          <DialogDescription>Altere o nome, o ícone ou a cor. A chave interna não pode ser alterada.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
@@ -84,6 +91,12 @@ export default function FrenteFormDialog(props: Props) {
             <Label>Nome</Label>
             <Input value={data.label} onChange={(e) => setData({ ...data, label: e.target.value })} />
           </div>
+          <IconPicker
+            value={data.icon}
+            frenteKey={data.key}
+            label={data.label}
+            onChange={(icon) => setData({ ...data, icon })}
+          />
           <ColorPicker color={data.color} onChange={(c) => setData({ ...data, color: c })} />
         </div>
         <div className="flex justify-end gap-2">
@@ -94,6 +107,51 @@ export default function FrenteFormDialog(props: Props) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function IconPicker({
+  value,
+  frenteKey,
+  label,
+  onChange,
+}: {
+  value?: string;
+  frenteKey?: string;
+  label: string;
+  onChange: (icon: string) => void;
+}) {
+  const selectedIcon = resolveFrenteIconName(value, frenteKey, label);
+
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="text-sm font-medium text-slate-700">Ícone</legend>
+      <p className="text-xs text-slate-500">
+        Identifica visualmente esta frente na lista de tickets.
+      </p>
+      <div className="grid grid-cols-5 gap-2">
+        {FRENTE_ICON_OPTIONS.map((option) => {
+          const isSelected = option.value === selectedIcon;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-label={option.label}
+              aria-pressed={isSelected}
+              title={option.label}
+              onClick={() => onChange(option.value)}
+              className={`flex min-h-11 items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F69F19] focus-visible:ring-offset-2 ${
+                isSelected
+                  ? 'border-[#F69F19] bg-[#F69F19]/12 text-[#9A5700]'
+                  : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+              }`}
+            >
+              <FrenteIcon icon={option.value} className="h-5 w-5" />
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

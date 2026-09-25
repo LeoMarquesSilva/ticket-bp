@@ -7,7 +7,7 @@ import {
   type OfficialPhoto,
 } from '@/services/officialPhotosService';
 
-const STORAGE_KEY = 'responsum.official-photos.v1';
+const STORAGE_KEY = 'responsum.official-photos.v2';
 const STALE_MS = 5 * 60 * 1000;
 const UNAVAILABLE_COOLDOWN_MS = 2 * 60 * 1000;
 

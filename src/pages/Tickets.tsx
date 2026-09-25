@@ -43,6 +43,13 @@ import {
 import { matchesUserTicketFilter } from '@/utils/ticketFiltersUtils';
 import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
 import { canUserFinishTicket } from '@/utils/npsExemptTickets';
+import { shouldOpenTicketFiltersInitially } from '@/utils/layoutPreferences';
+import {
+  expandVisibleTicketCategories,
+  expandVisibleTicketFrentes,
+  getTicketListFilterExpansion,
+  shouldUseFrenteHierarchy,
+} from '@/utils/ticketCategoryGroups';
 
 interface SupportUser {
   id: string;
@@ -175,23 +182,29 @@ const Tickets = () => {
   // Carregar preferência do usuário quando o componente monta ou quando o usuário muda
   useEffect(() => {
     if (user?.ticketViewPreference) setViewState(user.ticketViewPreference);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.ticketViewPreference]);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [frenteFilter, setFrenteFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [expandedListCategoryKeys, setExpandedListCategoryKeys] = useState<string[]>([]);
+  const [expandedListFrenteKeys, setExpandedListFrenteKeys] = useState<string[]>([]);
   const [assignedFilter, setAssignedFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
   const [hideResolvedTickets, setHideResolvedTickets] = useState(false);
   // Painel de filtros recolhível: aberto por padrão em telas altas, recolhido em telas baixas
   // (notebooks) para devolver altura à lista de tickets e ao chat.
   const [filtersOpen, setFiltersOpen] = useState<boolean>(
-    () => (typeof window === 'undefined' ? true : window.innerHeight >= 850)
+    () => (
+      typeof window === 'undefined'
+        ? false
+        : shouldOpenTicketFiltersInitially(window.innerHeight, window.innerWidth)
+    )
   );
+  const filtersOpenBeforeChatRef = useRef(filtersOpen);
   const [categoriesConfig, setCategoriesConfig] = useState<CategoriesConfigMap>({});
-  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string }[]>([]);
+  const [frentes, setFrentes] = useState<{ id: string; label: string; color: string; icon?: string }[]>([]);
   const [userFrenteIds, setUserFrenteIds] = useState<string[]>([]);
   const [userCategoryKeys, setUserCategoryKeys] = useState<string[]>([]);
   const [frenteAccessReady, setFrenteAccessReady] = useState(false);
@@ -308,6 +321,7 @@ const Tickets = () => {
   const isAssignedOnly = isAssignedOnlyRole(user?.role);
   const isFrenteRestricted =
     !isAssignedOnly && has('view_frente_tickets') && !has('view_all_tickets');
+  const groupListByFrente = shouldUseFrenteHierarchy(has('view_all_tickets'), userFrenteIds);
   const strictFrenteOnly = isStrictFrenteRole(user?.role);
   const isStaffUser = Boolean(user && (isStaffRole(user.role) || has('assign_ticket') || has('view_all_tickets') || has('view_frente_tickets')));
   const canUsePresenceChannel = Boolean(isStaffUser);
@@ -356,7 +370,7 @@ const Tickets = () => {
           CategoryService.getAllTags(false),
         ]);
         setCategoriesConfig(config);
-        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color })));
+        setFrentes(tags.map((t) => ({ id: t.id, label: t.label, color: t.color, icon: t.icon })));
       } catch (error) {
         console.error('Erro ao carregar dados dos filtros:', error);
         setCategoriesConfig({});
@@ -751,7 +765,8 @@ const Tickets = () => {
           message: payload.new.message,
           attachments: payload.new.attachments || [],
           createdAt: payload.new.created_at,
-          read: payload.new.read
+          read: payload.new.read,
+          isSystem: payload.new.is_system === true,
         };
 
         const messageExists = prevMessages.some(
@@ -1586,7 +1601,8 @@ const handleFileUpload = async (files: FileList | File[]): Promise<ChatAttachmen
       });
 
       uploaded.push(attachment);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('❌ Erro ao fazer upload:', error);
       
       setUploadingFiles(prev => {
@@ -1599,7 +1615,7 @@ const handleFileUpload = async (files: FileList | File[]): Promise<ChatAttachmen
         return next;
       });
       
-      toast.error(`Erro ao fazer upload de ${file.name}: ${error?.message || 'Erro desconhecido'}`);
+      toast.error(`Erro ao fazer upload de ${file.name}: ${errorMessage}`);
     }
   }
 
@@ -1637,9 +1653,18 @@ const openChat = (ticket: Ticket) => {
   if (view !== 'list') {
     setView('list');
   }
-  
+
+  setExpandedListCategoryKeys((currentKeys) =>
+    expandVisibleTicketCategories(currentKeys, [ticket]),
+  );
+  setExpandedListFrenteKeys((currentKeys) =>
+    expandVisibleTicketFrentes(currentKeys, [ticket], categoriesConfig),
+  );
+
   setSelectedTicket(ticket);
   setShowChat(true);
+  if (!showChat) filtersOpenBeforeChatRef.current = filtersOpen;
+  setFiltersOpen(false);
   selectedTicketIdRef.current = ticket.id;
   chatOpenRef.current = true;
   setActiveChatId(ticket.id); // 🎯 NOVA LINHA
@@ -1652,6 +1677,7 @@ const openChat = (ticket: Ticket) => {
 
 const closeChat = () => {
   setShowChat(false);
+  setFiltersOpen(filtersOpenBeforeChatRef.current);
   setSelectedTicket(null);
   selectedTicketIdRef.current = null;
   chatOpenRef.current = false;
@@ -1785,6 +1811,22 @@ const filteredTickets = React.useMemo(
   ]
 );
 
+useEffect(() => {
+  const { expandCategories, expandFrentes } = getTicketListFilterExpansion(
+    searchTerm, categoryFilter, frenteFilter,
+  );
+  if (expandCategories) {
+    setExpandedListCategoryKeys((currentKeys) =>
+      expandVisibleTicketCategories(currentKeys, filteredTickets),
+    );
+  }
+  if (expandFrentes) {
+    setExpandedListFrenteKeys((currentKeys) =>
+      expandVisibleTicketFrentes(currentKeys, filteredTickets, categoriesConfig),
+    );
+  }
+}, [categoriesConfig, categoryFilter, filteredTickets, frenteFilter, searchTerm]);
+
 // Organizar tickets por status para o quadro Kanban
 const getTicketsByStatus = () => {
   // Fluxo ativo: open → in_progress → resolved (status "assigned" é legado, exibido em Abertos)
@@ -1855,7 +1897,7 @@ const headerStats = React.useMemo(() => {
 }, [filteredTickets, loading]);
 
 return (
-  <div className="flex flex-col overflow-hidden w-full h-[calc(100dvh-var(--layout-chrome-height))] max-h-[calc(100dvh-var(--layout-chrome-height))] pb-2 sm:pb-3 lg:pb-4">
+  <div className="ticket-workspace flex h-full min-h-0 w-full flex-col overflow-hidden">
     {/* PendingFeedbackHandler - mostra apenas tickets criados pelo próprio usuário logado */}
     <PendingFeedbackHandler
       tickets={tickets}
@@ -1865,7 +1907,7 @@ return (
     />
 
 {/* Cabeçalho com filtros e botões - altura fixa */}
-<div className="flex-shrink-0 bg-[#F6F6F6] border-b border-[#F69F19]/20 shadow-sm w-full">
+<div className="w-full flex-shrink-0">
       <TicketHeader
         view={view}
         setView={handleViewChange}
@@ -1886,7 +1928,7 @@ return (
 
       {/* Filtros recolhíveis (toggle no botão "Filtros" do cabeçalho) */}
       {filtersOpen && (
-      <div className="px-4 pb-4">
+      <div className="px-2.5 pb-2.5 sm:px-4 sm:pb-3">
         <TicketFilters
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
@@ -1974,6 +2016,13 @@ return (
                     <TicketList
                       filteredTickets={filteredTickets}
                       tickets={tickets}
+                      categoriesConfig={categoriesConfig}
+                      frentes={visibleFrentes}
+                      groupByFrente={groupListByFrente}
+                      expandedFrenteKeys={expandedListFrenteKeys}
+                      onExpandedFrenteKeysChange={setExpandedListFrenteKeys}
+                      expandedCategoryKeys={expandedListCategoryKeys}
+                      onExpandedCategoryKeysChange={setExpandedListCategoryKeys}
                       renderTicketCard={renderTicketCard}
                       isChatOpen={false}
                     />
@@ -2040,6 +2089,13 @@ return (
                     <TicketList
                       filteredTickets={filteredTickets}
                       tickets={tickets}
+                      categoriesConfig={categoriesConfig}
+                      frentes={visibleFrentes}
+                      groupByFrente={groupListByFrente}
+                      expandedFrenteKeys={expandedListFrenteKeys}
+                      onExpandedFrenteKeysChange={setExpandedListFrenteKeys}
+                      expandedCategoryKeys={expandedListCategoryKeys}
+                      onExpandedCategoryKeysChange={setExpandedListCategoryKeys}
                       renderTicketCard={renderTicketCard}
                       isChatOpen={false}
                     />
@@ -2072,6 +2128,13 @@ return (
                         <TicketList
                           filteredTickets={filteredTickets}
                           tickets={tickets}
+                          categoriesConfig={categoriesConfig}
+                          frentes={visibleFrentes}
+                          groupByFrente={groupListByFrente}
+                          expandedFrenteKeys={expandedListFrenteKeys}
+                          onExpandedFrenteKeysChange={setExpandedListFrenteKeys}
+                          expandedCategoryKeys={expandedListCategoryKeys}
+                          onExpandedCategoryKeysChange={setExpandedListCategoryKeys}
                           renderTicketCard={renderTicketCard}
                           isChatOpen={true}
                         />

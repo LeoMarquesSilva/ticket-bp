@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import Header from '@/components/Header';
+import { AppNavShell } from '@/components/AppSidebar';
 import { supabase, TABLES } from '@/lib/supabase';
-import { useNavigate } from 'react-router-dom';
-import { ConnectionStatus } from './ConnectionStatus';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import { useNotificationOrchestrator } from '@/hooks/useNotificationOrchestrator';
 import { CategoryService } from '@/services/categoryService';
 import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
@@ -18,14 +18,14 @@ import {
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentPage: 'tickets' | 'dashboard' | 'users' | 'profile';
-  onPageChange: (page: 'tickets' | 'dashboard' | 'users' | 'profile') => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user } = useAuth();
   const { has, loading: permissionsLoading } = usePermissions();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isTicketsWorkspace = location.pathname.startsWith('/tickets');
   const { notifyRealtimeEvent } = useNotificationOrchestrator();
   const normalizeRole = (role?: string | null) => String(role ?? '').trim().toLowerCase();
   const normalizeId = (value?: string | null) => {
@@ -392,15 +392,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   ]);
 
   return (
-    <div className="flex flex-col min-h-screen w-full bg-gradient-to-br from-[#F6F6F6] via-[#F69F19]/5 to-[#DE5532]/15">
-      <Header />
-      <main className="flex-1 w-full pt-4">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          {children}
-        </div>
+    <AppNavShell>
+      <main
+        className={cn(
+          'min-h-0 min-w-0 flex-1',
+          isTicketsWorkspace ? 'overflow-hidden' : 'overflow-y-auto px-4 py-4 sm:px-6 lg:px-8'
+        )}
+      >
+        {isTicketsWorkspace ? children : (
+          <div className="mx-auto w-full max-w-[1600px]">
+            {children}
+          </div>
+        )}
       </main>
-      <ConnectionStatus />
-    </div>
+    </AppNavShell>
   );
 };
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import UserAvatar from '@/components/UserAvatar';
 import { Clock, Calendar, AlertCircle, CheckCircle, UserCheck, MessageSquare } from 'lucide-react';
@@ -46,15 +46,15 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   const getStatusIcon = (status: TicketStatus) => {
     switch (status) {
       case 'open':
-        return <AlertCircle className="h-4 w-4 text-slate-500" />;
+        return <AlertCircle className="h-3 w-3 text-slate-500" />;
       case 'assigned':
-        return <UserCheck className="h-4 w-4 text-blue-500" />;
+        return <UserCheck className="h-3 w-3 text-blue-500" />;
       case 'in_progress':
-        return <Clock className="h-4 w-4 text-[#F69F19]" />;
+        return <Clock className="h-3 w-3 text-[#F69F19]" />;
       case 'resolved':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
+        return <CheckCircle className="h-3 w-3 text-green-500" />;
       default:
-        return <AlertCircle className="h-4 w-4 text-slate-400" />;
+        return <AlertCircle className="h-3 w-3 text-slate-400" />;
     }
   };
 
@@ -87,8 +87,8 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
       className={`
         group relative transition-all duration-200 cursor-pointer border overflow-hidden
         ${isSelected 
-          ? 'border-[#F69F19] bg-white shadow-lg ring-2 ring-[#F69F19]/25' 
-          : 'border-slate-200 bg-white hover:border-[#F69F19]/40 hover:shadow-md'
+          ? 'border-[#F69F19] bg-white shadow-md ring-2 ring-[#F69F19]/25'
+          : 'border-slate-200 bg-white hover:border-[#F69F19]/40 hover:shadow-sm'
         }
         ${isFinalized ? 'opacity-80' : ''}
       `}
@@ -98,71 +98,68 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
         <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#F69F19]" />
       )}
 
-      <CardHeader className={compact ? 'pb-1 pl-3 pr-3 pt-3' : 'pb-3 pl-4 pr-4 pt-4'}>
-        <div className="flex items-start gap-3">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <UserAvatar
-              name={ticket.createdByName}
-              userId={ticket.createdBy}
-              avatarUrl={ticket.createdByAvatarUrl}
-              size={compact ? 'sm' : 'md'}
-              className="shrink-0 border-2 border-white shadow-sm"
-              fallbackClassName="bg-[#DE5532]/15 text-[#DE5532]"
-            />
-            <div className="min-w-0 flex-1">
-              <h4 className={`font-semibold truncate ${compact ? 'text-xs' : 'text-sm'} ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
-                {ticket.title}
-              </h4>
-              <p className="text-[11px] text-slate-500 truncate mt-0.5">{ticket.createdByName}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {unreadCount > 0 && (
-              <Badge className="bg-[#DE5532] text-white text-[10px] px-1.5 py-0 h-5 flex items-center shadow-sm border-0">
-                <MessageSquare className="h-3 w-3 mr-1 fill-current opacity-80" />
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </Badge>
-            )}
-            <div className="text-slate-400">{getStatusIcon(ticket.status)}</div>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className={compact ? 'pt-0 pl-3 pr-3 pb-3' : 'pt-0 pl-4 pr-4 pb-4'}>
-        <div className={compact ? 'space-y-2' : 'space-y-3'}>
-          <p className={`text-slate-600 text-xs leading-relaxed ${compact ? 'line-clamp-1' : 'line-clamp-2'}`}>
-            {ticket.description}
-          </p>
-          
-          <div className="flex flex-wrap gap-1.5">
-            <Badge variant="secondary" className={`${statusColor} border text-[10px] font-medium px-2 py-0`}>
-              {getStatusLabel(ticket.status)}
-            </Badge>
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            {ticket.assignedToName ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <UserAvatar
-                  name={ticket.assignedToName}
-                  userId={ticket.assignedTo}
-                  avatarUrl={ticket.assignedToAvatarUrl}
-                  size="sm"
-                  className="h-6 w-6 shrink-0 border border-white"
-                  fallbackClassName="bg-[#F69F19]/20 text-[#F69F19] text-[9px]"
-                />
-                <span className="text-[11px] text-slate-500 truncate">Atribuído: {ticket.assignedToName}</span>
+      <div className={compact ? 'p-3 pl-3.5' : 'p-3.5 pl-4'}>
+        <div className="flex items-start gap-2.5">
+          <UserAvatar
+            name={ticket.createdByName}
+            userId={ticket.createdBy}
+            avatarUrl={ticket.createdByAvatarUrl}
+            size="sm"
+            className="mt-0.5 h-8 w-8 shrink-0 border border-white shadow-sm"
+            fallbackClassName="bg-[#DE5532]/15 text-[#DE5532]"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className={`truncate font-semibold text-sm leading-snug ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
+                  {ticket.title}
+                </h4>
+                <p className="density-meta mt-0.5 truncate text-slate-500">{ticket.createdByName}</p>
               </div>
-            ) : (
-              <span className="text-[11px] text-slate-400 italic">Não atribuído</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {unreadCount > 0 && (
+                  <Badge className="density-badge h-5 border-0 bg-[#DE5532] px-1.5 py-0 text-white shadow-sm">
+                    <MessageSquare className="mr-1 h-3 w-3 fill-current opacity-80" />
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Badge>
+                )}
+                <Badge variant="secondary" className={`${statusColor} density-badge inline-flex items-center gap-1 border px-1.5 py-0 font-medium`}>
+                  <span className="hidden sm:inline-flex">{getStatusIcon(ticket.status)}</span>
+                  {getStatusLabel(ticket.status)}
+                </Badge>
+              </div>
+            </div>
+
+            {!compact && ticket.description && (
+              <p className="mt-1 line-clamp-1 text-xs leading-relaxed text-slate-600">
+                {ticket.description}
+              </p>
             )}
-            <div className="flex items-center gap-1 text-[11px] text-slate-400 flex-shrink-0">
-              <Calendar className="h-3 w-3" />
-              {formatDate(ticket.createdAt)}
+
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              {ticket.assignedToName ? (
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <UserAvatar
+                    name={ticket.assignedToName}
+                    userId={ticket.assignedTo}
+                    avatarUrl={ticket.assignedToAvatarUrl}
+                    size="sm"
+                    className="h-5 w-5 shrink-0 border border-white"
+                    fallbackClassName="bg-[#F69F19]/20 text-[#F69F19] text-[8px]"
+                  />
+                  <span className="density-meta truncate text-slate-500">{ticket.assignedToName}</span>
+                </div>
+              ) : (
+                <span className="density-meta truncate italic text-slate-400">Não atribuído</span>
+              )}
+              <div className="density-meta flex shrink-0 items-center gap-1 text-slate-400">
+                <Calendar className="h-3 w-3" />
+                {!compact && <span>{formatDate(ticket.createdAt)}</span>}
+              </div>
             </div>
           </div>
         </div>
-      </CardContent>
+      </div>
     </Card>
   );
 };

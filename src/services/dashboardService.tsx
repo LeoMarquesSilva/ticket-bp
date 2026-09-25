@@ -31,6 +31,8 @@ export interface DashboardStats {
   topUsers: Array<{
     name: string;
     tickets: number;
+    userId?: string;
+    avatarUrl?: string;
   }>;
   responseTimeByDay: Array<{
     day: string;
@@ -40,6 +42,8 @@ export interface DashboardStats {
     name: string;
     time: number;
     tickets: number;
+    userId?: string;
+    avatarUrl?: string;
   }>;
   resolutionTimeByCategory: Array<{
     category: string;
@@ -97,7 +101,9 @@ export interface DashboardStats {
       id: string;
       title: string;
       resolvedAt?: string;
+      assignedTo?: string;
       assignedToName?: string;
+      assignedToAvatarUrl?: string;
       ticketUrl: string;
     }>;
     count: number;
@@ -344,7 +350,7 @@ async function processTicketsData(tickets: any[], days: number): Promise<Dashboa
   const resolutionTimeByCategory = generateResolutionTimeByCategoryData(tickets);
 
   // Gerar dados de usuários com mais tickets
-  const topUsers = generateTopUsersData(tickets);
+  const topUsers = await generateTopUsersData(tickets);
 
   // Buscar dados reais de NPS do feedback
   const npsData = calculateNpsScores(tickets);
@@ -612,8 +618,8 @@ async function generateResponseTimeByDayData(tickets: any[]): Promise<Array<{ da
 }
 
 // Função para gerar dados de tempo de resposta por atendente
-async function generateResponseTimeByAgentData(tickets: any[]): Promise<Array<{ name: string; time: number; tickets: number }>> {
-  const agentData: Record<string, { name: string; totalTime: number; count: number }> = {};
+async function generateResponseTimeByAgentData(tickets: any[]): Promise<Array<{ name: string; time: number; tickets: number; userId?: string; avatarUrl?: string }>> {
+  const agentData: Record<string, { name: string; userId?: string; totalTime: number; count: number }> = {};
   
   // Buscar todas as mensagens para calcular tempo de primeira resposta
   const ticketIds = tickets.map(t => t.id);
@@ -657,25 +663,45 @@ async function generateResponseTimeByAgentData(tickets: any[]): Promise<Array<{ 
       
       if (responseTimeHours >= 0 && responseTimeHours < 10000) {
         const agentName = ticket.assigned_to_name;
+        const agentId = ticket.assigned_to || undefined;
+        const agentKey = agentId || agentName;
         
-        if (!agentData[agentName]) {
-          agentData[agentName] = { name: agentName, totalTime: 0, count: 0 };
+        if (!agentData[agentKey]) {
+          agentData[agentKey] = { name: agentName, userId: agentId, totalTime: 0, count: 0 };
         }
         
-        agentData[agentName].totalTime += responseTimeHours;
-        agentData[agentName].count++;
+        agentData[agentKey].totalTime += responseTimeHours;
+        agentData[agentKey].count++;
       }
     }
   });
   
-  // Calcular médias e formatar
-  return Object.values(agentData)
+  const ranked = Object.values(agentData)
     .map(agent => ({
       name: agent.name,
+      userId: agent.userId,
+      avatarUrl: undefined as string | undefined,
       time: agent.count > 0 ? Math.round((agent.totalTime / agent.count) * 10) / 10 : 0,
       tickets: agent.count
     }))
-    .sort((a, b) => a.time - b.time); // Ordenar por tempo (menor primeiro = melhor)
+    .sort((a, b) => a.time - b.time);
+
+  const ids = ranked.map((a) => a.userId).filter((id): id is string => Boolean(id));
+  if (ids.length > 0) {
+    const { data: usersData } = await supabase
+      .from(TABLES.USERS)
+      .select('id, avatar_url')
+      .in('id', ids);
+    const avatarMap = new Map<string, string>();
+    (usersData || []).forEach((u: { id: string; avatar_url?: string }) => {
+      if (u.avatar_url) avatarMap.set(u.id, u.avatar_url);
+    });
+    ranked.forEach((agent) => {
+      if (agent.userId) agent.avatarUrl = avatarMap.get(agent.userId);
+    });
+  }
+
+  return ranked;
 }
 
 // Função para gerar dados de tempo de resolução por categoria
@@ -702,36 +728,51 @@ function generateResolutionTimeByCategoryData(tickets: any[]): Array<{ category:
     }
   });
   
-  // Calcular médias e formatar
   return Object.entries(categoryData)
     .map(([category, data]) => ({
-      category: category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' '),
+      category,
       time: data.count > 0 ? Math.round((data.totalTime / data.count) * 10) / 10 : 0,
       tickets: data.count
     }))
-    .sort((a, b) => b.tickets - a.tickets); // Ordenar por quantidade de tickets
+    .sort((a, b) => b.tickets - a.tickets);
 }
 
 // Função para gerar dados dos usuários com mais tickets
-function generateTopUsersData(tickets: any[]) {
-  const userCounts: Record<string, { name: string; tickets: number }> = {};
+async function generateTopUsersData(tickets: any[]) {
+  const userCounts: Record<string, { name: string; userId?: string; tickets: number; avatarUrl?: string }> = {};
   
   tickets.forEach(ticket => {
     const userName = ticket.created_by_name || 'Usuário desconhecido';
-    const userId = ticket.created_by || 'unknown';
-    const userKey = `${userId}-${userName}`;
+    const userId = ticket.created_by || undefined;
+    const userKey = userId || `name:${userName}`;
     
     if (userCounts[userKey]) {
       userCounts[userKey].tickets++;
     } else {
-      userCounts[userKey] = { name: userName, tickets: 1 };
+      userCounts[userKey] = { name: userName, userId, tickets: 1 };
     }
   });
   
-  // Ordenar e pegar os top 5
-  return Object.values(userCounts)
+  const top = Object.values(userCounts)
     .sort((a, b) => b.tickets - a.tickets)
     .slice(0, 5);
+
+  const ids = top.map((u) => u.userId).filter((id): id is string => Boolean(id));
+  if (ids.length > 0) {
+    const { data: usersData } = await supabase
+      .from(TABLES.USERS)
+      .select('id, avatar_url')
+      .in('id', ids);
+    const avatarMap = new Map<string, string>();
+    (usersData || []).forEach((u: { id: string; avatar_url?: string }) => {
+      if (u.avatar_url) avatarMap.set(u.id, u.avatar_url);
+    });
+    top.forEach((u) => {
+      if (u.userId) u.avatarUrl = avatarMap.get(u.userId);
+    });
+  }
+
+  return top;
 }
 
 // Função para processar dados de feedback diretamente dos tickets
@@ -824,30 +865,40 @@ async function processPendingFeedbackFromTickets(tickets: any[]): Promise<Dashbo
       id: ticket.id,
       title: ticket.title || `Ticket #${ticket.id.slice(0, 8)}`,
       resolvedAt: ticket.resolved_at,
+      assignedTo: ticket.assigned_to,
       assignedToName: ticket.assigned_to_name,
       ticketUrl: `/tickets/${ticket.id}`,
     });
   });
 
-  const userIds = Array.from(byUser.keys());
-  let avatarMap: Record<string, string> = {};
-  if (userIds.length > 0) {
+  const requesterIds = Array.from(byUser.keys()).filter((id) => id && id !== 'unknown');
+  const assignedIds = [...new Set(
+    Array.from(byUser.values()).flatMap((entry) =>
+      entry.tickets.map((t) => t.assignedTo).filter((id): id is string => Boolean(id))
+    )
+  )];
+  const allIds = [...new Set([...requesterIds, ...assignedIds])];
+  const avatarMap: Record<string, string> = {};
+  if (allIds.length > 0) {
     const { data: usersData } = await supabase
       .from(TABLES.USERS)
       .select('id, avatar_url')
-      .in('id', userIds);
-    if (usersData) {
-      usersData.forEach((u: { id: string; avatar_url?: string }) => {
-        if (u.avatar_url) avatarMap[u.id] = u.avatar_url;
-      });
-    }
+      .in('id', allIds);
+    (usersData || []).forEach((u: { id: string; avatar_url?: string }) => {
+      if (u.avatar_url) avatarMap[u.id] = u.avatar_url;
+    });
   }
 
   return Array.from(byUser.values())
     .map((entry) => {
-      const sortedTickets = entry.tickets.sort(
-        (a, b) => new Date(b.resolvedAt || 0).getTime() - new Date(a.resolvedAt || 0).getTime()
-      );
+      const sortedTickets = entry.tickets
+        .sort(
+          (a, b) => new Date(b.resolvedAt || 0).getTime() - new Date(a.resolvedAt || 0).getTime()
+        )
+        .map((ticket) => ({
+          ...ticket,
+          assignedToAvatarUrl: ticket.assignedTo ? avatarMap[ticket.assignedTo] : undefined,
+        }));
       return {
         userId: entry.userId,
         userName: entry.userName,

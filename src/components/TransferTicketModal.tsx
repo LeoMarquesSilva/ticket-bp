@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -17,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
-import { UserPlus, Building2, RefreshCw, Search, Tag, AlertCircle } from 'lucide-react';
+import { UserPlus, Building2, RefreshCw, Search, Tag, AlertCircle, ClipboardList } from 'lucide-react';
 import { UserService } from '@/services/userService';
 import { DepartmentService } from '@/services/departmentService';
 import { CategoryService } from '@/services/categoryService';
@@ -50,7 +51,7 @@ interface TransferTicketModalProps {
   currentCategory?: string;
   currentSubcategory?: string;
   supportUsers?: User[];
-  onTransfer: (supportId: string, supportName: string) => Promise<void>;
+  onTransfer: (supportId: string, supportName: string, handoffNote?: string) => Promise<void>;
 }
 
 const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
@@ -78,6 +79,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
   const [frenteId, setFrenteId] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [subcategory, setSubcategory] = useState<string>('');
+  const [handoffNote, setHandoffNote] = useState<string>('');
 
   useEffect(() => {
     if (!open) return;
@@ -108,6 +110,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
         setSelectedDept('all');
         setSelectedUser('');
         setSearchTerm('');
+        setHandoffNote('');
         // Pré-preencher com a frente/categoria/subcategoria atual do ticket
         const currentTagId = cats[currentCategory]?.tagId;
         setFrenteId(currentCategory ? (currentTagId || 'sem-frente') : '');
@@ -169,7 +172,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
       if (categoryChanged) {
         await TicketService.updateTicket(ticketId, { category, subcategory });
       }
-      await onTransfer(selectedUser, u.name);
+      await onTransfer(selectedUser, u.name, handoffNote.trim());
       onOpenChange(false);
       toast.success(`Ticket transferido para ${u.name}`);
     } catch (e) {
@@ -181,7 +184,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5 text-[#F69F19]" />
@@ -189,7 +192,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-2 pr-1">
           {/* Passo 1: Categoria / Subcategoria */}
           <div className="rounded-lg border border-[#F69F19]/30 bg-[#F69F19]/5 p-3 space-y-3">
             <div className="flex items-start gap-2">
@@ -311,7 +314,7 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
                     : 'Nenhum usuário neste departamento.'}
               </p>
             ) : (
-              <ScrollArea className="h-[200px] rounded-md border p-1">
+              <ScrollArea className="h-[160px] rounded-md border p-1">
                 <div className="space-y-1">
                   {filteredUsers.map((u) => (
                     <button
@@ -344,9 +347,27 @@ const TransferTicketModal: React.FC<TransferTicketModalProps> = ({
               </ScrollArea>
             )}
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="transfer-handoff-note" className="flex items-center gap-2 text-sm font-medium">
+              <ClipboardList className="h-4 w-4 text-slate-500" />
+              Informações para o próximo atendente
+            </Label>
+            <Textarea
+              id="transfer-handoff-note"
+              value={handoffNote}
+              onChange={(e) => setHandoffNote(e.target.value)}
+              maxLength={2000}
+              placeholder="Contexto, pendências ou o que a próxima pessoa precisa saber para continuar o atendimento."
+              className="min-h-[88px] resize-y"
+            />
+            <p className="text-xs text-slate-500">
+              Opcional. Fica registrada no chamado e visível para a equipe de atendimento.
+            </p>
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex shrink-0 justify-end gap-2 pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancelar
           </Button>

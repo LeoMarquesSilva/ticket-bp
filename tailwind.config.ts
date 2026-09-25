@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
 import tailwindcssAspectRatio from "@tailwindcss/aspect-ratio";
+import plugin from "tailwindcss/plugin";
 
 export default {
   darkMode: ["class"],
@@ -15,12 +16,6 @@ export default {
       },
     },
     extend: {
-      // Breakpoints baseados em ALTURA (além dos de largura padrão).
-      // `tall` aplica em telas altas (desktop); a ausência dele = tela baixa
-      // (notebooks), onde o chrome fica compacto para sobrar espaço ao conteúdo.
-      screens: {
-        tall: { raw: "(min-height: 850px)" },
-      },
       fontFamily: {
         sans: ["Montserrat", "sans-serif"],
       },
@@ -113,5 +108,8 @@ export default {
   plugins: [
     tailwindcssAnimate,
     tailwindcssAspectRatio,
+    plugin(({ addVariant }) => {
+      addVariant('tall', '@media (min-height: 1100px)');
+    }),
   ],
 } satisfies Config;

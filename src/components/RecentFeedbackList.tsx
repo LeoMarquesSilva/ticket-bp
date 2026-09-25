@@ -9,7 +9,6 @@ import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, Ch
 import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { CategoryService } from '@/services/categoryService';
 import { differenceInHours, differenceInDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -36,6 +35,14 @@ interface RecentFeedbackItem {
 
 interface RecentFeedbackListProps {
   feedbackItems: RecentFeedbackItem[];
+}
+
+function formatChatMessageText(text?: string) {
+  return String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 interface ChatMessage {
@@ -553,18 +560,22 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
 
         {/* Modal para exibir o histórico da conversa */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col p-0 gap-0" aria-describedby="chat-history-description">
-            <DialogHeader className="p-4 sm:p-6 pb-2">
-              <DialogTitle className="text-lg sm:text-xl">Histórico da Conversa</DialogTitle>
-              <p className="text-xs sm:text-sm text-slate-500" id="chat-history-description">{selectedTicket?.title}</p>
+          <DialogContent
+            className="flex h-[min(85vh,820px)] w-[calc(100vw-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+            aria-describedby="chat-history-description"
+          >
+            <DialogHeader className="shrink-0 space-y-0 border-b border-slate-100 px-5 pb-3 pt-5 pr-12 text-left">
+              <DialogTitle className="text-lg leading-snug">Histórico da Conversa</DialogTitle>
+              <p className="mt-1 line-clamp-2 text-xs text-slate-500 sm:text-sm" id="chat-history-description">
+                {selectedTicket?.title}
+              </p>
               
-              {/* Botão Mostrar Detalhes */}
               <div className="mt-3">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowTicketDetails(!showTicketDetails)}
-                  className="w-full sm:w-auto text-xs"
+                  className="w-full text-xs sm:w-auto"
                 >
                   {showTicketDetails ? (
                     <>
@@ -580,39 +591,41 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                 </Button>
               </div>
 
-              {/* Detalhes do Ticket (expandível) */}
               {showTicketDetails && selectedTicket && (
-                <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 animate-in slide-in-from-top-2">
-                  {/* Data e Hora de Criação */}
+                <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 animate-in slide-in-from-top-2">
                   {selectedTicket.createdAt && (
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span className="font-semibold text-[#2C2D2F]">Criado em:</span>
-                      <span className="text-slate-700">
-                        {format(new Date(selectedTicket.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                    <div className="flex items-start gap-2 text-xs text-slate-600">
+                      <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="min-w-0">
+                        <span className="font-semibold text-[#2C2D2F]">Criado em: </span>
+                        <span className="text-slate-700">
+                          {format(new Date(selectedTicket.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </span>
                       </span>
                     </div>
                   )}
                   
-                  {/* Tempo de Resolução */}
                   {selectedTicket.createdAt && selectedTicket.resolvedAt && (
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span className="font-semibold text-[#2C2D2F]">Tempo de resolução:</span>
-                      <span className="text-slate-700">{getResolutionTime(selectedTicket.createdAt, selectedTicket.resolvedAt)}</span>
+                    <div className="flex items-start gap-2 text-xs text-slate-600">
+                      <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="min-w-0">
+                        <span className="font-semibold text-[#2C2D2F]">Tempo de resolução: </span>
+                        <span className="text-slate-700">{getResolutionTime(selectedTicket.createdAt, selectedTicket.resolvedAt)}</span>
+                      </span>
                     </div>
                   )}
                   
-                  {/* Categoria e Subcategoria */}
                   {(selectedTicket.category || selectedTicket.subcategory) && (
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <Tag className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span className="font-semibold text-[#2C2D2F]">Categoria:</span>
-                      <span className="text-slate-700">
-                        {getCategoryLabel(selectedTicket.category || 'outros')}
-                        {selectedTicket.subcategory && (
-                          <span> / {getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}</span>
-                        )}
+                    <div className="flex items-start gap-2 text-xs text-slate-600">
+                      <Tag className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="min-w-0">
+                        <span className="font-semibold text-[#2C2D2F]">Categoria: </span>
+                        <span className="text-slate-700">
+                          {getCategoryLabel(selectedTicket.category || 'outros')}
+                          {selectedTicket.subcategory && (
+                            <span> / {getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}</span>
+                          )}
+                        </span>
                       </span>
                     </div>
                   )}
@@ -620,18 +633,16 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
               )}
               
               <div className="mt-3 space-y-2">
-                {/* Informações do cliente/usuario */}
                 {selectedTicket?.createdByName && (
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="text-xs font-medium text-slate-500 shrink-0">Cliente:</div>
-                      <span className="text-xs sm:text-sm text-slate-700 truncate">{selectedTicket.createdByName}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="shrink-0 text-xs font-medium text-slate-500">Cliente:</div>
+                      <span className="truncate text-xs text-slate-700 sm:text-sm">{selectedTicket.createdByName}</span>
                     </div>
-                    {/* NPS */}
                     {(selectedTicket?.serviceScore !== undefined && selectedTicket?.serviceScore !== null) && (
                       <div className="flex items-center gap-2">
-                        <div className="text-xs font-medium text-slate-500 shrink-0">NPS:</div>
-                        <Badge variant="outline" className={`${getScoreColor(selectedTicket.serviceScore)} font-bold text-xs shrink-0`}>
+                        <div className="shrink-0 text-xs font-medium text-slate-500">NPS:</div>
+                        <Badge variant="outline" className={`${getScoreColor(selectedTicket.serviceScore)} shrink-0 text-xs font-bold`}>
                           {selectedTicket.serviceScore}
                         </Badge>
                       </div>
@@ -639,54 +650,48 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                   </div>
                 )}
                 
-                {/* Informações do atendente */}
                 {selectedTicket?.assignedToName && (
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="text-xs font-medium text-slate-500 shrink-0">Atendente:</div>
-                      <div className="flex items-center gap-1 min-w-0">
-                        <UserAvatar
-                          name={selectedTicket.assignedToName}
-                          userId={selectedTicket.assignedTo}
-                          avatarUrl={selectedTicket.assignedToAvatarUrl}
-                          size="sm"
-                          className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
-                          fallbackClassName={
-                            selectedTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
-                            selectedTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
-                            'bg-[#2C2D2F] text-[#F6F6F6]'
-                          }
-                        />
-                        <span className="text-xs sm:text-sm text-slate-700 truncate">{selectedTicket.assignedToName}</span>
-                        {selectedTicket.assignedToRole && (
-                          <Badge variant="outline" className="text-xs font-normal bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
-                            {selectedTicket.assignedToRole === 'lawyer' ? 'Advogado' : 
-                            selectedTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
-                          </Badge>
-                        )}
-                      </div>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="shrink-0 text-xs font-medium text-slate-500">Atendente:</div>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <UserAvatar
+                        name={selectedTicket.assignedToName}
+                        userId={selectedTicket.assignedTo}
+                        avatarUrl={selectedTicket.assignedToAvatarUrl}
+                        size="sm"
+                        className="h-5 w-5 shrink-0"
+                        fallbackClassName={
+                          selectedTicket.assignedToRole === 'lawyer' ? 'bg-[#DE5532] text-white' :
+                          selectedTicket.assignedToRole === 'support' ? 'bg-[#F69F19] text-white' :
+                          'bg-[#2C2D2F] text-[#F6F6F6]'
+                        }
+                      />
+                      <span className="truncate text-xs text-slate-700 sm:text-sm">{selectedTicket.assignedToName}</span>
+                      {selectedTicket.assignedToRole && (
+                        <Badge variant="outline" className="hidden shrink-0 bg-slate-50 text-xs font-normal sm:inline-flex">
+                          {selectedTicket.assignedToRole === 'lawyer' ? 'Advogado' :
+                          selectedTicket.assignedToRole === 'support' ? 'Suporte' : 'Atendente'}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
-              
-              <Separator className="my-3" />
             </DialogHeader>
             
-            {/* Legenda para identificar os participantes */}
-            <div className="px-4 sm:px-6 pb-2">
-              <div className="flex flex-wrap gap-4 px-2 bg-[#F6F6F6] p-2 rounded-md justify-center sm:justify-between">
+            <div className="shrink-0 px-5 py-2">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-md bg-[#F6F6F6] px-3 py-2 sm:justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-slate-200 border border-slate-300"></div>
+                  <div className="h-3 w-3 rounded-full border border-slate-300 bg-slate-200"></div>
                   <span className="text-xs text-[#2C2D2F]">Cliente (Esq)</span>
                 </div>
                 <div className="flex gap-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-[#F69F19]"></div>
+                    <div className="h-3 w-3 rounded-full bg-[#F69F19]"></div>
                     <span className="text-xs text-[#2C2D2F]">Suporte (Dir)</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-[#DE5532]"></div>
+                    <div className="h-3 w-3 rounded-full bg-[#DE5532]"></div>
                     <span className="text-xs text-[#2C2D2F]">Advogado (Dir)</span>
                   </div>
                 </div>
@@ -694,12 +699,12 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
             </div>
             
             {isLoading ? (
-              <div className="flex items-center justify-center py-12">
+              <div className="flex min-h-0 flex-1 items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
               </div>
             ) : error ? (
-              <div className="text-center py-8">
-                <p className="text-red-500 mb-4">{error}</p>
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-5 text-center">
+                <p className="mb-4 text-red-500">{error}</p>
                 {user && selectedTicket && (
                   <Button onClick={() => handleOpenChat(selectedTicket.id)}>
                     Tentar novamente
@@ -707,44 +712,38 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                 )}
               </div>
             ) : chatMessages.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-30" />
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-5 text-center text-slate-500">
+                <MessageSquare className="mb-2 h-12 w-12 opacity-30" />
                 <p>Nenhuma mensagem encontrada para este ticket.</p>
               </div>
             ) : (
-              <ScrollArea className="flex-1 w-full p-4 sm:p-6 pt-0">
-                <div className="space-y-6 w-full">
+              <div className="custom-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-3 pl-5 pr-7 [scrollbar-gutter:stable]">
+                <div className="flex w-full min-w-0 flex-col gap-5 pb-1">
                   {chatMessages.map((message) => {
                     const styles = getMessageStyles(message, selectedTicket);
                     
                     return (
-                      <div key={message.id} className={`flex w-full ${styles.containerClass}`}>
-                        <div className={`flex gap-3 ${styles.flexDirection}`} style={{ maxWidth: '85%', width: 'fit-content' }}>
-                          {/* Avatar */}
-                          <div className="flex flex-col items-center mt-1 shrink-0">
-                            <UserAvatar
-                              name={message.userName}
-                              userId={message.userId}
-                              avatarUrl={message.avatarUrl}
-                              size="md"
-                              className={`h-8 w-8 ${styles.avatarBg}`}
-                              fallbackClassName={`${styles.avatarBg} flex items-center justify-center`}
-                            />
-                          </div>
+                      <div key={message.id} className={`flex w-full min-w-0 ${styles.containerClass}`}>
+                        <div className={`flex min-w-0 max-w-[min(85%,28rem)] gap-2.5 ${styles.flexDirection}`}>
+                          <UserAvatar
+                            name={message.userName}
+                            userId={message.userId}
+                            avatarUrl={message.avatarUrl}
+                            size="md"
+                            className={`mt-0.5 h-8 w-8 shrink-0 ${styles.avatarBg}`}
+                            fallbackClassName={`${styles.avatarBg} flex items-center justify-center`}
+                          />
 
-                          {/* Balão da Mensagem */}
-                          <div className="flex flex-col" style={{ minWidth: 0, maxWidth: '100%', width: '100%' }}>
-                            <div className={`rounded-lg p-3 shadow-sm ${styles.bubbleClass}`} style={{ wordBreak: 'break-word', overflowWrap: 'break-word', overflow: 'hidden' }}>
-                              <p className="text-[10px] font-bold opacity-70 mb-1 uppercase tracking-wide">
+                          <div className="min-w-0 flex-1">
+                            <div className={`rounded-2xl px-3.5 py-2.5 shadow-sm ${styles.bubbleClass}`}>
+                              <p className="mb-1 truncate text-[10px] font-bold uppercase tracking-wide opacity-70">
                                 {message.userName || styles.label}
                               </p>
-                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word', maxWidth: '100%' }}>
-                                {message.message}
+                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                                {formatChatMessageText(message.message)}
                               </p>
                             </div>
-                            
-                            {/* Data */}
-                            <div className={`text-[10px] mt-1 ${styles.textAlign} text-slate-400`}>
+                            <div className={`mt-1 text-[10px] text-slate-400 ${styles.textAlign}`}>
                               {formatDate(message.createdAt)}
                             </div>
                           </div>
@@ -753,10 +752,10 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                     );
                   })}
                 </div>
-              </ScrollArea>
+              </div>
             )}
             
-            <div className="p-4 sm:p-6 pt-2 border-t border-slate-100 flex justify-end">
+            <div className="flex shrink-0 justify-end border-t border-slate-100 px-5 py-3">
               <Button onClick={() => setIsModalOpen(false)} variant="outline">Fechar</Button>
             </div>
           </DialogContent>

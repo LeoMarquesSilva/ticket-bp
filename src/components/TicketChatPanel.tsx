@@ -3,7 +3,6 @@ import { flushSync } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -11,8 +10,9 @@ import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Imag
 import { toast } from 'sonner';
 import FinishTicketButton from './FinishTicketButton';
 import TransferTicketModal from './TransferTicketModal';
+import TransferHandoffNote from './TransferHandoffNote';
 import ChangeTicketCategoryModal from './ChangeTicketCategoryModal';
-import { Ticket, ChatMessage } from '@/types';
+import { Ticket, ChatMessage, User as AppUser } from '@/types';
 import { TicketService } from '@/services/ticketService';
 import { UserService } from '@/services/userService';
 import { getSlaHours } from '@/services/dashboardService';
@@ -44,6 +44,10 @@ import {
   applyLinkTemplate,
 } from '@/lib/chatMessageFormatting';
 import { isEvidenciaFatalAuditTicket } from '@/utils/evidenciaFatal';
+import {
+  buildTransferHandoffMessage,
+  parseTransferHandoffMessage,
+} from '@/utils/transferHandoff';
 
 // Interface para dados de feedback
 interface TicketFeedbackData {
@@ -53,28 +57,51 @@ interface TicketFeedbackData {
   comment: string;
 }
 
+interface UploadingFileState {
+  id: string;
+  name: string;
+  type?: string;
+  progress: number;
+  error?: string;
+}
+
+interface SupportUserOption {
+  id: string;
+  name: string;
+  role: string;
+  avatarUrl?: string;
+}
+
+interface ChatAttachment {
+  name: string;
+  url: string;
+  type?: string;
+  kind?: string;
+  [key: string]: unknown;
+}
+
 interface TicketChatPanelProps {
   selectedTicket: Ticket;
   chatMessages: ChatMessage[];
-  user: any;
+  user: AppUser | null;
   sending: boolean;
   newMessage: string;
   setNewMessage: (message: string) => void;
-  uploadingFiles: any[];
+  uploadingFiles: UploadingFileState[];
   handleFileUpload: (files: FileList | File[]) => Promise<Array<{ name: string; type: string; size: number; url: string }>>;
   removeUploadingFile: (fileId: string) => void;
   sendMessage: (extraAttachments?: Array<{ name: string; type: string; size: number; url: string }>) => void | Promise<void>;
   handleKeyPress: (e: React.KeyboardEvent) => void;
   closeChat: () => void;
   handleDeleteTicket?: (ticketId: string) => void;
-  handleUpdateTicket?: (ticketId: string, updates: any) => void;
+  handleUpdateTicket?: (ticketId: string, updates: Record<string, unknown>) => void | Promise<void>;
   isTicketFinalized: (ticket: Ticket) => boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   markMessagesAsRead: (ticketId: string) => void;
   setShowImagePreview: (preview: string | { url: string; name?: string } | null) => void;
   typingUsers: Record<string, string>;
   handleTyping: () => void;
-  supportUsers?: any[];
+  supportUsers?: SupportUserOption[];
   handleAssignTicket?: (ticketId: string, supportUserId: string) => void;
   onCreateNewTicket?: () => void;
   canAssignTicket?: boolean;
@@ -436,7 +463,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     }
   };
 
-  const renderAttachments = (attachments: any[]) => {
+  const renderAttachments = (attachments: ChatAttachment[] | undefined) => {
     if (!attachments || attachments.length === 0) return null;
     
     return (
@@ -544,6 +571,8 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     }
   };
 
+  const canSeeHandoffNote = user?.role !== 'user';
+
   const handleCopyTicketLink = async () => {
     const link = buildTicketLink(selectedTicket.id);
     const ok = await copyToClipboard(link);
@@ -555,31 +584,32 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden border-l border-slate-200 chat-container bg-white">
       {/* Chat Header - mesmo estilo do header da página de tickets */}
       <div className="flex-shrink-0 bg-[#F6F6F6] border-b border-[#F69F19]/20 shadow-sm z-10">
-        <div className="px-4 py-2 tall:py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-3 px-3 py-1.5 tall:px-4 tall:py-2">
           {/* Lado esquerdo: voltar (mobile) + info do ticket */}
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Button
               variant="ghost"
               size="icon"
               onClick={closeChat}
-              className="h-9 w-9 shrink-0 lg:hidden rounded-lg hover:bg-slate-100"
+              className="density-icon-control shrink-0 rounded-lg hover:bg-slate-100 lg:hidden"
+              aria-label="Voltar para a lista de tickets"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white border border-[#F69F19]/25 shadow-sm ring-1 ring-[#F69F19]/10">
-                <MessageCircle className="h-4 w-4 text-[#F69F19]" strokeWidth={2} />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white border border-[#F69F19]/25 shadow-sm ring-1 ring-[#F69F19]/10">
+                <MessageCircle className="h-3.5 w-3.5 text-[#F69F19]" strokeWidth={2} />
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex items-center gap-2 min-w-0">
-                  <h2 className="font-bold text-[#2C2D2F] text-base truncate min-w-0">
+                  <h2 className="min-w-0 truncate text-base font-bold text-[#2C2D2F]">
                     {selectedTicket.title}
                   </h2>
-                  <Badge variant="secondary" className={`${getStatusColor(selectedTicket.status)} shrink-0 text-[10px] font-medium px-2 py-0`}>
+                  <Badge variant="secondary" className={`${getStatusColor(selectedTicket.status)} density-badge shrink-0 px-2 py-0 font-medium`}>
                     {getStatusLabel(selectedTicket.status)}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-2 sm:gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
+                <div className="density-meta mt-0.5 flex flex-wrap items-center gap-2 text-slate-500 sm:gap-3">
                   {assignedUserName && (
                     <div className="flex items-center gap-1.5 shrink-0">
                       <UserAvatar
@@ -617,7 +647,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-1.5 text-xs border-slate-200 hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5 rounded-lg"
+              className="density-control gap-1.5 rounded-lg border-slate-200 text-sm hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
               onClick={handleCopyTicketLink}
               title="Copiar link do ticket"
             >
@@ -630,7 +660,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1.5 text-xs border-slate-200 hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5 rounded-lg"
+                  className="density-control gap-1.5 rounded-lg border-slate-200 text-sm hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
                   onClick={() => setCategoryModalOpen(true)}
                 >
                   <Tag className="h-3.5 w-3.5" />
@@ -651,7 +681,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1.5 text-xs border-slate-200 hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5 rounded-lg"
+                  className="density-control gap-1.5 rounded-lg border-slate-200 text-sm hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
                   onClick={() => setTransferModalOpen(true)}
                 >
                   <UserPlus className="h-3.5 w-3.5" />
@@ -665,8 +695,27 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   currentCategory={selectedTicket.category}
                   currentSubcategory={selectedTicket.subcategory}
                   supportUsers={assignableUsers}
-                  onTransfer={async (supportId, _supportName) => {
+                  onTransfer={async (supportId, supportName, handoffNote) => {
                     await handleAssignTicket(selectedTicket.id, supportId);
+                    const note = handoffNote?.trim();
+                    if (!note || !user?.id) return;
+                    try {
+                      await TicketService.sendChatMessage(
+                        selectedTicket.id,
+                        user.id,
+                        user.name ?? 'Sistema',
+                        buildTransferHandoffMessage({
+                          fromName: user.name ?? 'Atendente',
+                          toName: supportName,
+                          note,
+                        }),
+                        [],
+                        { isSystem: true },
+                      );
+                    } catch (error) {
+                      console.error('Erro ao registrar orientações da transferência:', error);
+                      toast.error('Chamado transferido, mas as orientações não foram registradas');
+                    }
                   }}
                 />
               </>
@@ -678,7 +727,8 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-lg text-slate-400 hover:text-[#BD2D29] hover:bg-[#BD2D29]/10"
+                    className="density-icon-control rounded-lg text-slate-400 hover:bg-[#BD2D29]/10 hover:text-[#BD2D29]"
+                    aria-label="Excluir ticket"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -725,7 +775,8 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               variant="ghost"
               size="icon"
               onClick={closeChat}
-              className="h-8 w-8 hidden lg:flex rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              className="density-icon-control hidden rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 lg:flex"
+              aria-label="Fechar conversa"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -875,7 +926,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       </Dialog>
 
       {/* Chat Messages */}
-      <ScrollArea className="flex-1 min-h-0 p-3 tall:p-4 relative bg-slate-50/30">
+      <div className="relative min-h-0 flex-1 overflow-y-auto bg-slate-50/30 p-3 [scrollbar-gutter:stable] custom-scrollbar">
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 p-4 text-center">
             <div className="bg-slate-100 p-4 rounded-full mb-3">
@@ -889,7 +940,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-3">
             {/* Mensagem de feedback enviado */}
             {selectedTicket.feedbackSubmittedAt && (
               <div className="flex justify-center my-4">
@@ -904,6 +955,25 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               const isOwnMessage = user?.id === message.userId;
               const isTemp = message.isTemp;
               const isSystemMessage = message.isSystem === true;
+              const handoff = parseTransferHandoffMessage(message.message);
+
+              if (handoff) {
+                if (!canSeeHandoffNote) {
+                  return (
+                    <div key={message.id} className="my-4 flex justify-center">
+                      <div className="flex items-center rounded-full border border-slate-200 bg-slate-100 px-4 py-1.5 text-xs font-medium text-slate-600 shadow-sm">
+                        <UserPlus className="mr-1.5 h-3 w-3 text-[#F69F19]" />
+                        Chamado transferido{handoff.toName ? ` para ${handoff.toName}` : ''}
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={message.id} className="my-4">
+                    <TransferHandoffNote handoff={handoff} />
+                  </div>
+                );
+              }
               
               // Renderizar mensagem do sistema
               if (isSystemMessage) {
@@ -924,7 +994,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               return (
                 <div
                   key={message.id}
-                  className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
+                  className={`flex gap-2 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
                 >
                   <UserAvatar
                     name={message.userName}
@@ -937,10 +1007,10 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   
                   <div className={`flex flex-col max-w-[80%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
                     <div className="flex items-center gap-2 mb-1 px-1">
-                      <span className="text-xs font-semibold text-slate-700">
+                      <span className="text-[13px] font-semibold text-slate-700">
                         {message.userName}
                       </span>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="density-meta text-slate-400">
                         {formatDate(message.createdAt)} às {formatTime(message.createdAt)}
                       </span>
                       {isTemp && (
@@ -950,7 +1020,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                     
                     <div
                       className={`
-                        px-4 py-2.5 rounded-2xl text-sm break-words shadow-sm
+                        px-3 py-2 rounded-2xl text-sm break-words shadow-sm
                         ${isOwnMessage 
                           ? 'bg-[#F69F19] text-white rounded-tr-none' 
                           : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
@@ -962,16 +1032,17 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         <FormattedChatMessage text={message.message} tone={isOwnMessage ? 'own' : 'other'} />
                       )}
                       {(() => {
-                        const fichaCard = message.attachments?.find(
-                          (a: any) => a?.kind === 'requisicao_pessoal_ficha'
+                        const attachments = message.attachments as ChatAttachment[] | undefined;
+                        const fichaCard = attachments?.find(
+                          (attachment) => attachment.kind === 'requisicao_pessoal_ficha'
                         ) as RequisicaoPessoalFichaCardAttachment | undefined;
-                        const planoSaudeCard = message.attachments?.find(
-                          (a: any) => a?.kind === 'plano_saude_ficha'
+                        const planoSaudeCard = attachments?.find(
+                          (attachment) => attachment.kind === 'plano_saude_ficha'
                         ) as PlanoSaudeFichaCardAttachment | undefined;
-                        const fileAttachments = message.attachments?.filter(
-                          (a: any) =>
-                            a?.kind !== 'requisicao_pessoal_ficha' &&
-                            a?.kind !== 'plano_saude_ficha'
+                        const fileAttachments = attachments?.filter(
+                          (attachment) =>
+                            attachment.kind !== 'requisicao_pessoal_ficha' &&
+                            attachment.kind !== 'plano_saude_ficha'
                         );
                         if (fichaCard) {
                           return (
@@ -1016,11 +1087,11 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
             <div ref={messagesEndRef} />
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Input de mensagem */}
       {!isTicketFinalized(selectedTicket) ? (
-        <div className="p-2 tall:p-4 border-t border-slate-200 bg-white">
+        <div className="border-t border-slate-200 bg-white p-2">
           {/* Lista de arquivos sendo carregados */}
           {uploadingFiles.length > 0 && (
             <div className="mb-3 p-2 bg-slate-50 rounded-lg border border-slate-200">
@@ -1109,7 +1180,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 disabled={sending || isTicketFinalized(selectedTicket)}
               />
             )}
-            <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
               <TooltipProvider delayDuration={400}>
                 <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50/90 px-1 py-0.5">
                   <Tooltip>
@@ -1118,7 +1189,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        className="density-icon-control shrink-0 text-slate-600 hover:text-[#2C2D2F]"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => applyComposerFormat((v, s, e) => applyWrap(v, s, e, '**', '**', 'negrito'))}
                         disabled={sending}
@@ -1135,7 +1206,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        className="density-icon-control shrink-0 text-slate-600 hover:text-[#2C2D2F]"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => applyComposerFormat((v, s, e) => applyWrap(v, s, e, '*', '*', 'itálico'))}
                         disabled={sending}
@@ -1152,7 +1223,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        className="density-icon-control shrink-0 text-slate-600 hover:text-[#2C2D2F]"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => applyComposerFormat(applyBulletLines)}
                         disabled={sending}
@@ -1169,7 +1240,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        className="density-icon-control shrink-0 text-slate-600 hover:text-[#2C2D2F]"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => applyComposerFormat(applyNumberedLines)}
                         disabled={sending}
@@ -1186,7 +1257,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        className="density-icon-control shrink-0 text-slate-600 hover:text-[#2C2D2F]"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => applyComposerFormat((v, s, e) => applyWrap(v, s, e, '`', '`', 'código'))}
                         disabled={sending}
@@ -1203,7 +1274,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#2C2D2F]"
+                        className="density-icon-control shrink-0 text-slate-600 hover:text-[#2C2D2F]"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => applyComposerFormat(applyLinkTemplate)}
                         disabled={sending}
@@ -1219,7 +1290,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0 text-slate-600 hover:text-[#F69F19]"
+                      className="density-icon-control shrink-0 text-slate-600 hover:text-[#F69F19]"
                       onClick={(ev) => {
                         ev.preventDefault();
                         ev.stopPropagation();
@@ -1252,10 +1323,10 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                   }
                   rows={composerExpanded ? 5 : 1}
                   disabled={sending}
-                  className={`resize-none overflow-y-auto pr-11 py-2 tall:py-3 text-base leading-snug border-slate-200 focus-visible:ring-[#F69F19] focus-visible:border-[#F69F19] [overflow-wrap:anywhere] break-words ${
+                  className={`resize-none overflow-y-auto pr-11 py-2 text-base leading-snug border-slate-200 focus-visible:ring-[#F69F19] focus-visible:border-[#F69F19] [overflow-wrap:anywhere] break-words ${
                     composerExpanded
                       ? 'min-h-[min(38vh,360px)] max-h-[min(72vh,560px)]'
-                      : 'min-h-[44px] tall:min-h-[52px] max-h-[min(28vh,200px)]'
+                      : 'min-h-[44px] max-h-[min(22vh,160px)]'
                   }`}
                 />
 
@@ -1282,7 +1353,9 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 await flushComposerAndSend();
               }}
               disabled={(!newMessage.trim() && uploadingFiles.length === 0 && pastedImages.length === 0) || sending || uploadingFiles.some(f => f.progress < 100 && !f.error)}
-              className="h-[50px] w-[50px] rounded-lg shadow-md border-0 transition-transform active:scale-95"
+              title="Enter envia · Shift+Enter nova linha"
+              className="density-icon-control rounded-lg border-0 shadow-md transition-transform active:scale-95"
+              aria-label="Enviar mensagem"
               style={{ background: brandGradient }}
             >
               {sending ? (
@@ -1291,10 +1364,6 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 <Send className="h-5 w-5 text-white" />
               )}
             </Button>
-          </div>
-          <div className="mt-2 text-[10px] text-slate-400 hidden tall:flex flex-wrap gap-x-3 gap-y-1 justify-between px-1">
-            <span>Enter envia mensagem · Shift+Enter pula linha</span>
-            <span className="shrink-0">Cole imagens com Ctrl+V</span>
           </div>
         </div>
       ) : (

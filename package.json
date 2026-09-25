@@ -4,7 +4,7 @@
   "homepage": "https://leomarquessilva.github.io/ticket-bp",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp .nojekyll dist/ && cp public/test.html dist/",
+    "build": "vite build && node scripts/copy-static-build-assets.mjs",
     "lint": "eslint --quiet ./src",
     "test": "vitest run",
     "test:watch": "vitest",
