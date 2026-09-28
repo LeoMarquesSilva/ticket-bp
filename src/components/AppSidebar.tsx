@@ -278,8 +278,10 @@ function AppSidebar() {
     setDensity,
   } = useAppNav();
   const [pendingTickets, setPendingTickets] = useState(0);
+  const [hovered, setHovered] = useState(false);
   const [keyboardExpanded, setKeyboardExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const leaveTimerRef = useRef<number | null>(null);
   const pendingRefreshTimerRef = useRef<number | null>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const pointerNavigatingRef = useRef(false);
@@ -287,7 +289,8 @@ function AppSidebar() {
   const navItems = useNavItems(pendingTickets);
   const isStaff = user?.role === 'support' || user?.role === 'lawyer';
   const isOnline = user?.isOnline !== false;
-  const showLabels = !collapsed || mobileOpen || keyboardExpanded || menuOpen;
+  const showLabels = !collapsed || mobileOpen || hovered || keyboardExpanded || menuOpen;
+  const hoverExpanded = collapsed && showLabels && !mobileOpen;
 
   const loadPendingTickets = useCallback(async () => {
     if (!user?.id) {
@@ -334,6 +337,17 @@ function AppSidebar() {
   }, [loadPendingTickets, user?.id]);
 
   useEffect(() => {
+    return () => {
+      if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (leaveTimerRef.current) {
+      window.clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+    setHovered(false);
     setKeyboardExpanded(false);
   }, [location.pathname]);
 
@@ -381,6 +395,22 @@ function AppSidebar() {
   }, [mobileOpen, mobileTriggerRef, setMobileOpen]);
 
   const closeMobile = () => setMobileOpen(false);
+
+  const handleMouseEnter = () => {
+    if (leaveTimerRef.current) {
+      window.clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+    setHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = window.setTimeout(() => {
+      setHovered(false);
+      leaveTimerRef.current = null;
+    }, 160);
+  };
 
   const handleFocusCapture = () => {
     if (pointerNavigatingRef.current) return;
@@ -430,9 +460,12 @@ function AppSidebar() {
           aria-label={mobileOpen ? 'Navegação principal' : undefined}
           className={cn(
             'pointer-events-auto flex h-dvh flex-col border-r border-white/[0.06] bg-[#141516] text-white transition-[width,transform] duration-200 ease-out motion-reduce:transition-none',
+            hoverExpanded && 'shadow-2xl shadow-black/40',
             mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           )}
           style={{ width: sidebarWidth }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
           onPointerDown={() => {
             pointerNavigatingRef.current = true;
           }}
