@@ -278,18 +278,16 @@ function AppSidebar() {
     setDensity,
   } = useAppNav();
   const [pendingTickets, setPendingTickets] = useState(0);
-  const [hovered, setHovered] = useState(false);
   const [keyboardExpanded, setKeyboardExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const leaveTimerRef = useRef<number | null>(null);
   const pendingRefreshTimerRef = useRef<number | null>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  const pointerNavigatingRef = useRef(false);
   const reduceMotion = useReducedMotion();
   const navItems = useNavItems(pendingTickets);
   const isStaff = user?.role === 'support' || user?.role === 'lawyer';
   const isOnline = user?.isOnline !== false;
-  const showLabels = !collapsed || mobileOpen || hovered || keyboardExpanded || menuOpen;
-  const hoverExpanded = collapsed && showLabels && !mobileOpen;
+  const showLabels = !collapsed || mobileOpen || keyboardExpanded || menuOpen;
 
   const loadPendingTickets = useCallback(async () => {
     if (!user?.id) {
@@ -336,10 +334,8 @@ function AppSidebar() {
   }, [loadPendingTickets, user?.id]);
 
   useEffect(() => {
-    return () => {
-      if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
-    };
-  }, []);
+    setKeyboardExpanded(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -386,23 +382,10 @@ function AppSidebar() {
 
   const closeMobile = () => setMobileOpen(false);
 
-  const handleMouseEnter = () => {
-    if (leaveTimerRef.current) {
-      window.clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
-    setHovered(true);
+  const handleFocusCapture = () => {
+    if (pointerNavigatingRef.current) return;
+    setKeyboardExpanded(true);
   };
-
-  const handleMouseLeave = () => {
-    if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
-    leaveTimerRef.current = window.setTimeout(() => {
-      setHovered(false);
-      leaveTimerRef.current = null;
-    }, 160);
-  };
-
-  const handleFocusCapture = () => setKeyboardExpanded(true);
   const handleBlurCapture = (event: React.FocusEvent<HTMLElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
       setKeyboardExpanded(false);
@@ -447,12 +430,18 @@ function AppSidebar() {
           aria-label={mobileOpen ? 'Navegação principal' : undefined}
           className={cn(
             'pointer-events-auto flex h-dvh flex-col border-r border-white/[0.06] bg-[#141516] text-white transition-[width,transform] duration-200 ease-out motion-reduce:transition-none',
-            hoverExpanded && 'shadow-2xl shadow-black/40',
             mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           )}
           style={{ width: sidebarWidth }}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          onPointerDown={() => {
+            pointerNavigatingRef.current = true;
+          }}
+          onPointerUp={() => {
+            pointerNavigatingRef.current = false;
+          }}
+          onPointerCancel={() => {
+            pointerNavigatingRef.current = false;
+          }}
           onFocusCapture={handleFocusCapture}
           onBlurCapture={handleBlurCapture}
         >
@@ -498,7 +487,14 @@ function AppSidebar() {
                 <NavLink
                   key={item.name}
                   to={item.href}
-                  onClick={closeMobile}
+                  onClick={(event) => {
+                    closeMobile();
+                    setKeyboardExpanded(false);
+                    event.currentTarget.blur();
+                    window.setTimeout(() => {
+                      pointerNavigatingRef.current = false;
+                    }, 0);
+                  }}
                   aria-label={item.name}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
