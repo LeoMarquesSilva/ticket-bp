@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { OfficialPhotosProvider } from '@/contexts/OfficialPhotosContext';
 import { ChatProvider } from '@/contexts/ChatContext';
+import { TeamPresenceProvider } from '@/contexts/TeamPresenceContext';
 import { Toaster } from '@/components/ui/sonner';
 import Layout from '@/components/Layout';
 import Login from '@/pages/Login';
@@ -25,15 +26,26 @@ import type { PermissionKey } from '@/services/roleService';
 /** Retorna a primeira rota que o usuário tem permissão para acessar. */
 function useFirstAllowedPath(): string {
   const { has } = usePermissions();
-  if (has('dashboard')) return '/dashboard';
   if (has('tickets') || has('create_ticket')) return '/tickets';
+  if (has('dashboard')) return '/dashboard';
   if (has('manage_users') || has('manage_roles')) return '/users';
   if (has('manage_categories')) return '/categories';
   return '/profile';
 }
 
 function DefaultRedirect() {
+  const { loading } = usePermissions();
   const path = useFirstAllowedPath();
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D5B170] mx-auto mb-4"></div>
+          <p className="text-lg text-slate-600">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
   return <Navigate to={path} replace />;
 }
 
@@ -218,6 +230,7 @@ const App = () => {
 
   return (
     <AuthProvider>
+      <TeamPresenceProvider>
       <OfficialPhotosProvider>
         <ChatProvider>
           <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -250,6 +263,7 @@ const App = () => {
           </Router>
         </ChatProvider>
       </OfficialPhotosProvider>
+      </TeamPresenceProvider>
     </AuthProvider>
   );
 };

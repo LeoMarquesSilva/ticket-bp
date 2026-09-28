@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { MessageSquare, Loader2, User, HeadphonesIcon, UserCircle, Briefcase, ChevronDown, ChevronUp, Tag, Clock, Calendar, HelpCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import UserAvatar from '@/components/UserAvatar';
+import TicketDescriptionCard from '@/components/TicketDescriptionCard';
 import { Badge } from '@/components/ui/badge';
 import { CategoryService } from '@/services/categoryService';
 import { differenceInHours, differenceInDays, format } from 'date-fns';
@@ -31,6 +32,7 @@ interface RecentFeedbackItem {
   category?: string; // Categoria do ticket
   subcategory?: string; // Subcategoria do ticket
   createdAt?: string; // Data de criação do ticket
+  description?: string;
 }
 
 interface RecentFeedbackListProps {
@@ -140,7 +142,7 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
       
       // Buscar o ticket completo para ter todas as informações (createdBy, category, assignedToAvatarUrl, etc.)
       let fullTicket = ticket;
-      if (ticket.id && (!ticket.createdByName || !ticket.createdBy || !ticket.category || !ticket.createdAt)) {
+      if (ticket.id && (!ticket.createdByName || !ticket.createdBy || !ticket.category || !ticket.createdAt || ticket.description === undefined)) {
         const ticketData = await TicketService.getTicket(ticket.id);
         if (ticketData) {
           fullTicket = {
@@ -697,6 +699,15 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
                 </div>
               </div>
             </div>
+
+            {!isLoading && selectedTicket?.description && (
+              <div className="custom-scrollbar max-h-[35%] shrink-0 overflow-y-auto px-5 pb-2">
+                <TicketDescriptionCard
+                  description={selectedTicket.description}
+                  authorName={selectedTicket.createdByName}
+                />
+              </div>
+            )}
             
             {isLoading ? (
               <div className="flex min-h-0 flex-1 items-center justify-center">

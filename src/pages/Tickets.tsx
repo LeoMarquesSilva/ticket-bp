@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, TABLES } from '@/lib/supabase';
+import { buildLastMessageAuthors, type LastMessageRow } from '@/utils/ticketListQuickFilters';
 import { toast } from 'sonner';
 import { AlertCircle, X, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ import CreateTicketModal from '@/components/CreateTicketModal';
 import CreateTicketForUserModal from '@/components/CreateTicketForUserModal';
 import PendingFeedbackHandler from '@/components/PendingFeedbackHandler';
 import { useChatContext } from '@/contexts/ChatContext';
+import { useTeamPresence } from '@/contexts/TeamPresenceContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRealtimeReconnectSignal } from '@/hooks/useRealtimeReconnectSignal';
 import { CategoryService } from '@/services/categoryService';
@@ -59,13 +61,6 @@ interface SupportUser {
   manualOnline?: boolean;
   avatarUrl?: string;
 }
-
-interface PresenceUserData {
-  name?: string;
-  role?: string;
-}
-
-type PresenceState = Record<string, PresenceUserData[]>;
 
 interface UploadingFile {
   id: string;
@@ -211,6 +206,7 @@ const Tickets = () => {
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>({});
+  const [lastMessageAuthors, setLastMessageAuthors] = useState<Record<string, string>>({});
   const [showImagePreview, setShowImagePreview] = useState<ImagePreviewState | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const uploadingFilesRef = useRef<UploadingFile[]>([]);
@@ -325,6 +321,14 @@ const Tickets = () => {
   const strictFrenteOnly = isStrictFrenteRole(user?.role);
   const isStaffUser = Boolean(user && (isStaffRole(user.role) || has('assign_ticket') || has('view_all_tickets') || has('view_frente_tickets')));
   const canUsePresenceChannel = Boolean(isStaffUser);
+  const { connectedUserIds } = useTeamPresence();
+  const connectedUserIdsRef = useRef(connectedUserIds);
+  connectedUserIdsRef.current = connectedUserIds;
+
+  useEffect(() => {
+    setSupportUsers((prev) => (prev.length ? applyPresenceToSupportUsers(prev) : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectedUserIds]);
   const visibleFrentes = isFrenteRestricted
     ? frentes.filter((f) => userFrenteIds.includes(f.id))
     : frentes;
@@ -436,22 +440,16 @@ const Tickets = () => {
     }
   };
 
-  const applyPresenceToSupportUsers = (users: SupportUser[], state: PresenceState) => {
-    const _onlineUserIds = new Set(Object.keys(state));
-    const mergedUsers = users.map((supportUser) => {
+  // Online = disponível no toggle (is_online) E com o Responsum aberto em alguma aba.
+  const applyPresenceToSupportUsers = (users: SupportUser[]) =>
+    users.map((supportUser) => {
       const manualOnline = supportUser.manualOnline ?? Boolean(supportUser.isOnline);
       return {
         ...supportUser,
         manualOnline,
-        // Usabilidade: status de disponibilidade segue o toggle manual em tempo real.
-        isOnline: manualOnline,
+        isOnline: manualOnline && connectedUserIdsRef.current.has(supportUser.id),
       };
     });
-
-    return {
-      mergedUsers,
-    };
-  };
 
   const clearRetryTimer = (key: string) => {
     const timer = channelRetryTimerRef.current[key];
@@ -650,54 +648,6 @@ const Tickets = () => {
     channelsRef.current.system = channel;
   };
 
-  // Função para configurar um único canal de presença para monitorar usuários online
-  const setupPresenceChannel = () => {
-    if (!user) return;
-    
-    // Remover canal anterior se existir
-    removeChannelSafely('presence', 'presence');
-    
-    // Criar novo canal
-    const channel = supabase.channel('online-users', {
-      config: {
-        presence: {
-          key: user.id,
-        },
-      },
-    });
-    
-    // Monitorar eventos de presença
-    channel.on('presence', { event: 'sync' }, () => {
-      if (!isMountedRef.current) return;
-      
-      // Regra: online efetivo = toggle no banco (manualOnline) E presença ativa no canal
-      const state = (channel.presenceState() || {}) as PresenceState;
-      setSupportUsers((prev) => {
-        const { mergedUsers } = applyPresenceToSupportUsers(prev, state);
-        return mergedUsers;
-      });
-    });
-    
-    // Inscrever-se no canal
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        if (canUsePresenceChannel) {
-          channel.track({
-            id: user.id,
-            name: user.name,
-            role: user.role,
-            online_at: new Date().toISOString(),
-          });
-        }
-      } else {
-        handleChannelStatus('presence', 'presence', status);
-      }
-    });
-    
-    // Armazenar referência ao canal
-    channelsRef.current.presence = channel;
-  };
-
   const setupSupportUsersStatusChannel = () => {
     if (!user?.id) return;
 
@@ -724,7 +674,7 @@ const Tickets = () => {
           return {
             ...supportUser,
             manualOnline,
-            isOnline: manualOnline,
+            isOnline: manualOnline && connectedUserIdsRef.current.has(updatedUserId),
           };
         });
       });
@@ -911,6 +861,10 @@ const setupGlobalMessagesChannel = () => {
       createdAt: newMessageData.created_at,
       read: newMessageData.read
     };
+
+    if (newMessageData.is_system !== true && newMessage.ticketId && newMessage.userId) {
+      setLastMessageAuthors(prev => ({ ...prev, [newMessage.ticketId]: newMessage.userId }));
+    }
     
     // Só processar se não for mensagem do próprio usuário
     if (newMessage.userId === user.id) {
@@ -1029,18 +983,12 @@ useEffect(() => {
   setupGlobalMessagesChannel(); // ✅ Garantir que este canal seja configurado
   setupSupportUsersStatusChannel();
   
-  // Configurar monitoramento de presença para usuários da equipe
-  if (canUsePresenceChannel) {
-    setupPresenceChannel();
-  }
-  
   // Limpar ao desmontar
   return () => {
     // Este cleanup roda também em reconnectSignal; não derrubar canal de chat ativo aqui.
     removeChannelSafely('system', 'system');
     removeChannelSafely('tickets', 'tickets');
     removeChannelSafely('globalMessages', 'globalMessages');
-    removeChannelSafely('presence', 'presence');
     removeChannelSafely('supportUsersStatus', 'supportUsersStatus');
   };
 }, [canUsePresenceChannel, user?.id, permissionsLoading, has]);
@@ -1107,10 +1055,6 @@ useEffect(() => {
   setupGlobalMessagesChannel();
   setupSupportUsersStatusChannel();
 
-  if (canUsePresenceChannel) {
-    setupPresenceChannel();
-  }
-
   const currentTicketId = selectedTicketIdRef.current;
   if (currentTicketId) {
     setupMessagesChannel(currentTicketId);
@@ -1175,6 +1119,7 @@ useEffect(() => {
         // Carregar contagem de mensagens não lidas para cada ticket
         if (tickets.length > 0) {
           loadUnreadMessageCounts(tickets);
+          void loadLastMessageAuthors(tickets);
         }
       }
     } catch (error) {
@@ -1198,9 +1143,7 @@ useEffect(() => {
           manualOnline: Boolean(supportUser.isOnline),
           isOnline: false,
         }));
-        const presenceState = (channelsRef.current.presence?.presenceState?.() || {}) as PresenceState;
-        const { mergedUsers } = applyPresenceToSupportUsers(normalizedUsers, presenceState);
-        setSupportUsers(mergedUsers);
+        setSupportUsers(applyPresenceToSupportUsers(normalizedUsers));
       }
     } catch (error) {
       console.error('Error loading support users:', error);
@@ -1232,6 +1175,30 @@ useEffect(() => {
       }
     } catch (error) {
       console.error('Error loading unread message counts:', error);
+    }
+  };
+
+  const loadLastMessageAuthors = async (ticketsList: Ticket[]) => {
+    const openIds = ticketsList.filter((ticket) => ticket.status !== 'resolved').map((ticket) => ticket.id);
+    if (openIds.length === 0) {
+      setLastMessageAuthors({});
+      return;
+    }
+    try {
+      const rows: LastMessageRow[] = [];
+      for (let i = 0; i < openIds.length; i += 150) {
+        const { data, error } = await supabase
+          .from(TABLES.CHAT_MESSAGES)
+          .select('ticket_id, user_id, created_at, is_system')
+          .in('ticket_id', openIds.slice(i, i + 150))
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        rows.push(...((data ?? []) as LastMessageRow[]));
+      }
+      rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      if (isMountedRef.current) setLastMessageAuthors(buildLastMessageAuthors(rows));
+    } catch (error) {
+      console.error('Erro ao carregar última mensagem dos tickets:', error);
     }
   };
 
@@ -2025,6 +1992,8 @@ return (
                       onExpandedCategoryKeysChange={setExpandedListCategoryKeys}
                       renderTicketCard={renderTicketCard}
                       isChatOpen={false}
+                      unreadCounts={unreadMessages}
+                      lastMessageAuthors={isStaffUser ? lastMessageAuthors : undefined}
                     />
                   )}
                   {view === 'board' && (
@@ -2098,6 +2067,8 @@ return (
                       onExpandedCategoryKeysChange={setExpandedListCategoryKeys}
                       renderTicketCard={renderTicketCard}
                       isChatOpen={false}
+                      unreadCounts={unreadMessages}
+                      lastMessageAuthors={isStaffUser ? lastMessageAuthors : undefined}
                     />
                   )}
                   {view === 'board' && (
@@ -2137,6 +2108,8 @@ return (
                           onExpandedCategoryKeysChange={setExpandedListCategoryKeys}
                           renderTicketCard={renderTicketCard}
                           isChatOpen={true}
+                          unreadCounts={unreadMessages}
+                          lastMessageAuthors={isStaffUser ? lastMessageAuthors : undefined}
                         />
                       )}
                       {view === 'board' && (

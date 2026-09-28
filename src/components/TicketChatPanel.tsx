@@ -6,11 +6,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserAvatar from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle, Bold, Italic, List, ListOrdered, Link2, Code, Maximize2, Minimize2, Pencil } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Trash2, X, Lock, Paperclip, Send, Clock, Image, FileText, UserPlus, User, UserCheck, Calendar, Tag, ThumbsUp, AlertTriangle, Bold, Italic, List, ListOrdered, Link2, Code, Maximize2, Minimize2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import FinishTicketButton from './FinishTicketButton';
 import TransferTicketModal from './TransferTicketModal';
 import TransferHandoffNote from './TransferHandoffNote';
+import TicketDescriptionCard from './TicketDescriptionCard';
 import ChangeTicketCategoryModal from './ChangeTicketCategoryModal';
 import { Ticket, ChatMessage, User as AppUser } from '@/types';
 import { TicketService } from '@/services/ticketService';
@@ -138,7 +139,6 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   canDeleteTicket = false,
   canFinishTicket = false
 }) => {
-  const [showTicketDetails, setShowTicketDetails] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -228,17 +228,15 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     }, 0);
   };
 
-  // Buscar avatar do solicitante quando o modal de detalhes abre
   useEffect(() => {
-    if (showTicketDetails && selectedTicket.createdBy) {
-      UserService.getUserById(selectedTicket.createdBy).then(u => {
-        if (u?.avatarUrl) setCreatedByAvatarUrl(u.avatarUrl);
-        else setCreatedByAvatarUrl(null);
-      }).catch(() => setCreatedByAvatarUrl(null));
-    } else if (!showTicketDetails) {
-      setCreatedByAvatarUrl(null);
-    }
-  }, [showTicketDetails, selectedTicket.createdBy]);
+    setCreatedByAvatarUrl(null);
+    if (!selectedTicket.createdBy) return;
+    let cancelled = false;
+    UserService.getUserById(selectedTicket.createdBy)
+      .then((u) => { if (!cancelled) setCreatedByAvatarUrl(u?.avatarUrl ?? null); })
+      .catch(() => { if (!cancelled) setCreatedByAvatarUrl(null); });
+    return () => { cancelled = true; };
+  }, [selectedTicket.createdBy]);
 
   useEffect(() => {
     if (!isTicketFinalized(selectedTicket)) {
@@ -601,34 +599,76 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 <MessageCircle className="h-3.5 w-3.5 text-[#F69F19]" strokeWidth={2} />
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
-                <div className="flex items-center gap-2 min-w-0">
-                  <h2 className="min-w-0 truncate text-base font-bold text-[#2C2D2F]">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h2 className="min-w-0 truncate text-base font-bold text-[#2C2D2F]" title={selectedTicket.title}>
                     {selectedTicket.title}
                   </h2>
                   <Badge variant="secondary" className={`${getStatusColor(selectedTicket.status)} density-badge shrink-0 px-2 py-0 font-medium`}>
                     {getStatusLabel(selectedTicket.status)}
                   </Badge>
-                </div>
-                <div className="density-meta mt-0.5 flex flex-wrap items-center gap-2 text-slate-500 sm:gap-3">
-                  {assignedUserName && (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <UserAvatar
-                        name={assignedUserName}
-                        userId={selectedTicket.assignedTo}
-                        avatarUrl={assignedUser?.avatarUrl}
-                        size="sm"
-                        className="h-5 w-5"
-                        fallbackClassName="bg-[#F69F19]/20 text-[#F69F19] text-[10px]"
-                      />
-                      <span><span className="text-slate-400">Atendente:</span> {assignedUserName}</span>
-                    </div>
+                  {isEvidenciaFatalAuditTicket(selectedTicket.category, selectedTicket.subcategory) &&
+                    (selectedTicket.evidenciaEnviada === true || selectedTicket.evidenciaEnviada === false) && (
+                    <Badge
+                      variant="secondary"
+                      className={`density-badge shrink-0 px-2 py-0 font-medium ${
+                        selectedTicket.evidenciaEnviada
+                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                          : 'border border-rose-200 bg-rose-50 text-rose-800'
+                      }`}
+                    >
+                      {selectedTicket.evidenciaEnviada ? 'Evidência ok' : 'Sem evidência'}
+                    </Badge>
                   )}
-                  <button 
-                    onClick={() => setShowTicketDetails(true)}
-                    className="text-[#F69F19] hover:text-[#DE5532] font-medium transition-colors hover:underline shrink-0"
-                  >
-                    Ver detalhes
-                  </button>
+                </div>
+                <div className="density-meta mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
+                  <span className="flex min-w-0 items-center gap-1.5" title="Solicitante">
+                    <UserAvatar
+                      name={selectedTicket.createdByName}
+                      userId={selectedTicket.createdBy}
+                      avatarUrl={createdByAvatarUrl}
+                      size="sm"
+                      className="h-5 w-5 shrink-0"
+                      fallbackClassName="bg-[#DE5532]/15 text-[#DE5532] text-[10px]"
+                    />
+                    <span className="truncate font-medium text-slate-700">{selectedTicket.createdByName}</span>
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1.5" title="Atendente">
+                    <ArrowRight className="h-3 w-3 shrink-0 text-slate-300" aria-hidden="true" />
+                    {assignedUserName ? (
+                      <>
+                        <UserAvatar
+                          name={assignedUserName}
+                          userId={selectedTicket.assignedTo}
+                          avatarUrl={assignedUser?.avatarUrl}
+                          size="sm"
+                          className="h-5 w-5 shrink-0"
+                          fallbackClassName="bg-[#F69F19]/20 text-[#F69F19] text-[10px]"
+                        />
+                        <span className="truncate font-medium text-slate-700">{assignedUserName}</span>
+                      </>
+                    ) : (
+                      <span className="italic text-slate-400">Não atribuído</span>
+                    )}
+                  </span>
+                  <span className="h-3 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+                  <span className="flex min-w-0 items-center gap-1" title="Categoria">
+                    <Tag className="h-3 w-3 shrink-0 text-slate-400" aria-hidden="true" />
+                    <span className="truncate">
+                      {getCategoryLabel(selectedTicket.category || 'outros')}
+                      {selectedTicket.subcategory && ` / ${getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}`}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1" title="Aberto em">
+                    <Calendar className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                    {formatDate(selectedTicket.createdAt)} {formatTime(selectedTicket.createdAt)}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 font-medium text-[#B74426]" title="SLA estimado">
+                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    SLA {(() => {
+                      const slaHours = getSlaHours(selectedTicket.category || 'outros', selectedTicket.subcategory || 'outros');
+                      return slaHours === 1 ? '1h' : `${slaHours}h`;
+                    })()}
+                  </span>
                   <SendToOrquestraiButton
                     ticket={selectedTicket}
                     user={user}
@@ -784,149 +824,13 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
         </div>
       </div>
 
-      {/* Modal de detalhes do ticket */}
-      <Dialog open={showTicketDetails} onOpenChange={setShowTicketDetails}>
-        <DialogContent className="sm:max-w-xl p-0 gap-0 min-w-0 max-h-[90dvh] overflow-x-hidden overflow-y-auto">
-          {/* Header com gradiente */}
-          <div 
-            className="px-6 pt-6 pb-5 relative"
-            style={{ background: 'linear-gradient(135deg, rgba(246, 159, 25, 0.08) 0%, rgba(222, 85, 50, 0.05) 50%, rgba(189, 45, 41, 0.04) 100%)' }}
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#F69F19]/15 shrink-0">
-                <FileText className="h-5 w-5 text-[#F69F19]" />
-              </div>
-              <div className="flex-1 min-w-0 pr-8">
-                <p className="text-xs font-medium text-[#F69F19] uppercase tracking-wide mb-1">
-                  Ticket #{selectedTicket.id.slice(-8)}
-                </p>
-                <DialogTitle className="text-lg font-bold text-[#2C2D2F] leading-snug">
-                  {selectedTicket.title}
-                </DialogTitle>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <Badge className={`${getStatusColor(selectedTicket.status)} border text-xs font-medium shadow-sm`}>
-                    {getStatusLabel(selectedTicket.status)}
-                  </Badge>
-                  {isEvidenciaFatalAuditTicket(
-                    selectedTicket.category,
-                    selectedTicket.subcategory,
-                  ) &&
-                    (selectedTicket.evidenciaEnviada === true ||
-                      selectedTicket.evidenciaEnviada === false) && (
-                    <Badge
-                      className={
-                        selectedTicket.evidenciaEnviada
-                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-medium shadow-sm'
-                          : 'border border-rose-200 bg-rose-50 text-rose-800 text-xs font-medium shadow-sm'
-                      }
-                    >
-                      {selectedTicket.evidenciaEnviada
-                        ? 'Evidência ok — mantém excludente'
-                        : 'Sem evidência — inclui no FATAL'}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Conteúdo */}
-          <div className="px-6 pb-6 pt-4 space-y-4 min-w-0">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
-                <UserAvatar
-                  name={selectedTicket.createdByName}
-                  userId={selectedTicket.createdBy}
-                  avatarUrl={createdByAvatarUrl}
-                  size="lg"
-                  className="h-10 w-10 shrink-0 border-2 border-white shadow-sm"
-                  fallbackClassName="bg-[#DE5532]/20 text-[#DE5532]"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Solicitante</p>
-                  <p className="text-sm font-medium text-[#2C2D2F] truncate">{selectedTicket.createdByName}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
-                <UserAvatar
-                  name={assignedUserName || undefined}
-                  userId={selectedTicket.assignedTo}
-                  avatarUrl={assignedUser?.avatarUrl}
-                  size="lg"
-                  className="h-10 w-10 shrink-0 border-2 border-white shadow-sm"
-                  fallbackClassName="bg-[#F69F19]/20 text-[#F69F19]"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Atribuído</p>
-                  <p className="text-sm font-medium text-[#2C2D2F] truncate">{assignedUserName || 'Não atribuído'}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
-                <div className="p-1.5 rounded-lg bg-white border border-slate-200 shrink-0">
-                  <Calendar className="h-4 w-4 text-slate-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Criado em</p>
-                  <p className="text-sm font-medium text-[#2C2D2F]">{formatDate(selectedTicket.createdAt)} às {formatTime(selectedTicket.createdAt)}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50/80 border border-slate-100">
-                <div className="p-1.5 rounded-lg bg-white border border-slate-200 shrink-0">
-                  <Tag className="h-4 w-4 text-slate-500" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Categoria</p>
-                  <p className="text-sm font-medium text-[#2C2D2F] truncate">
-                    {getCategoryLabel(selectedTicket.category || 'outros')}
-                    {selectedTicket.subcategory && ` / ${getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)}`}
-                  </p>
-                </div>
-                {canEditTicketCategory && handleUpdateTicket && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-slate-400 hover:text-[#F69F19] hover:bg-[#F69F19]/10"
-                    onClick={() => setCategoryModalOpen(true)}
-                    title="Alterar categoria"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-[#F69F19]/5 border border-[#F69F19]/20 sm:col-span-2">
-                <div className="p-1.5 rounded-lg bg-[#F69F19]/10 shrink-0">
-                  <Clock className="h-4 w-4 text-[#F69F19]" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold text-[#F69F19] uppercase tracking-wider">SLA Estimado</p>
-                  <p className="text-sm font-bold text-[#DE5532]">
-                    {(() => {
-                      const slaHours = getSlaHours(selectedTicket.category || 'outros', selectedTicket.subcategory || 'outros');
-                      return slaHours === 1 ? '1 hora' : `${slaHours} horas`;
-                    })()}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {selectedTicket.description && (
-              <div className="min-w-0 w-full">
-                <div className="flex items-center gap-2 mb-2 min-w-0">
-                  <div className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent" />
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider shrink-0">Descrição</p>
-                  <div className="h-px flex-1 bg-gradient-to-l from-slate-200 to-transparent" />
-                </div>
-                <div className="max-h-[min(50vh,24rem)] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white p-4 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] custom-scrollbar shadow-inner">
-                  {selectedTicket.description}
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Chat Messages */}
       <div className="relative min-h-0 flex-1 overflow-y-auto bg-slate-50/30 p-3 [scrollbar-gutter:stable] custom-scrollbar">
+        <TicketDescriptionCard
+          description={selectedTicket.description}
+          authorName={selectedTicket.createdByName}
+          className="mb-3"
+        />
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 p-4 text-center">
             <div className="bg-slate-100 p-4 rounded-full mb-3">

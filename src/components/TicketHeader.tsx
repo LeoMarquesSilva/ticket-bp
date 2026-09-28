@@ -6,7 +6,6 @@ import {
   Users, 
   Plus,
   Filter,
-  Circle,
   ChevronDown,
   UserPlus,
   Eye,
@@ -26,7 +25,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase, TABLES } from '@/lib/supabase';
-import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import ticketEventService from '@/services/ticketEventService';
@@ -178,6 +176,10 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         return 'Advogado';
       case 'support':
         return 'Suporte';
+      case 'suporte_administrativo':
+        return 'Suporte administrativo';
+      case 'ti':
+        return 'TI';
       default:
         return role;
     }
@@ -393,122 +395,54 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
   };
 
   return (
-    <div className="w-full border-b border-[#F69F19]/15 bg-white">
-      <div
-        className="relative overflow-hidden px-3 py-2 sm:px-4"
-        style={{
-          background: 'linear-gradient(135deg, #2C2D2F 0%, #444546 100%)',
-        }}
-      >
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#F69F19] to-transparent opacity-70" />
-
-        <div className="relative z-10 flex items-center justify-between gap-3">
-          <h1 className="truncate text-[17px] font-semibold leading-tight tracking-[-0.01em] text-white">
+    <div className="w-full border-b border-slate-200 bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-[#F6F6F6] px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="h-6 w-1 shrink-0 rounded-full bg-gradient-to-b from-[#F69F19] to-[#DE5532]" aria-hidden="true" />
+          <h1 className="truncate text-lg font-bold leading-tight tracking-[-0.01em] text-[#2C2D2F]">
             Tickets de Suporte
           </h1>
-          
-          <div className="flex shrink-0 items-center gap-1.5">
-            {/* Equipe Online Popover */}
-            {!isUser && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button 
-                    variant="outline" 
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {!isUser && (
+            <TeamOnlinePopover members={filteredOnlineUsers} getRoleText={getUserRoleText} />
+          )}
+
+          {!isUser && (canCreateTicket || canCreateTicketForUser) && (
+            <span className="hidden h-6 w-px bg-slate-200 md:block" aria-hidden="true" />
+          )}
+
+          {canCreateTicketForUser && setShowCreateForUserModal && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => setShowCreateForUserModal(true)}
                     size="sm"
-                    className="density-control group hidden gap-1.5 rounded-lg border-white/20 bg-white/10 px-3 text-sm text-white hover:border-[#F69F19]/45 hover:bg-[#F69F19]/15 hover:text-white md:inline-flex"
+                    variant="outline"
+                    className="density-control gap-1.5 rounded-lg border-slate-200 bg-white px-3 text-sm font-medium text-[#2C2D2F] hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
                   >
-                    <Circle className="h-2.5 w-2.5 animate-pulse fill-emerald-400 text-emerald-400" />
-                    <span className="hidden font-medium lg:inline">Equipe Online</span>
-                    <Badge 
-                      variant="outline" 
-                      className="density-badge h-5 min-w-5 border-emerald-300/40 bg-emerald-400/20 px-1.5 text-emerald-50"
-                    >
-                      {filteredOnlineUsers.length}
-                    </Badge>
-                    <ChevronDown className="h-3.5 w-3.5 opacity-80 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    <UserPlus className="h-3.5 w-3.5 text-[#DE5532]" />
+                    <span className="hidden sm:inline">Para usuário</span>
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-0 rounded-lg border-[#F69F19]/20 shadow-lg" align="end">
-                  <div className="max-h-96 overflow-auto">
-                    <div className="p-4 border-b border-slate-200">
-                      <h3 className="font-medium text-slate-800">Equipe Online</h3>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {filteredOnlineUsers.length === 0 
-                          ? 'Nenhum membro online' 
-                          : `${filteredOnlineUsers.length} membro(s) online`}
-                      </p>
-                    </div>
-                    
-                    <div className="p-2">
-                      {filteredOnlineUsers.length === 0 ? (
-                        <div className="p-4 text-center text-slate-500">
-                          Nenhum membro da equipe online no momento
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {filteredOnlineUsers.map(user => (
-                            <Card key={user.id} className="p-3 hover:bg-slate-50">
-                              <div className="flex items-center">
-                                <div className="relative">
-                                  <UserAvatar
-                                    name={user.name}
-                                    userId={user.id}
-                                    avatarUrl={user.avatarUrl}
-                                    size="md"
-                                    className="h-8 w-8 shrink-0"
-                                    fallbackClassName="bg-slate-200 text-slate-600"
-                                  />
-                                  <Circle 
-                                    className="absolute -bottom-1 -right-1 h-3 w-3 fill-green-500 text-green-500" 
-                                  />
-                                </div>
-                                <div className="ml-3">
-                                  <div className="text-sm font-medium text-slate-900">{user.name}</div>
-                                  <div className="text-xs text-slate-500">{getUserRoleText(user.role)}</div>
-                                </div>
-                              </div>
-                            </Card>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
-            
-            <div className="flex items-center gap-1.5">
-              {canCreateTicket && (
-                <Button
-                  onClick={() => setShowCreateForm(true)}
-                  size="sm"
-                  className="density-control gap-1.5 bg-[#F69F19] px-3 text-sm font-medium text-white hover:bg-[#DE5532]"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Novo Ticket</span>
-                </Button>
-              )}
-              {canCreateTicketForUser && setShowCreateForUserModal && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => setShowCreateForUserModal(true)}
-                        size="sm"
-                        className="density-control gap-1.5 bg-[#F69F19] px-3 text-sm font-medium text-white hover:bg-[#DE5532]"
-                      >
-                        <UserPlus className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">+ Ticket</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="bg-[#2C2D2F] text-white border-[#F69F19]/20">
-                      <p>Criar ticket em nome de um usuário</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </div>
-          </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-[#2C2D2F] text-white border-[#F69F19]/20">
+                  <p>Abrir ticket em nome de um usuário</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {canCreateTicket && (
+            <Button
+              onClick={() => setShowCreateForm(true)}
+              size="sm"
+              className="density-control gap-1.5 rounded-lg bg-gradient-to-r from-[#F69F19] to-[#DE5532] px-3.5 text-sm font-semibold text-white shadow-sm shadow-[#DE5532]/20 hover:brightness-105"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Novo ticket</span>
+            </Button>
+          )}
         </div>
       </div>
       
@@ -659,76 +593,6 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
             )}
           </Button>
 
-          {/* Botão de Equipe Online para dispositivos móveis */}
-          {!isUser && (
-            <div className="md:hidden">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="density-control border-[#F69F19]/20 transition-colors hover:border-[#F69F19]/40 hover:bg-[#F69F19]/5"
-                  >
-                    <Circle className="h-3 w-3 fill-green-500 text-green-500" />
-                    <Badge 
-                      variant="outline" 
-                      className="ml-1 bg-green-500/10 text-green-700 border-green-500/30 px-1.5"
-                    >
-                      {filteredOnlineUsers.length}
-                    </Badge>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-0 border-[#F69F19]/20 shadow-lg" align="end">
-                  {/* Mesmo conteúdo do popover desktop */}
-                  <div className="max-h-96 overflow-auto">
-                    <div className="p-4 border-b border-slate-200">
-                      <h3 className="font-medium text-slate-800">Equipe Online</h3>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {filteredOnlineUsers.length === 0 
-                          ? 'Nenhum membro online' 
-                          : `${filteredOnlineUsers.length} membro(s) online`}
-                      </p>
-                    </div>
-                    
-                    <div className="p-2">
-                      {filteredOnlineUsers.length === 0 ? (
-                        <div className="p-4 text-center text-slate-500">
-                          Nenhum membro da equipe online no momento
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {filteredOnlineUsers.map(user => (
-                            <Card key={user.id} className="p-3 hover:bg-slate-50">
-                              <div className="flex items-center">
-                                <div className="relative">
-                                  <UserAvatar
-                                    name={user.name}
-                                    userId={user.id}
-                                    avatarUrl={user.avatarUrl}
-                                    size="md"
-                                    className="h-8 w-8 shrink-0"
-                                    fallbackClassName="bg-slate-200 text-slate-600"
-                                  />
-                                  <Circle 
-                                    className="absolute -bottom-1 -right-1 h-3 w-3 fill-green-500 text-green-500" 
-                                  />
-                                </div>
-                                <div className="ml-3">
-                                  <div className="text-sm font-medium text-slate-900">{user.name}</div>
-                                  <div className="text-xs text-slate-500">{getUserRoleText(user.role)}</div>
-                                </div>
-                              </div>
-                            </Card>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-          )}
-          
           <Button
             variant="outline"
             size="sm"
@@ -747,6 +611,113 @@ const TicketHeader: React.FC<TicketHeaderProps> = ({
         </div>
       </div>
     </div>
+  );
+};
+
+const TeamOnlinePopover: React.FC<{
+  members: User[];
+  getRoleText: (role: string) => string;
+}> = ({ members, getRoleText }) => {
+  const sorted = React.useMemo(
+    () => [...members].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [members],
+  );
+  const preview = sorted.slice(0, 3);
+  const extra = sorted.length - preview.length;
+  const count = sorted.length;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="density-control group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1.5 pr-2.5 text-sm shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F69F19] data-[state=open]:border-emerald-300 data-[state=open]:bg-emerald-50/60"
+          aria-label={`${count} ${count === 1 ? 'membro da equipe online' : 'membros da equipe online'}`}
+        >
+          {count > 0 ? (
+            <span className="flex -space-x-2">
+              {preview.map((member) => (
+                <UserAvatar
+                  key={member.id}
+                  name={member.name}
+                  userId={member.id}
+                  avatarUrl={member.avatarUrl}
+                  size="sm"
+                  className="h-6 w-6 shrink-0 ring-2 ring-white"
+                  fallbackClassName="bg-slate-200 text-slate-600 text-[10px]"
+                />
+              ))}
+              {extra > 0 && (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600 ring-2 ring-white">
+                  +{extra}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100">
+              <Users className="h-3.5 w-3.5 text-slate-400" />
+            </span>
+          )}
+          <span className="flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
+              {count > 0 && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:animate-none" />
+              )}
+              <span className={cn('relative inline-flex h-2 w-2 rounded-full', count > 0 ? 'bg-emerald-500' : 'bg-slate-300')} />
+            </span>
+            <span className="font-semibold text-[#2C2D2F]">{count}</span>
+            <span className="hidden text-slate-500 lg:inline">online</span>
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 overflow-hidden rounded-xl border-slate-200 p-0 shadow-xl" align="end">
+        <div className="border-b border-slate-100 bg-[#F6F6F6] px-4 py-3">
+          <p className="text-sm font-semibold text-[#2C2D2F]">Equipe online</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {count === 0
+              ? 'Ninguém disponível no momento'
+              : `${count} ${count === 1 ? 'pessoa disponível' : 'pessoas disponíveis'} agora`}
+          </p>
+        </div>
+
+        {count === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+              <Users className="h-5 w-5 text-slate-400" />
+            </span>
+            <p className="text-sm text-slate-500">
+              Quem estiver com o Responsum aberto e marcado como disponível aparece aqui.
+            </p>
+          </div>
+        ) : (
+          <ul className="custom-scrollbar max-h-80 overflow-y-auto p-1.5">
+            {sorted.map((member) => (
+              <li
+                key={member.id}
+                className="flex items-center gap-3 rounded-lg px-2.5 py-2 transition-colors hover:bg-slate-50"
+              >
+                <span className="relative shrink-0">
+                  <UserAvatar
+                    name={member.name}
+                    userId={member.id}
+                    avatarUrl={member.avatarUrl}
+                    size="md"
+                    className="h-8 w-8"
+                    fallbackClassName="bg-slate-200 text-slate-600"
+                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-[#2C2D2F]">{member.name}</span>
+                  <span className="block truncate text-xs text-slate-500">{getRoleText(member.role)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 };
 

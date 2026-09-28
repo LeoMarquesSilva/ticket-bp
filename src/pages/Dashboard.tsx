@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import UserAvatar from '@/components/UserAvatar';
+import TicketDescriptionCard from '@/components/TicketDescriptionCard';
 import { DateRange } from 'react-day-picker';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { format, subDays, endOfDay, startOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, startOfWeek, endOfWeek, differenceInHours, differenceInDays } from 'date-fns';
@@ -485,7 +486,7 @@ const Dashboard = () => {
     try {
       // Se for um feedback (tem apenas id, title, etc), buscar o ticket completo
       let fullTicket = ticket;
-      if (ticket.id && (!ticket.createdBy || !ticket.category || !ticket.createdAt)) {
+      if (ticket.id && (!ticket.createdBy || !ticket.category || !ticket.createdAt || ticket.description === undefined)) {
         const ticketData = await TicketService.getTicket(ticket.id);
         if (ticketData) {
           fullTicket = {
@@ -1725,6 +1726,15 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+
+          {!isChatLoading && chatTicket?.description && (
+            <div className="custom-scrollbar max-h-[35%] shrink-0 overflow-y-auto px-5 pb-2">
+              <TicketDescriptionCard
+                description={chatTicket.description}
+                authorName={chatTicket.createdByName}
+              />
+            </div>
+          )}
           
           {isChatLoading ? (
             <div className="flex min-h-0 flex-1 items-center justify-center">

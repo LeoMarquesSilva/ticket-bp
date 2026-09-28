@@ -41,7 +41,8 @@ describe('TicketList agrupada por categoria', () => {
       }),
     );
 
-    expect(html).toContain('3 tickets em 2 categorias');
+    expect(html).toContain('Todos');
+    expect(html).toContain('aria-label="Ordenar tickets"');
     expect(html).toContain('Trabalhista');
     expect(html).toContain('2 tickets');
     expect(html).toContain('Societário e Contratos');
@@ -85,17 +86,20 @@ describe('TicketList agrupada por categoria', () => {
         expandedCategoryKeys: ['trabalhista_contencioso'],
         onExpandedCategoryKeysChange: () => undefined,
         renderTicketCard: (ticket: Ticket) => React.createElement('article', null, ticket.id),
+        unreadCounts: { 'soc-1': 2 },
       }),
     );
 
-    expect(html).toContain('2 tickets em 2 frentes de atuação e 2 categorias');
+    expect(html).toContain('aria-label="Filtros rápidos"');
+    expect(html).toContain('Não lidas');
+    expect(html).not.toContain('Aguardando resposta');
     expect(html).toContain('Frente Trabalhista');
     expect(html).toContain('Contencioso Trabalhista');
     expect(html).toContain('Frente Societária');
-    expect(html).toContain('aria-label="Recolher categorias de Frente Trabalhista"');
-    expect(html).not.toContain('aria-label="Expandir categorias de Frente Societária"');
-    expect(html).toContain('aria-label="1 categoria"');
-    expect(html).toContain('aria-label="1 ticket"');
+    expect(html).not.toContain('Categorias desta frente');
+    expect(html).not.toContain('categorias de Frente');
+    expect(html).toContain('1 ticket com mensagem não lida');
+    expect(html).toContain('Sem mensagens não lidas');
     expect(html).toContain('lucide-users');
     expect(html).toContain('lucide-building2');
     expect(html).toContain('<article>trab-1</article>');

@@ -56,17 +56,20 @@ export default function TicketCategoryGrid({
                     aria-expanded={isExpanded}
                     aria-controls={panelId(category.key)}
                     onClick={(event) => onToggleCategory(category.key, event.currentTarget)}
-                    className="ticket-category-toggle w-full text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#F69F19]"
+                    className={`ticket-category-toggle ${isChatOpen ? 'ticket-category-toggle--chat' : ''} w-full text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#F69F19]`}
                   >
-                    <span className="ticket-category-icon flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                      <CategoryIcon className="h-[18px] w-[18px]" aria-hidden="true" />
+                    <span className={`ticket-category-icon flex h-7 w-7 items-center justify-center rounded-md ${isExpanded ? 'bg-white text-[#DE5532]' : 'bg-slate-100 text-slate-500'}`}>
+                      <CategoryIcon className="h-4 w-4" aria-hidden="true" />
                     </span>
-                    <span className="ticket-category-title min-w-0 text-sm font-semibold leading-snug text-[#2C2D2F]" title={category.label}>
+                    <span className="ticket-category-title min-w-0 text-base font-bold leading-snug text-[#2C2D2F]" title={category.label}>
                       {category.label}
                     </span>
-                    <span className="ticket-category-count density-badge inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600" aria-label={countLabel}>
-                      <strong className="font-semibold text-slate-800">{category.tickets.length}</strong>
-                      <span>{category.tickets.length === 1 ? 'ticket' : 'tickets'}</span>
+                    <span
+                      className={`ticket-category-count inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-xs font-bold ${isExpanded ? 'bg-[#DE5532] text-white' : 'bg-slate-100 text-slate-700'}`}
+                      aria-label={countLabel}
+                      title={countLabel}
+                    >
+                      {category.tickets.length}
                     </span>
                     <ChevronRight className={`ticket-category-chevron h-4 w-4 text-slate-500 transition-transform duration-200 motion-reduce:transition-none ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                   </button>
@@ -81,11 +84,8 @@ export default function TicketCategoryGrid({
               id={panelId(category.key)}
               role="region"
               aria-labelledby={headingId(category.key)}
-              className="ticket-category-panel min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4"
+              className={`ticket-category-panel min-w-0 rounded-xl border border-slate-200 bg-white ${isChatOpen ? 'p-2' : 'p-3'}`}
             >
-              <p className="mb-3 text-sm font-semibold text-slate-700 [overflow-wrap:anywhere]">
-                Tickets · {category.label}
-              </p>
               <div className={`ticket-list-grid grid auto-rows-max ${isChatOpen ? 'ticket-list-grid--chat gap-2' : 'gap-3'}`}>
                 {category.tickets.map((ticket) => (
                   <div key={ticket.id} className="min-w-0 h-full">{renderTicketCard(ticket)}</div>
