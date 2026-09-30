@@ -58,6 +58,21 @@ describe('processTicketAssignmentNotification', () => {
     expect(repository.complete).toHaveBeenCalledWith(NOTIFICATION_ID, 'sent', null);
   });
 
+  it('usa o texto de continuação para chamado vinculado', async () => {
+    const { graph, run } = setup(claimedRow({
+      reason: 'linked',
+      linked_from_title: 'Acesso ao sistema (original)',
+      assigned_by_name: 'Ana Souza',
+    }));
+
+    await expect(run()).resolves.toEqual({ outcome: 'sent' });
+    const message = graph.sendTeamsChat.mock.calls[0][0];
+    expect(message.previewText).toBe(
+      'Ana Souza abriu uma continuação do chamado "Acesso ao sistema (original)", que você atendeu.',
+    );
+    expect(JSON.stringify(message.card)).toContain('CHAMADO VINCULADO');
+  });
+
   it('não envia nada quando o aviso já foi processado', async () => {
     const { repository, graph, run } = setup(null);
 

@@ -51,6 +51,16 @@ export interface Ticket {
   evidenciaDecididoPor?: string | null;
   evidenciaSioeNotificadoEm?: string | null;
   evidenciaSioeErro?: string | null;
+  /** Chamado finalizado do qual este é continuação. */
+  linkedFromTicketId?: string | null;
+}
+
+/** Resumo de um chamado ligado (original ou continuação). */
+export interface LinkedTicketSummary {
+  id: string;
+  title: string;
+  status: Ticket['status'];
+  createdAt: string;
 }
 
 export interface ChatMessage {
@@ -83,6 +93,8 @@ export interface CreateTicketData {
   initialChatMessage?: string;
   /** Envio para lista SharePoint (Desenvolvimento Contínuo da Equipe). */
   sharepointTreinamento?: SharepointTreinamentoPayload;
+  /** Abre o ticket como continuação de um chamado finalizado. */
+  linkedFromTicketId?: string;
 }
 
 export interface UpdateTicketData {
@@ -164,7 +176,8 @@ const mapToDatabase = (data: any) => {
     mapped.evidencia_sioe_notificado_em = data.evidenciaSioeNotificadoEm;
   }
   if (data.evidenciaSioeErro !== undefined) mapped.evidencia_sioe_erro = data.evidenciaSioeErro;
-  
+  if (data.linkedFromTicketId !== undefined) mapped.linked_from_ticket_id = data.linkedFromTicketId;
+
   return mapped;
 };
 
@@ -204,6 +217,7 @@ const mapFromDatabase = (data: any): Ticket => {
     evidenciaDecididoPor: data.evidencia_decidido_por ?? null,
     evidenciaSioeNotificadoEm: data.evidencia_sioe_notificado_em ?? null,
     evidenciaSioeErro: data.evidencia_sioe_erro ?? null,
+    linkedFromTicketId: data.linked_from_ticket_id ?? null,
   };
 };
 
@@ -1236,6 +1250,76 @@ static async createTicket(ticketData: CreateTicketData): Promise<Ticket> {
     console.error('Error in createTicket:', error);
     throw error;
   }
+}
+
+/**
+ * Abre a continuação de um chamado finalizado, sempre em nome do solicitante
+ * original e atribuída ao responsável do original (se ainda estiver ativo).
+ * Não exige avaliação pendente: a do original continua sendo lembrada.
+ */
+static async createLinkedTicket(
+  source: Pick<Ticket, 'id' | 'category' | 'subcategory' | 'createdBy' | 'createdByName' | 'createdByDepartment' | 'assignedTo'>,
+  input: { title: string; description: string },
+): Promise<Ticket> {
+  let assignedTo: { id: string; name: string } | null = null;
+  if (source.assignedTo) {
+    const { data: assignee } = await supabase
+      .from(TABLES.USERS)
+      .select('id, name, is_active')
+      .eq('id', source.assignedTo)
+      .maybeSingle();
+    if (assignee?.is_active) assignedTo = { id: assignee.id, name: assignee.name };
+  }
+
+  return this.createTicket({
+    title: input.title.trim(),
+    description: input.description.trim(),
+    category: source.category,
+    subcategory: source.subcategory ?? '',
+    createdBy: source.createdBy,
+    createdByName: source.createdByName,
+    createdByDepartment: source.createdByDepartment,
+    skipFeedbackCheck: true,
+    assignedTo: assignedTo?.id,
+    assignedToName: assignedTo?.name,
+    linkedFromTicketId: source.id,
+  });
+}
+
+/** Chamado original e continuações ligadas a um ticket. */
+static async getLinkedTickets(
+  ticketId: string,
+  linkedFromTicketId?: string | null,
+): Promise<{ source: LinkedTicketSummary | null; continuations: LinkedTicketSummary[] }> {
+  const toSummary = (row: any): LinkedTicketSummary => ({
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    createdAt: row.created_at,
+  });
+
+  const [sourceResult, continuationsResult] = await Promise.all([
+    linkedFromTicketId
+      ? supabase
+          .from(TABLES.TICKETS)
+          .select('id, title, status, created_at')
+          .eq('id', linkedFromTicketId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    supabase
+      .from(TABLES.TICKETS)
+      .select('id, title, status, created_at')
+      .eq('linked_from_ticket_id', ticketId)
+      .order('created_at', { ascending: true }),
+  ]);
+
+  if (sourceResult.error) throw sourceResult.error;
+  if (continuationsResult.error) throw continuationsResult.error;
+
+  return {
+    source: sourceResult.data ? toSummary(sourceResult.data) : null,
+    continuations: (continuationsResult.data ?? []).map(toSummary),
+  };
 }
 
   // Adicionar método para atribuir ticket a um advogado

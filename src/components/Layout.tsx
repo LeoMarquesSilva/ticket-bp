@@ -12,7 +12,6 @@ import { getCategoryKeysForFrenteIds } from '@/utils/ticketFilterUtils';
 import {
   shouldNotifyMessage,
   shouldNotifyNewTicket,
-  shouldNotifyTicketAssigned,
   type TicketNotifyContext,
 } from '@/utils/notificationAccessUtils';
 
@@ -292,32 +291,51 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             onOpen: () => navigateRef.current(newTicketId ? `/tickets/${newTicketId}` : '/tickets'),
           });
         })();
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'app_c009c0e4f1_tickets'
-      }, (payload) => {
-        if (!payload.new) return;
-        const ticketId = payload.new.id as string | undefined;
-        if (!ticketId) return;
-
-        const newAssignedTo = normalizeId((payload.new.assigned_to as string | null | undefined) ?? null);
-        const oldAssignedTo = normalizeId((payload.old?.assigned_to as string | null | undefined) ?? null);
-        if (shouldNotifyTicketAssigned(newAssignedTo, oldAssignedTo, normalizedUserId!)) {
-          console.info('[notify] notify_ticket_assigned', { ticketId, oldAssignedTo, newAssignedTo, userId: normalizedUserId });
-          void notifyRef.current({
-            type: 'ticket_assigned',
-            dedupeKey: `ticket_assigned:${ticketId}:${payload.new.updated_at ?? payload.commit_timestamp ?? 'na'}`,
-            ticketId,
-            title: 'Ticket transferido para você!',
-            description: `${payload.new.title ?? 'Sem título'} - atribuído para seu atendimento`,
-            onOpen: () => navigateRef.current(`/tickets/${ticketId}`),
-          });
-        }
       });
 
     subscribeWithRetry('layout-ticket-events', ticketSubscription, monitorTicketChannelStatus);
+
+    // Transferência para o usuário: uma linha por troca real de responsável,
+    // gravada pelo trigger ticket_assignment_teams_notification (sem autoatribuição).
+    // Não dá para deduzir isso do UPDATE de tickets: com RLS, o Realtime não
+    // envia o assigned_to anterior, e todo UPDATE parecia uma transferência.
+    const monitorAssignmentChannelStatus = createStatusMonitor('layout-assignment-events');
+    const assignmentSubscription = supabase
+      .channel(`layout-ticket-assignments-${normalizedUserId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'app_c009c0e4f1_ticket_assignment_notifications',
+        filter: `assignee_id=eq.${normalizedUserId}`,
+      }, (payload) => {
+        const notificationId = payload.new?.id as string | undefined;
+        const ticketId = payload.new?.ticket_id as string | undefined;
+        if (!notificationId || !ticketId) return;
+        const isLinked = payload.new?.reason === 'linked';
+
+        void (async () => {
+          const { data: ticket } = await supabase
+            .from(TABLES.TICKETS)
+            .select('title')
+            .eq('id', ticketId)
+            .maybeSingle();
+          const title = (ticket?.title as string | undefined) ?? 'Sem título';
+
+          console.info('[notify] notify_ticket_assigned', { ticketId, notificationId, userId: normalizedUserId });
+          await notifyRef.current({
+            type: 'ticket_assigned',
+            dedupeKey: `ticket_assigned:${notificationId}`,
+            ticketId,
+            title: isLinked ? 'Chamado vinculado para você!' : 'Ticket transferido para você!',
+            description: isLinked
+              ? `${title} - continuação de um chamado que você atendeu`
+              : `${title} - atribuído para seu atendimento`,
+            onOpen: () => navigateRef.current(`/tickets/${ticketId}`),
+          });
+        })();
+      });
+
+    subscribeWithRetry('layout-assignment-events', assignmentSubscription, monitorAssignmentChannelStatus);
 
     const monitorMessageChannelStatus = createStatusMonitor('layout-message-events');
     const messageSubscription = supabase
@@ -377,6 +395,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         supabase.removeChannel(ticketSubscription);
       }
       supabase.removeChannel(messageSubscription);
+      supabase.removeChannel(assignmentSubscription);
     };
   }, [
     permissionsLoading,

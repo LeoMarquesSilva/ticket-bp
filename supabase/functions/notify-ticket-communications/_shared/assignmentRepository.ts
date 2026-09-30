@@ -15,6 +15,8 @@ export type ClaimedAssignmentNotification = {
   assignee_is_active: boolean;
   assigned_by_name: string | null;
   requester_name: string | null;
+  reason: 'assigned' | 'linked';
+  linked_from_title: string | null;
 };
 
 export function createTicketAssignmentRepository(supabaseAdmin: unknown) {

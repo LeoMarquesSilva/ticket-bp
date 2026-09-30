@@ -45,6 +45,7 @@ import {
 import { matchesUserTicketFilter } from '@/utils/ticketFiltersUtils';
 import { FrenteAccessService, isStrictFrenteRole, isAssignedOnlyRole } from '@/services/frenteAccessService';
 import { canUserFinishTicket } from '@/utils/npsExemptTickets';
+import { canOpenLinkedTicket } from '@/utils/linkedTicket';
 import { shouldOpenTicketFiltersInitially } from '@/utils/layoutPreferences';
 import {
   expandVisibleTicketCategories,
@@ -131,6 +132,15 @@ type RealtimeTicketRow = {
   created_by_department?: string | null;
   assigned_to?: string | null;
   assigned_to_name?: string | null;
+  linked_from_ticket_id?: string | null;
+  assigned_at?: string | null;
+  started_at?: string | null;
+  resolved_at?: string | null;
+  feedback_submitted_at?: string | null;
+  service_score?: number | null;
+  request_fulfilled?: boolean | null;
+  not_fulfilled_reason?: string | null;
+  comment?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -138,6 +148,18 @@ type RealtimeTicketRow = {
 const Tickets = () => {
   const { user } = useAuth();
   const { has, loading: permissionsLoading } = usePermissions();
+  const [autoOpenFeedbackTicketId, setAutoOpenFeedbackTicketId] = useState<string | null>(null);
+  // Os painéis mobile e desktop ficam montados juntos (um só escondido por CSS);
+  // o formulário de avaliação deve abrir apenas no painel visível.
+  const [isLgUp, setIsLgUp] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  ));
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsLgUp(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
   const { ticketId: ticketIdParam } = useParams<{ ticketId: string }>();
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -345,6 +367,17 @@ const Tickets = () => {
     createdByDepartment: ticketData.created_by_department ?? undefined,
     assignedTo: ticketData.assigned_to ?? undefined,
     assignedToName: ticketData.assigned_to_name ?? undefined,
+    linkedFromTicketId: ticketData.linked_from_ticket_id ?? null,
+    // Sem estes campos, um UPDATE em tempo real "apagava" a avaliação do ticket
+    // na lista e o aviso de avaliação pendente só sumia recarregando a página.
+    assignedAt: ticketData.assigned_at ?? undefined,
+    startedAt: ticketData.started_at ?? undefined,
+    resolvedAt: ticketData.resolved_at ?? undefined,
+    feedbackSubmittedAt: ticketData.feedback_submitted_at ?? undefined,
+    serviceScore: ticketData.service_score ?? undefined,
+    requestFulfilled: ticketData.request_fulfilled ?? undefined,
+    notFulfilledReason: ticketData.not_fulfilled_reason ?? undefined,
+    comment: ticketData.comment ?? undefined,
     createdAt: ticketData.created_at,
     updatedAt: ticketData.updated_at,
   });
@@ -580,7 +613,12 @@ const Tickets = () => {
 
           console.info('[realtime] update_updated', { ticketId: updatedTicket.id });
           const next = [...prev];
-          next[existingIndex] = updatedTicket;
+          const current = prev[existingIndex];
+          next[existingIndex] = {
+            ...updatedTicket,
+            createdByAvatarUrl: current.createdByAvatarUrl,
+            assignedToAvatarUrl: current.assignedToAvatarUrl,
+          };
           return next;
         }
 
@@ -1452,6 +1490,19 @@ const handleUpdateTicket = async (ticketId: string, updates: Record<string, unkn
       // REMOVIDO: setTickets manual update
       // O ticket será atualizado automaticamente via real-time subscription
       
+      // Atualiza a lista na hora (o aviso de avaliação pendente depende dela);
+      // o evento em tempo real chega depois e só confirma.
+      setTickets((prev) => prev.map((ticket) => (
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              ...updatedTicket,
+              createdByAvatarUrl: ticket.createdByAvatarUrl,
+              assignedToAvatarUrl: ticket.assignedToAvatarUrl,
+            }
+          : ticket
+      )));
+
       // Update selected ticket if it's the one being updated
       if (selectedTicket && selectedTicket.id === ticketId) {
         setSelectedTicket(updatedTicket);
@@ -1639,6 +1690,41 @@ const openChat = (ticket: Ticket) => {
   // Marcar mensagens como lidas quando abrir o chat
   if (user?.id && unreadMessages[ticket.id] > 0) {
     markMessagesAsRead(ticket.id);
+  }
+};
+
+const openTicketById = async (ticketId: string) => {
+  const existing = tickets.find((ticket) => ticket.id === ticketId);
+  if (existing) {
+    openChat(existing);
+    return;
+  }
+  try {
+    const ticket = await TicketService.getTicket(ticketId);
+    if (ticket) openChat(ticket);
+    else toast.error('Chamado não encontrado.');
+  } catch {
+    toast.error('Não foi possível abrir o chamado.');
+  }
+};
+
+const openTicketForFeedback = (ticket: Ticket) => {
+  setAutoOpenFeedbackTicketId(ticket.id);
+  openChat(ticket);
+};
+
+const handleCreateLinkedTicket = async (
+  source: Ticket,
+  input: { title: string; description: string },
+) => {
+  try {
+    const created = await TicketService.createLinkedTicket(source, input);
+    toast.success('Chamado vinculado aberto!');
+    openChat(created);
+  } catch (error) {
+    console.error('Erro ao abrir chamado vinculado:', error);
+    toast.error('Não foi possível abrir o chamado vinculado. Tente novamente.');
+    throw error;
   }
 };
 
@@ -1869,7 +1955,7 @@ return (
     <PendingFeedbackHandler
       tickets={tickets}
       onFeedbackSubmitted={handleFeedbackSubmitted}
-      onOpenTicket={openChat}
+      onOpenTicket={openTicketForFeedback}
       currentUserId={user?.id}
     />
 
@@ -2040,6 +2126,14 @@ return (
                     canAssignTicket={has('assign_ticket')}
                     canEditTicketCategory={has('assign_ticket')}
                     canDeleteTicket={has('delete_ticket')}
+                    canOpenLinkedTicket={canOpenLinkedTicket(selectedTicket, user?.id, {
+                      canAssign: has('assign_ticket'),
+                      canFinish: has('finish_ticket'),
+                    })}
+                    onCreateLinkedTicket={handleCreateLinkedTicket}
+                    onOpenTicketById={openTicketById}
+                    autoOpenFeedbackTicketId={isLgUp ? null : autoOpenFeedbackTicketId}
+                    onAutoOpenFeedbackConsumed={() => setAutoOpenFeedbackTicketId(null)}
                     canFinishTicket={
                       selectedTicket
                         ? canUserFinishTicket(user?.id, has('finish_ticket'), user?.role)
@@ -2157,6 +2251,14 @@ return (
                         canAssignTicket={has('assign_ticket')}
                         canEditTicketCategory={has('assign_ticket')}
                         canDeleteTicket={has('delete_ticket')}
+                        canOpenLinkedTicket={canOpenLinkedTicket(selectedTicket, user?.id, {
+                          canAssign: has('assign_ticket'),
+                          canFinish: has('finish_ticket'),
+                        })}
+                        onCreateLinkedTicket={handleCreateLinkedTicket}
+                        onOpenTicketById={openTicketById}
+                        autoOpenFeedbackTicketId={isLgUp ? autoOpenFeedbackTicketId : null}
+                        onAutoOpenFeedbackConsumed={() => setAutoOpenFeedbackTicketId(null)}
                         canFinishTicket={
                       selectedTicket
                         ? canUserFinishTicket(user?.id, has('finish_ticket'), user?.role)

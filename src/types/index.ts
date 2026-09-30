@@ -68,6 +68,8 @@ export interface Ticket {
   evidenciaEnviada?: boolean | null;
   evidenciaDecididoEm?: string | null;
   evidenciaDecididoPor?: string | null;
+  /** Chamado finalizado do qual este é continuação. */
+  linkedFromTicketId?: string | null;
 }
 
 export interface ChatMessage {

@@ -13,8 +13,9 @@ import TransferTicketModal from './TransferTicketModal';
 import TransferHandoffNote from './TransferHandoffNote';
 import TicketDescriptionCard from './TicketDescriptionCard';
 import ChangeTicketCategoryModal from './ChangeTicketCategoryModal';
+import LinkedTicketModal from './LinkedTicketModal';
 import { Ticket, ChatMessage, User as AppUser } from '@/types';
-import { TicketService } from '@/services/ticketService';
+import { TicketService, type LinkedTicketSummary } from '@/services/ticketService';
 import { UserService } from '@/services/userService';
 import { getSlaHours } from '@/services/dashboardService';
 import { CategoryService } from '@/services/categoryService';
@@ -109,6 +110,13 @@ interface TicketChatPanelProps {
   canEditTicketCategory?: boolean;
   canDeleteTicket?: boolean;
   canFinishTicket?: boolean;
+  /** Solicitante ou equipe pode abrir a continuação deste chamado finalizado. */
+  canOpenLinkedTicket?: boolean;
+  onCreateLinkedTicket?: (source: Ticket, input: { title: string; description: string }) => Promise<void>;
+  onOpenTicketById?: (ticketId: string) => void;
+  /** Abre o formulário de avaliação assim que este ticket for exibido (uso único). */
+  autoOpenFeedbackTicketId?: string | null;
+  onAutoOpenFeedbackConsumed?: () => void;
 }
 
 const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
@@ -137,8 +145,16 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   canAssignTicket = false,
   canEditTicketCategory = false,
   canDeleteTicket = false,
-  canFinishTicket = false
+  canFinishTicket = false,
+  canOpenLinkedTicket = false,
+  onCreateLinkedTicket,
+  onOpenTicketById,
+  autoOpenFeedbackTicketId,
+  onAutoOpenFeedbackConsumed,
 }) => {
+  const [linkedModalOpen, setLinkedModalOpen] = useState(false);
+  const [linkedTickets, setLinkedTickets] = useState<{ source: LinkedTicketSummary | null; continuations: LinkedTicketSummary[] }>({ source: null, continuations: [] });
+  const [linkedTicketsVersion, setLinkedTicketsVersion] = useState(0);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -319,15 +335,17 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
         const needsFeedback = await TicketService.checkTicketNeedsFeedback(selectedTicket.id);
         const shouldShowFeedback = showFeedbackParam || needsFeedback;
         setShowFeedback(shouldShowFeedback);
-        if (showFeedbackParam && shouldShowFeedback) {
+        const autoOpen = autoOpenFeedbackTicketId === selectedTicket.id;
+        if ((showFeedbackParam || autoOpen) && shouldShowFeedback) {
           setShowFeedbackModal(true);
         }
+        if (autoOpen) onAutoOpenFeedbackConsumed?.();
       } else {
         setShowFeedback(false);
       }
     };
     checkNeedsFeedback();
-  }, [selectedTicket, user, searchParams]);
+  }, [selectedTicket, user, searchParams, autoOpenFeedbackTicketId]);
 
   const handleSubmitFeedback = async (feedbackData: TicketFeedbackData) => {
     if (!selectedTicket) return;
@@ -432,6 +450,26 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       sub => sub.value === subcategory
     );
     return subcategoryConfig?.label || subcategory;
+  };
+
+  // Chamado original e continuações (chamados vinculados)
+  useEffect(() => {
+    let cancelled = false;
+    setLinkedTickets({ source: null, continuations: [] });
+    TicketService.getLinkedTickets(selectedTicket.id, selectedTicket.linkedFromTicketId)
+      .then((result) => {
+        if (!cancelled) setLinkedTickets(result);
+      })
+      .catch((error) => console.warn('Erro ao carregar chamados vinculados:', error));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTicket.id, selectedTicket.linkedFromTicketId, linkedTicketsVersion]);
+
+  const handleCreateLinkedTicket = async (input: { title: string; description: string }) => {
+    if (!onCreateLinkedTicket) return;
+    await onCreateLinkedTicket(selectedTicket, input);
+    setLinkedTicketsVersion((version) => version + 1);
   };
 
   const handleCategoryChange = async (newCategory: string, newSubcategory: string) => {
@@ -831,6 +869,43 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
           authorName={selectedTicket.createdByName}
           className="mb-3"
         />
+        {(linkedTickets.source || linkedTickets.continuations.length > 0) && (
+          <div className="mb-3 rounded-lg border border-[#F69F19]/25 bg-[#F69F19]/5 px-3 py-2 text-xs text-slate-600 space-y-1">
+            {linkedTickets.source && (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Link2 className="h-3.5 w-3.5 shrink-0 text-[#F69F19]" />
+                <span className="shrink-0 font-medium text-slate-500">Continuação de:</span>
+                <button
+                  type="button"
+                  className="truncate text-left font-medium text-[#2C2D2F] underline-offset-2 hover:underline disabled:no-underline"
+                  onClick={() => onOpenTicketById?.(linkedTickets.source!.id)}
+                  disabled={!onOpenTicketById}
+                  title={linkedTickets.source.title}
+                >
+                  {linkedTickets.source.title}
+                </button>
+              </div>
+            )}
+            {linkedTickets.continuations.map((continuation) => (
+              <div key={continuation.id} className="flex items-center gap-1.5 min-w-0">
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[#F69F19]" />
+                <span className="shrink-0 font-medium text-slate-500">Continuado em:</span>
+                <button
+                  type="button"
+                  className="truncate text-left font-medium text-[#2C2D2F] underline-offset-2 hover:underline disabled:no-underline"
+                  onClick={() => onOpenTicketById?.(continuation.id)}
+                  disabled={!onOpenTicketById}
+                  title={continuation.title}
+                >
+                  {continuation.title}
+                </button>
+                <span className="shrink-0 text-slate-400">
+                  · {getStatusLabel(continuation.status)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 p-4 text-center">
             <div className="bg-slate-100 p-4 rounded-full mb-3">
@@ -1278,8 +1353,38 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <Lock className="h-3.5 w-3.5 text-slate-400" />
             </div>
             <span>Atendimento finalizado</span>
+            {canOpenLinkedTicket && onCreateLinkedTicket && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="ml-2 h-7 gap-1.5 border-[#F69F19]/40 text-xs text-[#2C2D2F] hover:bg-[#F69F19]/10"
+                onClick={() => setLinkedModalOpen(true)}
+              >
+                <Link2 className="h-3.5 w-3.5 text-[#F69F19]" />
+                Abrir chamado vinculado
+              </Button>
+            )}
           </div>
-          
+
+          {canOpenLinkedTicket && onCreateLinkedTicket && (
+            <LinkedTicketModal
+              open={linkedModalOpen}
+              onOpenChange={setLinkedModalOpen}
+              sourceTitle={selectedTicket.title}
+              categoryLabel={getCategoryLabel(selectedTicket.category || 'outros')}
+              subcategoryLabel={
+                selectedTicket.subcategory
+                  ? getSubcategoryLabel(selectedTicket.category || 'outros', selectedTicket.subcategory)
+                  : undefined
+              }
+              requesterName={selectedTicket.createdByName}
+              assigneeName={selectedTicket.assignedToName}
+              onBehalfOfRequester={selectedTicket.createdBy !== user?.id}
+              onSubmit={handleCreateLinkedTicket}
+            />
+          )}
+
           {/* Mostrar botão de feedback se necessário */}
           {showFeedback && selectedTicket.createdBy === user?.id && (
             <div className="mt-2 p-4 bg-[#F69F19]/5 border border-[#F69F19]/20 rounded-xl animate-in fade-in slide-in-from-bottom-4">

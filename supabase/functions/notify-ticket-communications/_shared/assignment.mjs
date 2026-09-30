@@ -56,6 +56,7 @@ export async function processTicketAssignmentNotification({
       assignee: { name: claimed.assignee_name, email },
       assignedByName: claimed.assigned_by_name,
       requesterName: claimed.requester_name,
+      linkedFromTitle: claimed.reason === 'linked' ? claimed.linked_from_title : undefined,
       appBaseUrl,
       headerImageUrl,
     });
