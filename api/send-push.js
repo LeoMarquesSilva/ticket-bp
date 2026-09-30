@@ -74,10 +74,11 @@ function toTagIdByKey(rows) {
 
 async function cleanupExpiredSubscriptions(supabase, rows) {
   if (!rows || rows.length === 0) return;
-  const userIds = [...new Set(rows.map((row) => normalizeNotifyUserId(row.user_id)).filter(Boolean))];
-  if (userIds.length === 0) return;
-  await supabase.from(TABLES.PUSH_SUBSCRIPTIONS).delete().in('user_id', userIds);
-  console.info('[send-push] subscriptions expiradas removidas', { users: userIds.length });
+  // Remove só as inscrições que expiraram, não todas as do usuário.
+  const ids = [...new Set(rows.map((row) => row.id).filter(Boolean))];
+  if (ids.length === 0) return;
+  await supabase.from(TABLES.PUSH_SUBSCRIPTIONS).delete().in('id', ids);
+  console.info('[send-push] subscriptions expiradas removidas', { subscriptions: ids.length });
 }
 
 async function loadPermissionMapByUser(supabase, users) {
@@ -181,7 +182,7 @@ export default async function handler(req, res) {
 
       const { data: subs } = await supabase
         .from(TABLES.PUSH_SUBSCRIPTIONS)
-        .select('subscription, user_id')
+        .select('id, subscription, user_id')
         .eq('user_id', newAssignee);
 
       if (!subs || subs.length === 0) return res.status(200).json({ sent: 0 });
@@ -248,7 +249,7 @@ export default async function handler(req, res) {
 
       const { data: subs } = await supabase
         .from(TABLES.PUSH_SUBSCRIPTIONS)
-        .select('subscription, user_id')
+        .select('id, subscription, user_id')
         .in('user_id', userIds);
 
       if (!subs || subs.length === 0) return res.status(200).json({ sent: 0 });
@@ -304,7 +305,7 @@ export default async function handler(req, res) {
 
       const { data: subs } = await supabase
         .from(TABLES.PUSH_SUBSCRIPTIONS)
-        .select('subscription, user_id')
+        .select('id, subscription, user_id')
         .not('user_id', 'is', null);
 
       if (!subs || subs.length === 0) return res.status(200).json({ sent: 0 });

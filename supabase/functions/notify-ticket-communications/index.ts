@@ -1,4 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  isValidAssignmentNotificationId,
+  processTicketAssignmentNotification,
+} from './_shared/assignment.mjs';
+import { createTicketAssignmentRepository } from './_shared/assignmentRepository.ts';
 import { createCorsHeaders } from './_shared/cors.ts';
 import { createGraphClient } from './_shared/graphClient.mjs';
 import { createTicketCommunicationRepository } from './_shared/repository.ts';
@@ -81,12 +86,64 @@ function createAdminClient() {
   );
 }
 
+// Chamado pelo trigger ticket_assignment_teams_notification (pg_net) quando o
+// responsável de um ticket muda. Autenticado pelo token guardado no Vault.
+async function ticketAssignedFetch(req: Request, token: string): Promise<Response> {
+  const supabaseAdmin = createAdminClient();
+  const repository = createTicketAssignmentRepository(supabaseAdmin);
+  try {
+    if (!(await repository.verifyToken(token))) return json(401, { error: 'unauthorized' });
+  } catch {
+    return json(500, { error: 'internal_error' });
+  }
+
+  const body = await req.json().catch(() => null);
+  if (body?.action !== 'ticket_assigned' || !isValidAssignmentNotificationId(body?.notificationId)) {
+    return json(400, { error: 'invalid_body' });
+  }
+
+  const config = readRuntimeConfig();
+  if (!config) return json(503, { error: 'service_unavailable' });
+
+  try {
+    const result = await processTicketAssignmentNotification({
+      repository,
+      graph: {
+        resolveUserId: getGraphClient(config).resolveUserId,
+        sendTeamsChat: getTeamsClient(config, supabaseAdmin).sendChat,
+      },
+      appBaseUrl: config.appPublicUrl,
+      headerImageUrl: teamsHeaderImageUrl(),
+      notificationId: body.notificationId,
+    });
+    if (result.outcome === 'failed') {
+      console.warn('[ticket-communications] ticket_assigned failed', { error: result.error });
+    }
+    return json(200, { ok: true, ...result });
+  } catch {
+    return json(500, { error: 'internal_error' });
+  }
+}
+
 async function authenticatedFetch(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' }, req);
 
+  // Token interno do Vault: usado pelo trigger de troca de responsável e pelo
+  // cron diário (pg_cron). Fora do "ticket_assigned", equivale à secret key.
+  const internalToken = req.headers.get('x-assignment-token');
+  if (internalToken) {
+    const peek = await req.clone().json().catch(() => null);
+    if (peek?.action === 'ticket_assigned') return ticketAssignedFetch(req, internalToken);
+  }
+
   const authorization = req.headers.get('Authorization');
-  const auth = await resolveTicketCommunicationAuth({
+  const auth = internalToken
+    ? await createTicketAssignmentRepository(createAdminClient())
+      .verifyToken(internalToken)
+      .then((valid) => (valid ? { authMode: 'secret' as const } : null))
+      .catch(() => null)
+    : await resolveTicketCommunicationAuth({
     authorization,
     apikey: req.headers.get('apikey'),
     namedSecret: readNamedSecret(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '', 'ticket-communications'),

@@ -136,6 +136,9 @@ function resolveCopy(type, ticketTitle, overrides, defaults = EMAIL_TEMPLATE_DEF
 }
 
 function communicationState(type) {
+  if (type === 'ticket_assigned') {
+    return { label: 'CHAMADO ATRIBUÍDO', color: '#F69F19', intro: 'Um chamado foi transferido para você' };
+  }
   return type === 'awaiting_requester'
     ? { label: 'RESPOSTA NECESSÁRIA', color: '#DE5532', intro: 'Precisamos de você para continuar' }
     : type === 'awaiting_feedback'
@@ -235,6 +238,7 @@ function renderTeamsHtml({ name, title, reason, action, webUrl, type, subject })
 }
 
 function adaptiveStatusColor(type) {
+  if (type === 'ticket_assigned') return 'Accent';
   return type === 'awaiting_requester'
     ? 'Attention'
     : type === 'awaiting_feedback'
@@ -367,5 +371,45 @@ export function buildNotificationContent({ type, ticket, requester, appBaseUrl, 
       chatHtml: renderTeamsChatHtml(teamsPayload),
       card: renderTeamsCard(teamsPayload),
     },
+  };
+}
+
+export function buildTicketAssignedTeamsContent({
+  ticket,
+  assignee,
+  assignedByName,
+  requesterName,
+  appBaseUrl,
+  headerImageUrl,
+}) {
+  const type = 'ticket_assigned';
+  const webUrl = buildTicketUrl(appBaseUrl, ticket.id, false);
+  const title = String(ticket.title ?? '').trim() || 'Chamado';
+  const actor = String(assignedByName ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const requester = String(requesterName ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const reason = actor
+    ? `${actor} transferiu este chamado para o seu atendimento.`
+    : 'Este chamado foi atribuído ao seu atendimento.';
+  const action = 'Abrir chamado';
+  const payload = {
+    name: resolveRecipientName(assignee?.name) || nameFromEmail(assignee?.email),
+    title,
+    reason,
+    action,
+    webUrl,
+    type,
+    subject: requester ? `Solicitante: ${requester}` : 'Chamado atribuído a você',
+    appBaseUrl,
+    headerImageUrl,
+  };
+
+  return {
+    topic: title,
+    label: action,
+    previewText: reason,
+    ticketUrl: webUrl,
+    html: renderTeamsHtml(payload),
+    chatHtml: renderTeamsChatHtml(payload),
+    card: renderTeamsCard(payload),
   };
 }

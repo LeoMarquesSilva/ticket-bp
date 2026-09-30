@@ -127,3 +127,18 @@ A fila oferece deduplicação local, revalidação por entrega e fencing de leas
 Administradores e perfis com `manage_categories` encontram a aba **Estrutura de atendimento → Comunicações**. A tela permite visualizar as três comunicações em desktop/mobile e editar somente assunto, texto principal e rótulo do botão.
 
 Os ajustes são salvos na chave `ticket_communication_email_templates_v1` de `app_c009c0e4f1_integration_settings`, em um envelope JSON `version: 1`. HTML, destinatário e URL não são configuráveis; a Edge Function saneia novamente o conteúdo e usa os padrões versionados se a configuração estiver ausente ou inválida. O link continua sendo criado exclusivamente com `APP_PUBLIC_URL` e o ID do chamado.
+
+## 10. Aviso no Teams ao trocar o responsável
+
+A migration `20260930150000_ticket_assignment_teams_notification.sql` cria o trigger `ticket_assignment_teams_notification`: toda mudança de `assigned_to` para outra pessoa (exceto quando o próprio usuário assume o ticket) grava uma linha em `app_c009c0e4f1_ticket_assignment_notifications` e chama a Function com `action: "ticket_assigned"`. A autenticação usa o header `x-assignment-token` com o segredo `ticket_assignment_notify_token`, gerado automaticamente no Vault pela migration — não há configuração manual.
+
+A mensagem sai pela mesma conta Teams conectada no painel Comunicações. Cada aviso é enviado uma única vez (sem retry); falhas ficam registradas para auditoria:
+
+```sql
+select created_at, ticket_id, assignee_id, status, last_error
+from public.app_c009c0e4f1_ticket_assignment_notifications
+order by created_at desc
+limit 50;
+```
+
+`teams_not_connected` indica que a conta remetente precisa ser reconectada; `entra_user_not_found` indica que o e-mail do responsável não foi encontrado no Microsoft Entra.
