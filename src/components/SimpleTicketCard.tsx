@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import UserAvatar from '@/components/UserAvatar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Clock, Calendar, AlertCircle, CheckCircle, UserCheck, MessageSquare } from 'lucide-react';
 import { Ticket, TicketStatus } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -15,6 +16,8 @@ interface SimpleTicketCardProps {
   getStatusColor?: (status: string) => string;
   isTicketFinalized?: (ticket: Ticket) => boolean;
   compact?: boolean;
+  /** Quando informado, substitui o selo de status (ex.: no quadro, onde a coluna já indica o status). */
+  categoryLabel?: string;
 }
 
 const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({ 
@@ -24,7 +27,8 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
   onClick,
   getStatusColor,
   isTicketFinalized,
-  compact = false
+  compact = false,
+  categoryLabel,
 }) => {
 
   // Cores de Status ajustadas
@@ -109,13 +113,18 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
             fallbackClassName="bg-[#DE5532]/15 text-[#DE5532]"
           />
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h4 className={`truncate font-semibold text-sm leading-snug ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <h4 className={`line-clamp-2 font-semibold text-sm leading-snug [overflow-wrap:anywhere] ${isSelected ? 'text-[#DE5532]' : 'text-[#2C2D2F]'}`}>
                   {ticket.title}
                 </h4>
-                <p className="density-meta mt-0.5 truncate text-slate-500">{ticket.createdByName}</p>
-              </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" align="start" className="max-w-sm whitespace-normal text-sm leading-snug">
+                {ticket.title}
+              </TooltipContent>
+            </Tooltip>
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <p className="density-meta min-w-0 truncate text-slate-500">{ticket.createdByName}</p>
               <div className="flex items-center gap-1.5 shrink-0">
                 {unreadCount > 0 && (
                   <Badge className="density-badge h-5 border-0 bg-[#DE5532] px-1.5 py-0 text-white shadow-sm">
@@ -123,10 +132,19 @@ const SimpleTicketCard: React.FC<SimpleTicketCardProps> = ({
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </Badge>
                 )}
-                <Badge variant="secondary" className={`${statusColor} density-badge inline-flex items-center gap-1 border px-1.5 py-0 font-medium`}>
-                  <span className="hidden sm:inline-flex">{getStatusIcon(ticket.status)}</span>
-                  {getStatusLabel(ticket.status)}
-                </Badge>
+                {categoryLabel ? (
+                  <span
+                    className="density-badge inline-flex max-w-[9rem] items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0 font-medium text-slate-600"
+                    title={categoryLabel}
+                  >
+                    <span className="truncate">{categoryLabel}</span>
+                  </span>
+                ) : (
+                  <Badge variant="secondary" className={`${statusColor} density-badge inline-flex items-center gap-1 border px-1.5 py-0 font-medium`}>
+                    <span className="hidden sm:inline-flex">{getStatusIcon(ticket.status)}</span>
+                    {getStatusLabel(ticket.status)}
+                  </Badge>
+                )}
               </div>
             </div>
 

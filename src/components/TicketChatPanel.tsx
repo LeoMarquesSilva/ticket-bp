@@ -637,18 +637,18 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                 <MessageCircle className="h-3.5 w-3.5 text-[#F69F19]" strokeWidth={2} />
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h2 className="min-w-0 truncate text-base font-bold text-[#2C2D2F]" title={selectedTicket.title}>
+                <div className="flex min-w-0 items-start gap-2">
+                  <h2 className="line-clamp-2 min-w-0 text-base font-bold leading-snug text-[#2C2D2F] [overflow-wrap:anywhere]" title={selectedTicket.title}>
                     {selectedTicket.title}
                   </h2>
-                  <Badge variant="secondary" className={`${getStatusColor(selectedTicket.status)} density-badge shrink-0 px-2 py-0 font-medium`}>
+                  <Badge variant="secondary" className={`${getStatusColor(selectedTicket.status)} density-badge mt-0.5 shrink-0 px-2 py-0 font-medium`}>
                     {getStatusLabel(selectedTicket.status)}
                   </Badge>
                   {isEvidenciaFatalAuditTicket(selectedTicket.category, selectedTicket.subcategory) &&
                     (selectedTicket.evidenciaEnviada === true || selectedTicket.evidenciaEnviada === false) && (
                     <Badge
                       variant="secondary"
-                      className={`density-badge shrink-0 px-2 py-0 font-medium ${
+                      className={`density-badge mt-0.5 shrink-0 px-2 py-0 font-medium ${
                         selectedTicket.evidenciaEnviada
                           ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
                           : 'border border-rose-200 bg-rose-50 text-rose-800'
@@ -865,6 +865,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
       {/* Chat Messages */}
       <div className="relative min-h-0 flex-1 overflow-y-auto bg-slate-50/30 p-3 [scrollbar-gutter:stable] custom-scrollbar">
         <TicketDescriptionCard
+          title={selectedTicket.title}
           description={selectedTicket.description}
           authorName={selectedTicket.createdByName}
           className="mb-3"

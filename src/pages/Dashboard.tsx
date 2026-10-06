@@ -1727,9 +1727,10 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {!isChatLoading && chatTicket?.description && (
+          {!isChatLoading && (chatTicket?.description || chatTicket?.title) && (
             <div className="custom-scrollbar max-h-[35%] shrink-0 overflow-y-auto px-5 pb-2">
               <TicketDescriptionCard
+                title={chatTicket.title}
                 description={chatTicket.description}
                 authorName={chatTicket.createdByName}
               />

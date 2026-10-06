@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, Folder, FolderOpen } from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen, X } from 'lucide-react';
 import type { Ticket } from '@/types';
 import {
   getTicketCategoryColumnCount,
@@ -84,9 +84,31 @@ export default function TicketCategoryGrid({
               id={panelId(category.key)}
               role="region"
               aria-labelledby={headingId(category.key)}
-              className={`ticket-category-panel min-w-0 rounded-xl border border-slate-200 bg-white ${isChatOpen ? 'p-2' : 'p-3'}`}
+              className="ticket-category-panel min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white"
             >
-              <div className={`ticket-list-grid grid auto-rows-max ${isChatOpen ? 'ticket-list-grid--chat gap-2' : 'gap-3'}`}>
+              <div className={`flex items-center gap-2 border-b border-slate-200 bg-slate-50 ${isChatOpen ? 'px-2.5 py-1.5' : 'px-3 py-2'}`}>
+                <FolderOpen className="h-4 w-4 shrink-0 text-[#DE5532]" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-sm font-bold text-[#2C2D2F]" title={category.label}>
+                  {category.label}
+                </span>
+                <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#DE5532] px-1.5 text-[11px] font-bold text-white">
+                  {category.tickets.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    const toggle = document.getElementById(headingId(category.key))?.querySelector('button');
+                    onToggleCategory(category.key, toggle ?? event.currentTarget);
+                    toggle?.focus({ preventScroll: true });
+                  }}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F69F19]"
+                  aria-label={`Recolher ${category.label}`}
+                  title="Recolher"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+              <div className={`ticket-list-grid grid auto-rows-max ${isChatOpen ? 'ticket-list-grid--chat gap-2 p-2' : 'gap-3 p-3'}`}>
                 {category.tickets.map((ticket) => (
                   <div key={ticket.id} className="min-w-0 h-full">{renderTicketCard(ticket)}</div>
                 ))}

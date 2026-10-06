@@ -3,12 +3,14 @@ import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TicketDescriptionCardProps {
+  title?: string | null;
   description?: string | null;
   authorName?: string;
   className?: string;
 }
 
-const TicketDescriptionCard: FC<TicketDescriptionCardProps> = ({ description, authorName, className }) => {
+const TicketDescriptionCard: FC<TicketDescriptionCardProps> = ({ title, description, authorName, className }) => {
+  const heading = String(title ?? '').trim();
   const text = String(description ?? '').replace(/\r\n/g, '\n').trim();
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
@@ -24,7 +26,7 @@ const TicketDescriptionCard: FC<TicketDescriptionCardProps> = ({ description, au
     setOverflowing(el.scrollHeight > el.clientHeight + 1);
   }, [text, expanded]);
 
-  if (!text) return null;
+  if (!text && !heading) return null;
 
   return (
     <div
@@ -38,22 +40,29 @@ const TicketDescriptionCard: FC<TicketDescriptionCardProps> = ({ description, au
           <FileText className="h-3 w-3 text-[#DE5532]" />
         </span>
         <p className="text-[11px] font-bold uppercase tracking-wider text-[#B74426]">
-          Descrição do chamado
+          Detalhes do chamado
         </p>
         {authorName && (
           <span className="min-w-0 truncate text-[11px] text-[#B74426]/60">· {authorName}</span>
         )}
       </div>
-      <p
-        ref={bodyRef}
-        className={cn(
-          'mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-[#2C2D2F] [overflow-wrap:anywhere]',
-          !expanded && 'line-clamp-4',
-        )}
-      >
-        {text}
-      </p>
-      {(overflowing || expanded) && (
+      {heading && (
+        <h3 className="mt-1.5 text-sm font-bold leading-snug text-[#2C2D2F] [overflow-wrap:anywhere]">
+          {heading}
+        </h3>
+      )}
+      {text && (
+        <p
+          ref={bodyRef}
+          className={cn(
+            'mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-[#2C2D2F] [overflow-wrap:anywhere]',
+            !expanded && 'line-clamp-4',
+          )}
+        >
+          {text}
+        </p>
+      )}
+      {text && (overflowing || expanded) && (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}

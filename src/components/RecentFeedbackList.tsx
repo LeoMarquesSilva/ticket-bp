@@ -700,9 +700,10 @@ const RecentFeedbackList: React.FC<RecentFeedbackListProps> = ({ feedbackItems }
               </div>
             </div>
 
-            {!isLoading && selectedTicket?.description && (
+            {!isLoading && (selectedTicket?.description || selectedTicket?.title) && (
               <div className="custom-scrollbar max-h-[35%] shrink-0 overflow-y-auto px-5 pb-2">
                 <TicketDescriptionCard
+                  title={selectedTicket.title}
                   description={selectedTicket.description}
                   authorName={selectedTicket.createdByName}
                 />

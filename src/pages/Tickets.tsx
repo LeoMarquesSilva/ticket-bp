@@ -50,6 +50,7 @@ import { shouldOpenTicketFiltersInitially } from '@/utils/layoutPreferences';
 import {
   expandVisibleTicketCategories,
   expandVisibleTicketFrentes,
+  getTicketCategoryLabel,
   getTicketListFilterExpansion,
   shouldUseFrenteHierarchy,
 } from '@/utils/ticketCategoryGroups';
@@ -1936,6 +1937,23 @@ const renderTicketCard = (ticket: Ticket) => {
   );
 };
 
+// No quadro a coluna já indica o status; o card mostra a categoria no lugar.
+const renderBoardTicketCard = (ticket: Ticket) => {
+  return (
+    <SimpleTicketCard
+      key={ticket.id}
+      ticket={ticket}
+      selectedTicketId={selectedTicket?.id}
+      unreadCount={unreadMessages[ticket.id] || 0}
+      onClick={() => openChat(ticket)}
+      getStatusColor={getStatusColor}
+      isTicketFinalized={isTicketFinalized}
+      compact={showChat}
+      categoryLabel={getTicketCategoryLabel(ticket, categoriesConfig)}
+    />
+  );
+};
+
 const headerStats = React.useMemo(() => {
   if (loading) {
     return { open: 0, inProgress: 0, resolved: 0, loading: true };
@@ -2085,7 +2103,8 @@ return (
                   {view === 'board' && (
                     <TicketKanbanBoard
                       ticketsByStatus={getTicketsByStatus()}
-                      renderTicketCard={renderTicketCard}
+                      renderTicketCard={renderBoardTicketCard}
+                      hideResolved={hideResolvedTickets}
                     />
                   )}
                   {view === 'users' && (
@@ -2168,7 +2187,8 @@ return (
                   {view === 'board' && (
                     <TicketKanbanBoard
                       ticketsByStatus={getTicketsByStatus()}
-                      renderTicketCard={renderTicketCard}
+                      renderTicketCard={renderBoardTicketCard}
+                      hideResolved={hideResolvedTickets}
                     />
                   )}
                   {view === 'users' && (
@@ -2209,7 +2229,8 @@ return (
                       {view === 'board' && (
                         <TicketKanbanBoard
                           ticketsByStatus={getTicketsByStatus()}
-                          renderTicketCard={renderTicketCard}
+                          renderTicketCard={renderBoardTicketCard}
+                          hideResolved={hideResolvedTickets}
                         />
                       )}
                       {view === 'users' && (

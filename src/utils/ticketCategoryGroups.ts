@@ -208,6 +208,14 @@ function getFallbackCategoryLabel(key: string) {
   return normalized.charAt(0).toLocaleUpperCase('pt-BR') + normalized.slice(1);
 }
 
+export function getTicketCategoryLabel(
+  ticket: { category?: string | null },
+  categoriesConfig: CategoriesConfigMap,
+): string {
+  const key = ticket.category?.trim() || UNCATEGORIZED_CATEGORY_KEY;
+  return categoriesConfig[key]?.label?.trim() || getFallbackCategoryLabel(key);
+}
+
 export function groupTicketsByCategory<T extends { category?: string | null }>(
   tickets: readonly T[],
   categoriesConfig: CategoriesConfigMap,

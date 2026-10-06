@@ -40,3 +40,7 @@ teams/responsum-notifications/*.zip
 teams/responsum-notifications/manifest.json
 teams/responsum-notifications/color.png
 teams/responsum-notifications/outline.png
+
+# Arquivos temporários de deploy via MCP (podem conter chaves)
+scripts/_*
+scripts/.deploy-*
