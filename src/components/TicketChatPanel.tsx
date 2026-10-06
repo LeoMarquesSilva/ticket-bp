@@ -119,6 +119,28 @@ interface TicketChatPanelProps {
   onAutoOpenFeedbackConsumed?: () => void;
 }
 
+// Ações do cabeçalho só com ícone, para sobrar espaço ao título; o nome aparece no tooltip.
+const HeaderIconAction: React.FC<{ label: string; icon: React.ElementType; onClick: () => void }> = ({
+  label,
+  icon: Icon,
+  onClick,
+}) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        variant="outline"
+        size="icon"
+        className="density-icon-control rounded-lg border-slate-200 hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
+        onClick={onClick}
+        aria-label={label}
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>{label}</TooltipContent>
+  </Tooltip>
+);
+
 const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
   selectedTicket,
   chatMessages,
@@ -620,9 +642,9 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
     <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden border-l border-slate-200 chat-container bg-white">
       {/* Chat Header - mesmo estilo do header da página de tickets */}
       <div className="flex-shrink-0 bg-[#F6F6F6] border-b border-[#F69F19]/20 shadow-sm z-10">
-        <div className="flex items-center justify-between gap-3 px-3 py-1.5 tall:px-4 tall:py-2">
-          {/* Lado esquerdo: voltar (mobile) + info do ticket */}
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-1.5 tall:px-4 tall:py-2">
+          {/* Lado esquerdo: voltar (mobile) + info do ticket. Com pouco espaço, as ações descem para a linha de baixo. */}
+          <div className="flex min-w-0 flex-1 basis-[18rem] items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
@@ -633,7 +655,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white border border-[#F69F19]/25 shadow-sm ring-1 ring-[#F69F19]/10">
+              <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white border sm:flex border-[#F69F19]/25 shadow-sm ring-1 ring-[#F69F19]/10">
                 <MessageCircle className="h-3.5 w-3.5 text-[#F69F19]" strokeWidth={2} />
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
@@ -688,7 +710,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
                       <span className="italic text-slate-400">Não atribuído</span>
                     )}
                   </span>
-                  <span className="h-3 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+                  <span className="hidden h-3 w-px shrink-0 bg-slate-300 sm:block" aria-hidden="true" />
                   <span className="flex min-w-0 items-center gap-1" title="Categoria">
                     <Tag className="h-3 w-3 shrink-0 text-slate-400" aria-hidden="true" />
                     <span className="truncate">
@@ -721,29 +743,13 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
           </div>
 
           {/* Lado direito: ações */}
-          <div className="flex items-center gap-1.5 shrink-0 relative z-10 bg-[#F6F6F6]">
-            <Button
-              variant="outline"
-              size="sm"
-              className="density-control gap-1.5 rounded-lg border-slate-200 text-sm hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
-              onClick={handleCopyTicketLink}
-              title="Copiar link do ticket"
-            >
-              <Link2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Copiar link</span>
-            </Button>
+          <TooltipProvider delayDuration={300}>
+          <div className="relative z-10 ml-auto flex shrink-0 items-center gap-1.5 bg-[#F6F6F6]">
+            <HeaderIconAction label="Copiar link do ticket" icon={Link2} onClick={handleCopyTicketLink} />
 
             {canEditTicketCategory && handleUpdateTicket && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="density-control gap-1.5 rounded-lg border-slate-200 text-sm hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
-                  onClick={() => setCategoryModalOpen(true)}
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Categoria</span>
-                </Button>
+                <HeaderIconAction label="Alterar categoria" icon={Tag} onClick={() => setCategoryModalOpen(true)} />
                 <ChangeTicketCategoryModal
                   open={categoryModalOpen}
                   onOpenChange={setCategoryModalOpen}
@@ -756,15 +762,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
 
             {canAssignTicket && !isTicketFinalized(selectedTicket) && handleAssignTicket && assignableUsers.length > 0 && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="density-control gap-1.5 rounded-lg border-slate-200 text-sm hover:border-[#F69F19]/50 hover:bg-[#F69F19]/5"
-                  onClick={() => setTransferModalOpen(true)}
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Transferir</span>
-                </Button>
+                <HeaderIconAction label="Transferir ticket" icon={UserPlus} onClick={() => setTransferModalOpen(true)} />
                 <TransferTicketModal
                   open={transferModalOpen}
                   onOpenChange={setTransferModalOpen}
@@ -859,6 +857,7 @@ const TicketChatPanel: React.FC<TicketChatPanelProps> = ({
               <X className="h-4 w-4" />
             </Button>
           </div>
+          </TooltipProvider>
         </div>
       </div>
 
