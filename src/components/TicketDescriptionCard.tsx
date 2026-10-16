@@ -9,22 +9,27 @@ interface TicketDescriptionCardProps {
   className?: string;
 }
 
+const CLAMP_LINES = 4;
+
 const TicketDescriptionCard: FC<TicketDescriptionCardProps> = ({ title, description, authorName, className }) => {
   const heading = String(title ?? '').trim();
   const text = String(description ?? '').replace(/\r\n/g, '\n').trim();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [overflowing, setOverflowing] = useState(false);
   const bodyRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
-    setExpanded(false);
+    setExpanded(true);
   }, [text]);
 
+  // Mede contra a altura de CLAMP_LINES linhas, para funcionar mesmo com o texto expandido.
   useLayoutEffect(() => {
     const el = bodyRef.current;
-    if (!el || expanded) return;
-    setOverflowing(el.scrollHeight > el.clientHeight + 1);
-  }, [text, expanded]);
+    if (!el) return;
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+    if (!Number.isFinite(lineHeight)) return;
+    setOverflowing(el.scrollHeight > lineHeight * CLAMP_LINES + 1);
+  }, [text]);
 
   if (!text && !heading) return null;
 
@@ -62,7 +67,7 @@ const TicketDescriptionCard: FC<TicketDescriptionCardProps> = ({ title, descript
           {text}
         </p>
       )}
-      {text && (overflowing || expanded) && (
+      {text && overflowing && (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
