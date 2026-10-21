@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendPresencaBlock,
+  buildNameDirectory,
   descriptionAlreadyHasPresenca,
   extractTicketIdFromDescription,
   formatPresencaBlock,
   invertLookupMap,
   isPresencaDue,
+  isSameTreinamento,
   resolveColaboradorName,
 } from './orquestraiPresenca';
 
@@ -39,6 +41,31 @@ describe('orquestraiPresenca', () => {
     );
   });
 
+  it('troca o bloco de uma consulta anterior em vez de duplicar', () => {
+    const base =
+      'Lista de presença: https://x\nConsultar após o workshop quem preencheu o registro de presença.';
+    expect(
+      appendPresencaBlock(`${base}\n\nPresença: não preenchida`, ['Bia', 'Ana']),
+    ).toBe(`${base}\n\nPresença:\n- Ana\n- Bia`);
+    expect(appendPresencaBlock(`${base}\n\nPresença:\n- Ana`, [])).toBe(
+      `${base}\n\nPresença: não preenchida`,
+    );
+  });
+
+  it('trata itens com mesmo nome e data como o mesmo treinamento', () => {
+    const a = { NomedoTreinamento: 'Investigação Patrimonial', Data: '2026-10-15T03:00:00Z' };
+    expect(
+      isSameTreinamento(a, { Title: 'investigacao  patrimonial', Data: '2026-10-15T03:00:00Z' }),
+    ).toBe(true);
+    expect(
+      isSameTreinamento(a, { NomedoTreinamento: 'Investigação Patrimonial', Data: '2026-10-22T03:00:00Z' }),
+    ).toBe(false);
+    expect(
+      isSameTreinamento(a, { NomedoTreinamento: 'Outro tema', Data: '2026-10-15T03:00:00Z' }),
+    ).toBe(false);
+    expect(isSameTreinamento({ Title: 'x' }, { Title: 'x' })).toBe(false);
+  });
+
   it('extrai Ticket ID da descrição', () => {
     const id = 'c3b2d3bb-a157-475b-86b3-61da48101cfa';
     expect(extractTicketIdFromDescription(`Ticket ID: ${id}\nTema: x`)).toBe(id);
@@ -46,14 +73,55 @@ describe('orquestraiPresenca', () => {
   });
 
   it('resolve nome a partir do LookupId invertido', () => {
-    const inverted = invertLookupMap({
-      'ana@bismarchipires.com.br': '39',
-    });
+    const directory = {
+      siteUsers: {},
+      lookupIdToEmail: invertLookupMap({ 'ana@bismarchipires.com.br': '39' }),
+      namesByLocalPart: buildNameDirectory([
+        { name: 'Ana Silva', email: 'ana@bismarchipires.com.br' },
+      ]),
+    };
+    expect(resolveColaboradorName('39', directory)).toBe('Ana Silva');
+    expect(resolveColaboradorName('99', directory)).toBeNull();
+  });
+
+  it('usa a lista de usuários do site e o nome completo do cadastro', () => {
+    const directory = {
+      siteUsers: {
+        '29': { name: 'Caroline Simel Abdalla', email: 'carolineabdalla@bpplaw.com.br' },
+        '502': { name: 'Catharina Silva', email: 'catharina.silva@bismarchipires.com.br' },
+        '700': { name: 'Pessoa Sem Cadastro', email: 'pessoa@bismarchipires.com.br' },
+      },
+      // O mapa antigo tem nome curto em minúsculas; a lista do site ganha dele.
+      lookupIdToEmail: { '29': 'caroline abdalla' },
+      namesByLocalPart: buildNameDirectory(
+        [
+          { name: 'Caroline Simel Abdalla', email: 'carolineabdalla@bismarchipires.com.br' },
+          { name: 'Catharina Cardoso da Silva', email: 'catharina.silva@bismarchipires.com.br' },
+        ],
+        [{ name: 'Catharina S.', email: 'catharina.silva@bpplaw.com.br' }],
+      ),
+    };
+    expect(resolveColaboradorName('29', directory)).toBe('Caroline Simel Abdalla');
+    expect(resolveColaboradorName('502', directory)).toBe('Catharina Cardoso da Silva');
+    expect(resolveColaboradorName('700', directory)).toBe('Pessoa Sem Cadastro');
+  });
+
+  it('sem a lista do site, cai no autor do item, menos a controladoria', () => {
+    const directory = {
+      siteUsers: {},
+      lookupIdToEmail: { '29': 'caroline abdalla' },
+      namesByLocalPart: buildNameDirectory([
+        { name: 'Lorena Lourenço Miranda', email: 'lorena.miranda@bismarchipires.com.br' },
+      ]),
+    };
     expect(
-      resolveColaboradorName('39', inverted, {
-        'ana@bismarchipires.com.br': 'Ana Silva',
-      }),
-    ).toBe('Ana Silva');
-    expect(resolveColaboradorName('99', inverted, {})).toBeNull();
+      resolveColaboradorName('66', directory, 'Lorena Miranda', 'lorena.miranda@bpplaw.com.br'),
+    ).toBe('Lorena Lourenço Miranda');
+    expect(
+      resolveColaboradorName('29', directory, 'Controladoria', 'controladoria@bpplaw.com.br'),
+    ).toBe('caroline abdalla');
+    expect(
+      resolveColaboradorName('5', directory, 'Controladoria', 'controladoria@bpplaw.com.br'),
+    ).toBeNull();
   });
 });

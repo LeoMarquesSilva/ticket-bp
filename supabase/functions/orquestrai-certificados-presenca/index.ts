@@ -5,13 +5,16 @@ import {
   getGraphAccessToken,
   getGraphConfig,
   listAllItems,
+  listSiteUsers,
 } from "./_shared/graph.ts";
 import {
   appendPresencaBlock,
+  buildNameDirectory,
   descriptionAlreadyHasPresenca,
   extractTicketIdFromDescription,
   invertLookupMap,
   isPresencaDue,
+  isSameTreinamento,
   resolveColaboradorName,
   todayIsoSaoPaulo,
 } from "./_shared/presencaText.ts";
@@ -38,7 +41,7 @@ function parseJsonValue(raw: unknown): Record<string, unknown> | null {
   return null;
 }
 
-function isAuthorized(req: Request): boolean {
+async function isAuthorized(req: Request, admin: SupabaseClient): Promise<boolean> {
   const serviceRole = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim();
   const cronSecret = (Deno.env.get("ORQUESTRAI_PRESENCA_CRON_SECRET") ?? "").trim();
   const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
@@ -46,8 +49,17 @@ function isAuthorized(req: Request): boolean {
   const apikey = req.headers.get("apikey")?.trim() ?? "";
   if (serviceRole && (auth === serviceRole || apikey === serviceRole)) return true;
   if (cronSecret && (auth === cronSecret || apikey === cronSecret)) return true;
-  // O cron diário reutiliza a anon key no header Authorization, como os outros jobs.
+  // O botão "Buscar presença" do ORQESTRAI manda a chave publishable do projeto.
   if (anonKey && (auth === anonKey || apikey === anonKey)) return true;
+  // O cron diário manda um token próprio do Vault, conferido no banco
+  // (migration 20261021120000_orquestrai_presenca_cron_token.sql).
+  const cronToken = req.headers.get("x-cron-token")?.trim() ?? "";
+  if (cronToken) {
+    const { data } = await admin.rpc("helpdesk_verify_orquestrai_presenca_token", {
+      p_token: cronToken,
+    });
+    if (data === true) return true;
+  }
   return false;
 }
 
@@ -114,7 +126,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  if (!isAuthorized(req)) {
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+
+  if (!(await isAuthorized(req, admin))) {
     return new Response(JSON.stringify({ error: "Não autorizado" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -130,11 +147,6 @@ Deno.serve(async (req) => {
   const onlyTicketId = parseTicketIdFromBody(requestBody);
 
   try {
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
-
     let graphConfig = getGraphConfig();
     if (assertGraphConfig(graphConfig)) {
       const { data: graphRow } = await admin
@@ -191,9 +203,11 @@ Deno.serve(async (req) => {
     if (cardsError) throw new Error(cardsError.message);
 
     const pending = ((cards ?? []) as MarketingCard[]).filter((card) => {
+      // O pedido manual (botão no card) sempre consulta de novo: a presença pode
+      // ter sido preenchida depois de uma consulta que deu "não preenchida".
+      if (onlyTicketId) return true;
       const description = card.description ?? "";
       if (descriptionAlreadyHasPresenca(description)) return false;
-      if (onlyTicketId) return true;
       const deadline = String(card.deadline ?? "").slice(0, 10);
       return isPresencaDue(deadline, today);
     });
@@ -205,24 +219,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    const [{ data: lookupRow }, { data: users }] = await Promise.all([
+    const [{ data: lookupRow }, { data: users }, { data: orquestraiUsers }] = await Promise.all([
       admin
         .from("app_c009c0e4f1_integration_settings")
         .select("value")
         .eq("key", "sharepoint_person_lookups")
         .maybeSingle(),
       admin.from("app_c009c0e4f1_users").select("name, email"),
+      orquestrai.from("users").select("name, email"),
     ]);
 
-    const lookupIdToEmail = invertLookupMap(parseLookupMap(lookupRow?.value));
-    const emailToName: Record<string, string> = {};
-    for (const user of users ?? []) {
-      const email = String(user.email ?? "").trim().toLowerCase();
-      const name = String(user.name ?? "").trim();
-      if (email && name) emailToName[email] = name;
-    }
-
     const token = await getGraphAccessToken(graphConfig);
+    // Sem a lista de usuários do site, ainda dá para usar o mapa antigo e o
+    // autor do item; não vale perder a sincronização inteira por isso.
+    const siteUsers = await listSiteUsers(graphConfig.siteId, token).catch((error) => {
+      console.error("orquestrai-certificados-presenca: lista de usuários do site", error);
+      return {};
+    });
+    const directory = {
+      siteUsers,
+      lookupIdToEmail: invertLookupMap(parseLookupMap(lookupRow?.value)),
+      // O cadastro do ORQESTRAI vem primeiro: é o nome que vai no certificado.
+      namesByLocalPart: buildNameDirectory(orquestraiUsers ?? [], users ?? []),
+    };
+
     const treinamentos = await listAllItems(
       graphConfig.siteId,
       graphConfig.treinamentosListId,
@@ -256,16 +276,22 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const attendance = presencas.filter(
-        (item) => String(item.fields?.NomedoTreinamento0LookupId ?? "") === String(treinamento.id),
+      const treinamentoIds = new Set(
+        treinamentos
+          .filter((item) =>
+            item.id === treinamento.id || isSameTreinamento(item.fields, treinamento.fields)
+          )
+          .map((item) => String(item.id)),
+      );
+      const attendance = presencas.filter((item) =>
+        treinamentoIds.has(String(item.fields?.NomedoTreinamento0LookupId ?? ""))
       );
 
       const names = attendance
         .map((item) =>
           resolveColaboradorName(
             String(item.fields?.ColaboradorLookupId ?? ""),
-            lookupIdToEmail,
-            emailToName,
+            directory,
             item.createdBy?.user?.displayName,
             item.createdBy?.user?.email,
           ),

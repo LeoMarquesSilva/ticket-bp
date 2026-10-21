@@ -96,3 +96,44 @@ export async function listAllItems(
   }
   return items;
 }
+
+/**
+ * Pessoas da "Lista de Informações de Utilizadores" (lista oculta do site), por
+ * LookupId. É para lá que apontam as colunas de pessoa, como Colaborador.
+ */
+export async function listSiteUsers(
+  siteId: string,
+  token: string,
+): Promise<Record<string, { name: string; email: string }>> {
+  const listsRes = await fetch(
+    `https://graph.microsoft.com/v1.0/sites/${siteId}/lists?$select=id,name,list,system&$top=200`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const listsJson = await listsRes.json().catch(() => ({}));
+  if (!listsRes.ok) {
+    throw new Error(listsJson.error?.message ?? `Graph ${listsRes.status} ao listar as listas do site`);
+  }
+  const usersList = (listsJson.value ?? []).find(
+    (list: { name?: string; list?: { template?: string } }) =>
+      list.list?.template === "userInformation" || list.name === "users",
+  );
+  if (!usersList?.id) return {};
+
+  const users: Record<string, { name: string; email: string }> = {};
+  let url: string | null =
+    `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${usersList.id}/items?expand=fields($select=Title,EMail)&$top=200`;
+  while (url) {
+    const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.error?.message ?? `Graph ${res.status} ao listar os usuários do site`);
+    }
+    for (const item of json.value ?? []) {
+      const name = String(item.fields?.Title ?? "").trim();
+      const email = String(item.fields?.EMail ?? "").trim().toLowerCase();
+      if (name || email) users[String(item.id)] = { name, email };
+    }
+    url = json["@odata.nextLink"] ?? null;
+  }
+  return users;
+}
