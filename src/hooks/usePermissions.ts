@@ -6,32 +6,40 @@ export function usePermissions() {
   const { user } = useAuth();
   const [permissionKeys, setPermissionKeys] = useState<PermissionKey[]>([]);
   const [loading, setLoading] = useState(true);
+  // Role cujas permissões estão em permissionKeys; evita um render com loading=false e
+  // permissões da role anterior entre a troca de role e a execução do effect.
+  const [loadedRole, setLoadedRole] = useState<string | null>(null);
+  const currentRole = user?.role ?? null;
 
   useEffect(() => {
-    if (!user?.role) {
+    if (!currentRole) {
       setPermissionKeys([]);
+      setLoadedRole(null);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    RoleService.getRolePermissions(user.role)
+    RoleService.getRolePermissions(currentRole)
       .then((keys) => {
         if (!cancelled) setPermissionKeys(keys);
       })
       .catch(() => {
-        if (!cancelled) setPermissionKeys(getDefaultPermissionsForRole(user.role));
+        if (!cancelled) setPermissionKeys(getDefaultPermissionsForRole(currentRole));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadedRole(currentRole);
+          setLoading(false);
+        }
       });
     return () => { cancelled = true; };
-  }, [user?.role]);
+  }, [currentRole]);
 
   const has = useMemo(() => {
     const set = new Set(permissionKeys);
     return (key: PermissionKey) => set.has(key);
   }, [permissionKeys]);
 
-  return { permissions: permissionKeys, has, loading };
+  return { permissions: permissionKeys, has, loading: loading || loadedRole !== currentRole };
 }

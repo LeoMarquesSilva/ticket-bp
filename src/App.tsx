@@ -23,10 +23,13 @@ import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { usePermissions } from '@/hooks/usePermissions';
 import type { PermissionKey } from '@/services/roleService';
 
-/** Retorna a primeira rota que o usuário tem permissão para acessar. */
-function useFirstAllowedPath(): string {
-  const { has } = usePermissions();
-  if (has('tickets') || has('create_ticket')) return '/tickets';
+/**
+ * Retorna a primeira rota que o usuário tem permissão para acessar.
+ * Recebe `has` da mesma instância de usePermissions que controla o loading: com instâncias
+ * separadas, uma podia terminar antes da outra e o redirect caía em '/profile'.
+ */
+function getFirstAllowedPath(has: (key: PermissionKey) => boolean, isAdmin: boolean): string {
+  if (isAdmin || has('tickets') || has('create_ticket')) return '/tickets';
   if (has('dashboard')) return '/dashboard';
   if (has('manage_users') || has('manage_roles')) return '/users';
   if (has('manage_categories')) return '/categories';
@@ -34,8 +37,8 @@ function useFirstAllowedPath(): string {
 }
 
 function DefaultRedirect() {
-  const { loading } = usePermissions();
-  const path = useFirstAllowedPath();
+  const { user } = useAuth();
+  const { has, loading } = usePermissions();
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -46,7 +49,8 @@ function DefaultRedirect() {
       </div>
     );
   }
-  return <Navigate to={path} replace />;
+  const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin';
+  return <Navigate to={getFirstAllowedPath(has, isAdmin)} replace />;
 }
 
 const ProtectedRoute = ({
@@ -63,7 +67,8 @@ const ProtectedRoute = ({
   const { user, loading } = useAuth();
   const { has, loading: permissionsLoading } = usePermissions();
   const location = useLocation();
-  const firstAllowedPath = useFirstAllowedPath();
+  const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin';
+  const firstAllowedPath = getFirstAllowedPath(has, isAdmin);
 
   const hasRequiredAccess = (): boolean => {
     if (requiredPermissionAny?.length) {
@@ -91,7 +96,6 @@ const ProtectedRoute = ({
   }
   
   if (!hasRequiredAccess()) {
-    const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin';
     if (isAdmin) {
       return (
         <Layout>
