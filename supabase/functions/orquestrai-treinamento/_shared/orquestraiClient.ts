@@ -27,6 +27,8 @@ export type OrquestraiCardResult = {
   requestType: OrquestraiRequestType;
   created: boolean;
   marketingRequestId: string;
+  /** Preenchido quando a criação deste tipo falhou (os outros tipos seguem). */
+  error?: string;
 };
 
 const DEFAULT_DESIGNER = "Valentina Iacovacci";
@@ -184,6 +186,22 @@ export async function findExistingRequestId(
   return data?.[0]?.id ?? null;
 }
 
+/** Todos os cards do ORQESTRAI criados a partir deste ticket, do mais antigo ao mais novo. */
+export async function listTicketCards(
+  orquestrai: SupabaseClient,
+  ticketId: string,
+): Promise<Record<string, unknown>[]> {
+  const { data, error } = await orquestrai
+    .from("marketing_requests")
+    .select("*")
+    .ilike("description", `%Ticket ID: ${ticketId}%`);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return rows.sort((a, b) =>
+    String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))
+  );
+}
+
 export async function resolveUserByEmail(
   orquestrai: SupabaseClient,
   email: string,
@@ -325,18 +343,29 @@ export async function createMarketingRequestForTreinamento(
   const results: OrquestraiCardResult[] = [];
   let pptId = await findExistingRequestId(orquestrai, input.ticketId, "PPT");
 
+  // Falha de um tipo no modo misto não impede tentar o outro: cada resultado
+  // volta com o próprio erro e o histórico registra os dois.
   for (const requestType of types) {
-    const result = await insertMarketingRequest(orquestrai, config, {
-      ticketId: input.ticketId,
-      ticketAppUrl: input.ticketAppUrl,
-      payload: input.payload,
-      requestType,
-      parentRequestId: requestType === "Certificados" ? pptId : null,
-      solicitante,
-      designer,
-    });
-    results.push(result);
-    if (requestType === "PPT") pptId = result.marketingRequestId;
+    try {
+      const result = await insertMarketingRequest(orquestrai, config, {
+        ticketId: input.ticketId,
+        ticketAppUrl: input.ticketAppUrl,
+        payload: input.payload,
+        requestType,
+        parentRequestId: requestType === "Certificados" ? pptId : null,
+        solicitante,
+        designer,
+      });
+      results.push(result);
+      if (requestType === "PPT") pptId = result.marketingRequestId;
+    } catch (error) {
+      results.push({
+        requestType,
+        created: false,
+        marketingRequestId: "",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   const created = results.some((item) => item.created);

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Send } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,9 +19,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+import OrquestraiEnvioStatusPanel from '@/components/OrquestraiEnvioStatusPanel';
 import { Ticket } from '@/types';
 import { UserService } from '@/services/userService';
-import { submitOrquestraiTreinamento } from '@/services/orquestraiTreinamentosService';
+import {
+  fetchOrquestraiEnvioStatus,
+  submitOrquestraiTreinamento,
+} from '@/services/orquestraiTreinamentosService';
 import { canSendToOrquestrai } from '@/utils/orquestraiSendAccess';
 import {
   isDesenvolvimentoContinuoCategory,
@@ -32,14 +53,32 @@ import {
   parseDesenvolvimentoContinuoPayload,
 } from '@/utils/orquestraiTreinamentoPreview';
 import {
+  ORQUESTRAI_SEND_MODES,
   certificadosDeadlineIso,
   defaultSendMode,
-  includesPpt,
   isoDateFromBr,
   sendModeLabel,
   sendModesFor,
+  type OrquestraiRequestType,
   type OrquestraiSendMode,
 } from '@/utils/orquestraiSendMode';
+import {
+  ORQUESTRAI_REQUEST_TYPES,
+  buildEnvioOverview,
+  deriveTypeStates,
+  formatDateTimeBr,
+  formatIsoDateBr,
+  isConfirmedSent,
+  joinTypes,
+  pickDefaultMode,
+  planSend,
+  requestTypeLabel,
+  submitLabel,
+  todayIsoSaoPaulo,
+  type EnvioOverviewTone,
+  type OrquestraiEnvioStatus,
+  type TypeEnvioState,
+} from '@/utils/orquestraiEnvioStatus';
 import { useDesenvolvimentoContinuoOptions } from '@/hooks/useDesenvolvimentoContinuoOptions';
 
 type Props = {
@@ -69,18 +108,64 @@ function emptyPayload(): SharepointTreinamentoPayload {
   };
 }
 
+const TONE_BUTTON: Record<EnvioOverviewTone, string> = {
+  idle: 'border-[#F69F19]/40 text-[#DE5532] hover:border-[#F69F19] hover:bg-[#F69F19]/10',
+  unknown: 'border-[#F69F19]/40 text-[#DE5532] hover:border-[#F69F19] hover:bg-[#F69F19]/10',
+  sent: 'border-green-200 bg-green-50 text-green-700 hover:border-green-300 hover:bg-green-100 hover:text-green-800',
+  failed: 'border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800',
+  warning:
+    'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100 hover:text-amber-900',
+};
+
+const TONE_ICON: Record<EnvioOverviewTone, React.ElementType> = {
+  idle: Send,
+  unknown: Send,
+  sent: CheckCircle2,
+  failed: AlertCircle,
+  warning: AlertTriangle,
+};
+
+/** Frase do modal de confirmação para cada tipo que será (re)criado. */
+function confirmLine(type: OrquestraiRequestType, state: TypeEnvioState): string {
+  const label = requestTypeLabel(type);
+  switch (state.kind) {
+    case 'removed':
+      return `${label} foi enviado em ${formatDateTimeBr(state.sentAt)}${
+        state.sentByName ? ` por ${state.sentByName}` : ''
+      }, mas o card não está mais no ORQESTRAI. Um card novo será criado.`;
+    case 'sent':
+      return `Pelo histórico, ${label} já foi enviado${
+        state.sentAt ? ` em ${formatDateTimeBr(state.sentAt)}` : ''
+      }. O ORQESTRAI não respondeu agora; se o card ainda existir, ele não será duplicado.`;
+    case 'unknown':
+      return `Não deu para conferir se ${label} já foi enviado. Se o card já existir no ORQESTRAI, ele não será duplicado.`;
+    case 'failed':
+      return `${label}: nova tentativa depois da falha de ${formatDateTimeBr(state.failedAt)}.`;
+    default:
+      return `${label}: será criado agora.`;
+  }
+}
+
 const SendToOrquestraiButton: React.FC<Props> = ({
   ticket,
   user,
   subcategoryLabel = '',
 }) => {
   const [open, setOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [payload, setPayload] = useState<SharepointTreinamentoPayload>(emptyPayload());
   const [ticketUrl, setTicketUrl] = useState('');
+  const [preferredMode, setPreferredMode] = useState<OrquestraiSendMode>('certificados');
   const [sendMode, setSendMode] = useState<OrquestraiSendMode>('certificados');
+  const [modeTouched, setModeTouched] = useState(false);
+
+  const [status, setStatus] = useState<OrquestraiEnvioStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const statusRequest = useRef(0);
 
   const visible = useMemo(
     () =>
@@ -93,6 +178,33 @@ const SendToOrquestraiButton: React.FC<Props> = ({
     visible && open,
   );
 
+  const loadStatus = useCallback(async () => {
+    const requestId = ++statusRequest.current;
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const next = await fetchOrquestraiEnvioStatus(ticket.id);
+      if (requestId !== statusRequest.current) return;
+      setStatus(next);
+    } catch (error) {
+      if (requestId !== statusRequest.current) return;
+      setStatus(null);
+      setStatusError(
+        error instanceof Error ? error.message : 'Falha ao consultar o ORQESTRAI',
+      );
+    } finally {
+      if (requestId === statusRequest.current) setStatusLoading(false);
+    }
+  }, [ticket.id]);
+
+  // Situação do envio já no cabeçalho do ticket, sem precisar abrir o modal.
+  useEffect(() => {
+    if (!visible) return;
+    setStatus(null);
+    setStatusError(null);
+    void loadStatus();
+  }, [visible, loadStatus]);
+
   useEffect(() => {
     if (!open) return;
 
@@ -101,6 +213,7 @@ const SendToOrquestraiButton: React.FC<Props> = ({
     const load = async () => {
       setLoadingPreview(true);
       setParseError(null);
+      setModeTouched(false);
 
       try {
         const parsed = parseDesenvolvimentoContinuoPayload(
@@ -114,7 +227,7 @@ const SendToOrquestraiButton: React.FC<Props> = ({
               ...emptyPayload(),
               subcategory: subcategoryLabel,
             });
-            setSendMode('certificados');
+            setPreferredMode('certificados');
             setParseError(
               'Não foi possível ler todos os campos automaticamente. Preencha ou ajuste manualmente antes de enviar.',
             );
@@ -127,7 +240,7 @@ const SendToOrquestraiButton: React.FC<Props> = ({
               ...enriched,
               linkPpt: enriched.linkPpt || '',
             });
-            setSendMode(defaultSendMode(enriched.precisaAjustePpt));
+            setPreferredMode(defaultSendMode(enriched.precisaAjustePpt));
           }
         }
 
@@ -153,30 +266,61 @@ const SendToOrquestraiButton: React.FC<Props> = ({
     };
   }, [open, ticket.description, ticket.id, subcategoryLabel]);
 
+  // Ao abrir, confere de novo: alguém pode ter enviado em outra aba ou máquina.
+  useEffect(() => {
+    if (open && visible) void loadStatus();
+  }, [open, visible, loadStatus]);
+
+  const states = useMemo(() => deriveTypeStates(statusError ? null : status), [status, statusError]);
+  const overview = useMemo(() => buildEnvioOverview(states), [states]);
+  const statusReady = Boolean(status) || Boolean(statusError);
+
+  // Sugere o modo com o que ainda falta enviar, até o usuário escolher outro.
+  useEffect(() => {
+    if (!open || modeTouched) return;
+    setSendMode(statusReady ? pickDefaultMode(preferredMode, states) : preferredMode);
+  }, [open, modeTouched, statusReady, preferredMode, states]);
+
   if (!visible) return null;
 
   const update = (patch: Partial<SharepointTreinamentoPayload>) => {
     setPayload((prev) => ({ ...prev, ...patch }));
   };
 
-  const requestTypes = sendModesFor(sendMode);
-  const pptDeadline = isoDateFromBr(payload.dataRealizacao) || payload.dataRealizacao || '—';
-  const certDeadline = certificadosDeadlineIso(payload.dataRealizacao) || '—';
-  const needsPptLink = includesPpt(sendMode) && payload.precisaAjustePpt;
-  const canSubmit =
+  const plan = planSend(sendMode, states);
+  const isResend = plan.toCreate.some((type) => {
+    const kind = states[type].kind;
+    return kind === 'removed' || kind === 'sent';
+  });
+  const createsPpt = plan.toCreate.includes('PPT');
+  const pptDeadline =
+    formatIsoDateBr(isoDateFromBr(payload.dataRealizacao)) || payload.dataRealizacao || '—';
+  const certDeadline = formatIsoDateBr(certificadosDeadlineIso(payload.dataRealizacao)) || '—';
+  const needsPptLink = createsPpt && payload.precisaAjustePpt;
+  const formValid =
     Boolean(payload.tema.trim()) &&
     Boolean(payload.dataRealizacao.trim()) &&
     (!needsPptLink || Boolean(payload.linkPpt?.trim()));
+  const nothingToSend = statusReady && plan.toCreate.length === 0;
+  // PPT e Certificados já estão lá: não há o que escolher nem preencher.
+  const everythingSent =
+    statusReady && ORQUESTRAI_REQUEST_TYPES.every((type) => isConfirmedSent(states[type]));
+  const canSubmit = formValid && statusReady && !nothingToSend;
+  const todayIso = todayIsoSaoPaulo();
 
-  const handleConfirm = async () => {
-    if (!canSubmit) {
-      toast.error(
-        needsPptLink
-          ? 'Preencha tema, data e o link do PPT'
-          : 'Preencha pelo menos tema e data',
-      );
-      return;
-    }
+  const OverviewIcon = statusLoading && !statusReady ? Loader2 : TONE_ICON[overview.tone];
+
+  const modeSuffix = (mode: OrquestraiSendMode): string => {
+    if (!statusReady) return '';
+    const types = sendModesFor(mode);
+    const sent = types.filter((type) => isConfirmedSent(states[type]));
+    if (sent.length === types.length) return ' · já enviado';
+    if (sent.length) return ` · ${joinTypes(sent)} já enviado`;
+    return '';
+  };
+
+  const send = async () => {
+    setConfirmOpen(false);
     setSending(true);
     try {
       const result = await submitOrquestraiTreinamento(ticket.id, {
@@ -184,62 +328,138 @@ const SendToOrquestraiButton: React.FC<Props> = ({
         sendMode,
         linkPpt: needsPptLink ? payload.linkPpt?.trim() || undefined : undefined,
       });
+      const results = result.results ?? [];
+      const created = results.filter((item) => item.created).map((item) => item.requestType);
+      const existing = results
+        .filter((item) => !item.created && !item.error)
+        .map((item) => item.requestType);
+      const failed = results.filter((item) => item.error);
+
       if (!result.ok) {
-        toast.error(result.error || 'Falha ao enviar para o ORQESTRAI');
+        toast.error('Não foi possível enviar ao ORQESTRAI', {
+          description: result.error || 'Falha ao enviar para o ORQESTRAI',
+        });
         return;
       }
-      const results = result.results ?? [];
-      const created = results.filter((item) => item.created);
-      const existing = results.filter((item) => !item.created);
-      if (created.length && existing.length) {
-        toast.success(
-          `Criado: ${created.map((item) => item.requestType).join(', ')}. Já existia: ${existing.map((item) => item.requestType).join(', ')}`,
+
+      if (failed.length) {
+        toast.warning(
+          created.length ? `Criado: ${created.join(' + ')}. Falhou: ${failed.map((item) => item.requestType).join(' + ')}` : 'Parte do envio falhou',
+          { description: failed.map((item) => `${item.requestType}: ${item.error}`).join(' · ') },
         );
-      } else if (created.length) {
-        toast.success(
-          created.length > 1
-            ? 'Cards criados no ORQESTRAI'
-            : `Card ${created[0].requestType} criado no ORQESTRAI`,
-        );
-      } else if (result.created === false || existing.length) {
-        toast.info('Já existe um card deste tipo no ORQESTRAI');
+        return;
+      }
+
+      if (created.length) {
+        toast.success(`Enviado ao ORQESTRAI: ${created.join(' + ')}`, {
+          description: existing.length
+            ? `${existing.join(' + ')} já estava lá e não foi duplicado.`
+            : `Card${created.length > 1 ? 's' : ''} no estágio Tarefas.`,
+        });
       } else {
-        toast.success('Card criado no ORQESTRAI');
+        toast.info('Nada novo: o ORQESTRAI já tinha esses cards', {
+          description: existing.length ? existing.join(' + ') : undefined,
+        });
       }
       setOpen(false);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Falha ao enviar para o ORQESTRAI',
-      );
+      toast.error('Não foi possível enviar ao ORQESTRAI', {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setSending(false);
+      // Tanto sucesso quanto falha ficam no histórico: atualiza o status.
+      void loadStatus();
     }
   };
 
+  const handleSubmit = () => {
+    if (!formValid) {
+      toast.error(
+        needsPptLink
+          ? 'Preencha tema, data e o link do PPT'
+          : 'Preencha pelo menos tema e data',
+      );
+      return;
+    }
+    if (!canSubmit) return;
+    if (plan.needsConfirm) {
+      setConfirmOpen(true);
+      return;
+    }
+    void send();
+  };
+
+  const primaryLabel = sending
+    ? 'Enviando…'
+    : !statusReady
+      ? 'Conferindo envios…'
+      : submitLabel(plan, states);
+
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1.5 px-2 text-[11px] border-[#F69F19]/40 text-[#DE5532] hover:border-[#F69F19] hover:bg-[#F69F19]/10 rounded-md shrink-0"
-        onClick={() => setOpen(true)}
-        title="Enviar para ORQESTRAI"
-      >
-        <Send className="h-3 w-3" />
-        <span>ORQESTRAI</span>
-      </Button>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn(
+                'h-7 gap-1.5 px-2 text-[11px] rounded-md shrink-0',
+                TONE_BUTTON[statusReady ? overview.tone : 'idle'],
+              )}
+              onClick={() => setOpen(true)}
+              aria-label={`Enviar para ORQESTRAI. ${statusReady ? overview.details.join('. ') : 'Conferindo envios.'}`}
+            >
+              <OverviewIcon
+                className={cn('h-3 w-3', statusLoading && !statusReady && 'animate-spin')}
+                aria-hidden="true"
+              />
+              <span>{statusReady ? overview.label : 'ORQESTRAI'}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs space-y-0.5 text-xs">
+            {statusReady ? (
+              overview.details.map((line) => <p key={line}>{line}</p>)
+            ) : (
+              <p>Conferindo o que já foi enviado ao ORQESTRAI…</p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => !sending && setOpen(next)}>
         <DialogContent className="sm:max-w-xl max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Enviar para ORQESTRAI</DialogTitle>
             <DialogDescription>
-              Ajuste os campos abaixo antes de criar o card no Marketing. O envio não
-              altera o ticket no Responsum.
+              Cria os cards no Planner do Marketing. Cada ticket tem no máximo um card de PPT
+              e um de Certificados. O envio não altera o ticket no Responsum.
             </DialogDescription>
           </DialogHeader>
 
-          {loadingPreview ? (
+          <OrquestraiEnvioStatusPanel
+            status={status}
+            states={states}
+            loading={statusLoading}
+            error={statusError}
+            todayIso={todayIso}
+            onRefresh={() => void loadStatus()}
+          />
+
+          {everythingSent ? (
+            <p className="flex gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+              <CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                PPT e Certificados já estão no ORQESTRAI. Não há mais nada para enviar deste
+                ticket.
+              </span>
+            </p>
+          ) : (
+            <div className="h-px bg-slate-200" aria-hidden="true" />
+          )}
+
+          {everythingSent ? null : loadingPreview ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
               Montando prévia…
             </p>
@@ -251,61 +471,91 @@ const SendToOrquestraiButton: React.FC<Props> = ({
                 </p>
               )}
 
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm space-y-1">
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  Prévia no ORQESTRAI
-                </p>
-                {requestTypes.map((type) => (
-                  <p key={type} className="font-medium text-[#2C2D2F] break-words">
-                    {type === 'Certificados'
-                      ? `[DC] Certificados — ${payload.tema || '…'}`
-                      : `[DC] ${payload.subcategory || 'Desenvolvimento Contínuo'} — ${payload.tema || '…'}`}
-                  </p>
-                ))}
-                <p className="text-xs text-slate-500">
-                  Tipo:{' '}
-                  <span className="text-[#2C2D2F] font-medium">
-                    {requestTypes.join(' + ')}
-                  </span>
-                  {' · '}
-                  Estágio: <span className="text-[#2C2D2F] font-medium">Tarefas</span>
-                  {' · '}
-                  Assignee: <span className="text-[#2C2D2F] font-medium">Valentina Iacovacci</span>
-                </p>
-                <p className="text-xs text-slate-500">
-                  Prazo:{' '}
-                  <span className="text-[#2C2D2F] font-medium">
-                    {requestTypes
-                      .map((type) =>
-                        type === 'Certificados'
-                          ? `Certificados ${certDeadline}`
-                          : `PPT ${pptDeadline}`,
-                      )
-                      .join(' · ')}
-                  </span>
-                </p>
-              </div>
-
               <div className="space-y-1.5">
                 <Label>O que enviar</Label>
                 <Select
                   value={sendMode}
-                  onValueChange={(value) => setSendMode(value as OrquestraiSendMode)}
+                  onValueChange={(value) => {
+                    setModeTouched(true);
+                    setSendMode(value as OrquestraiSendMode);
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ppt">{sendModeLabel('ppt')}</SelectItem>
-                    <SelectItem value="certificados">
-                      {sendModeLabel('certificados')}
-                    </SelectItem>
-                    <SelectItem value="ppt_e_certificados">
-                      {sendModeLabel('ppt_e_certificados')}
-                    </SelectItem>
+                    {ORQUESTRAI_SEND_MODES.map((mode) => (
+                      <SelectItem key={mode} value={mode}>
+                        {sendModeLabel(mode)}
+                        {modeSuffix(mode) && (
+                          <span className="text-slate-400">{modeSuffix(mode)}</span>
+                        )}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+
+                {nothingToSend ? (
+                  <p className="flex gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+                    <CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>
+                      {plan.alreadySent.length > 1
+                        ? `${joinTypes(plan.alreadySent)} já estão no ORQESTRAI.`
+                        : `${joinTypes(plan.alreadySent)} já está no ORQESTRAI.`}{' '}
+                      Não há nada novo para enviar com esta opção.
+                    </span>
+                  </p>
+                ) : (
+                  statusReady &&
+                  plan.alreadySent.length > 0 && (
+                    <p className="flex gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span>
+                        {joinTypes(plan.alreadySent)} já está no ORQESTRAI e não será criado de
+                        novo. Este envio cria só{' '}
+                        <span className="font-medium text-[#2C2D2F]">{joinTypes(plan.toCreate)}</span>.
+                      </span>
+                    </p>
+                  )
+                )}
               </div>
+
+              {plan.toCreate.length > 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm space-y-1">
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                    Prévia do que será criado
+                  </p>
+                  {plan.toCreate.map((type) => (
+                    <p key={type} className="font-medium text-[#2C2D2F] break-words">
+                      {type === 'Certificados'
+                        ? `[DC] Certificados — ${payload.tema || '…'}`
+                        : `[DC] ${payload.subcategory || 'Desenvolvimento Contínuo'} — ${payload.tema || '…'}`}
+                    </p>
+                  ))}
+                  <p className="text-xs text-slate-500">
+                    Tipo:{' '}
+                    <span className="text-[#2C2D2F] font-medium">
+                      {plan.toCreate.join(' + ')}
+                    </span>
+                    {' · '}
+                    Estágio: <span className="text-[#2C2D2F] font-medium">Tarefas</span>
+                    {' · '}
+                    Assignee: <span className="text-[#2C2D2F] font-medium">Valentina Iacovacci</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Prazo:{' '}
+                    <span className="text-[#2C2D2F] font-medium">
+                      {plan.toCreate
+                        .map((type) =>
+                          type === 'Certificados'
+                            ? `Certificados ${certDeadline}`
+                            : `PPT ${pptDeadline}`,
+                        )
+                        .join(' · ')}
+                    </span>
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5 sm:col-span-2">
@@ -401,7 +651,7 @@ const SendToOrquestraiButton: React.FC<Props> = ({
                   />
                 </div>
 
-                {includesPpt(sendMode) && (
+                {createsPpt && (
                   <div className="space-y-1.5">
                     <Label>Precisa de ajuste em PPT?</Label>
                     <Select
@@ -451,20 +701,59 @@ const SendToOrquestraiButton: React.FC<Props> = ({
               onClick={() => setOpen(false)}
               disabled={sending}
             >
-              Cancelar
+              {nothingToSend ? 'Fechar' : 'Cancelar'}
             </Button>
-            <Button
-              type="button"
-              onClick={() => void handleConfirm()}
-              disabled={sending || loadingPreview || !canSubmit}
-              className="text-white border-0"
-              style={{ background: 'linear-gradient(135deg, #F69F19, #DE5532)' }}
-            >
-              {sending ? 'Enviando…' : 'Confirmar envio'}
-            </Button>
+            {!everythingSent && (
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={sending || loadingPreview || !canSubmit}
+                className="gap-1.5 text-white border-0"
+                style={{ background: 'linear-gradient(135deg, #F69F19, #DE5532)' }}
+              >
+                {sending || !statusReady ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : nothingToSend ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {primaryLabel}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isResend ? 'Reenviar para o ORQESTRAI?' : 'Enviar sem conferir?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-slate-600">
+                {plan.toCreate.map((type) => (
+                  <p key={type}>{confirmLine(type, states[type])}</p>
+                ))}
+                {plan.alreadySent.length > 0 && (
+                  <p>{joinTypes(plan.alreadySent)} já está no ORQESTRAI e fica como está.</p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void send()}
+              className="text-white border-0"
+              style={{ background: 'linear-gradient(135deg, #F69F19, #DE5532)' }}
+            >
+              {isResend ? 'Sim, reenviar' : 'Sim, enviar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
